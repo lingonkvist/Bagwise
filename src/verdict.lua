@@ -38,5 +38,19 @@ function Bagwise.Verdict.Evaluate(item, state)
     return "green", "Restricted to " .. table.concat(item.raceRestriction, ", ")
   end
 
+  -- Story 1.3: soulbound gear far below my level
+  if item.isBound
+      and item.isEquippable
+      and item.reqLevel
+      and item.reqLevel > 0
+  then
+    local gap = state.level - item.reqLevel
+    if gap >= 20 then
+      return "green", "Required level " .. item.reqLevel .. ", you are " .. state.level
+    elseif gap >= 10 then
+      return "yellow", "Required level " .. item.reqLevel .. ", you are " .. state.level
+    end
+  end
+
   return nil, nil
 end
