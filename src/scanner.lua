@@ -76,7 +76,7 @@ local function gatherItem(bag, slot)
 
   local itemID = containerInfo.itemID
 
-  local name, _, quality, _, reqLevel, _, _, _,
+  local name, _, quality, itemLevel, reqLevel, _, _, _,
   equipSlot, _, _, _, _, bindType = ItemInfo(itemID)
 
   -- Item not cached by the client yet, skip for now
@@ -88,6 +88,7 @@ local function gatherItem(bag, slot)
     id = itemID,
     name = name,
     quality = quality,
+    itemLevel = itemLevel,
     reqLevel = reqLevel,
     isBound = containerInfo.isBound,
     isEquippable = isEquippable,
