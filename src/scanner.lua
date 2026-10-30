@@ -31,8 +31,40 @@ end
 -- Use the namespaced version if available, fall back to the old global
 ---@diagnostic disable-next-line: deprecated
 local ItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
----@diagnostic disable-next-line: deprecated
-local IsUsable = (C_Item and C_Item.IsUsableItem) or IsUsableItem
+-- IsUsableItem is intentionally NOT used here. It checks right-click
+-- usability (potions, scrolls), not whether your class can equip gear.
+-- It returns false for ALL equipment regardless of class.
+
+-- Allowlist of equipSlot values that represent actual wearable gear.
+-- Classic Era returns INVTYPE_NON_EQUIP_IGNORE for everything else
+-- (quest items, crafting mats, consumables, ammo, etc.), so a blocklist
+-- approach misses too many edge cases.
+local EQUIP_SLOTS = {
+  INVTYPE_HEAD           = true,
+  INVTYPE_NECK           = true,
+  INVTYPE_SHOULDER       = true,
+  INVTYPE_BODY           = true,    -- shirt
+  INVTYPE_CHEST          = true,
+  INVTYPE_ROBE           = true,    -- also chest
+  INVTYPE_WAIST          = true,
+  INVTYPE_LEGS           = true,
+  INVTYPE_FEET           = true,
+  INVTYPE_WRIST          = true,
+  INVTYPE_HAND           = true,
+  INVTYPE_FINGER         = true,
+  INVTYPE_TRINKET        = true,
+  INVTYPE_CLOAK          = true,
+  INVTYPE_WEAPON         = true,
+  INVTYPE_SHIELD         = true,
+  INVTYPE_2HWEAPON       = true,
+  INVTYPE_WEAPONMAINHAND = true,
+  INVTYPE_WEAPONOFFHAND  = true,
+  INVTYPE_HOLDABLE       = true,    -- off-hand frill
+  INVTYPE_RANGED         = true,
+  INVTYPE_RANGEDRIGHT    = true,
+  INVTYPE_THROWN         = true,
+  INVTYPE_TABARD         = true,
+}
 
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index (0-4)
@@ -50,8 +82,7 @@ local function gatherItem(bag, slot)
   -- Item not cached by the client yet, skip for now
   if not name then return nil end
 
-  local isEquippable = equipSlot and equipSlot ~= "" and equipSlot ~= "INVTYPE_NON_EQUIP"
-  local isUsable = IsUsable(itemID)
+  local isEquippable = equipSlot and EQUIP_SLOTS[equipSlot] or false
 
   return {
     id = itemID,
@@ -60,7 +91,6 @@ local function gatherItem(bag, slot)
     reqLevel = reqLevel,
     isBound = containerInfo.isBound,
     isEquippable = isEquippable,
-    isUsable = isUsable,
     bindType = bindType,
   }
 end

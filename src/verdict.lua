@@ -13,14 +13,10 @@ Bagwise.Verdict = {}
 -- @return string|nil   Human-readable reason, or nil
 function Bagwise.Verdict.Evaluate(item, state)
   -- Stories 1.1 + 1.2: soulbound gear not usable by your character
-  -- Covers class restrictions, race restrictions, and any other
-  -- reason the WoW client considers the item unusable.
-  if item.isBound
-      and item.isEquippable
-      and item.isUsable == false
-  then
-    return "green", "Not usable by your character"
-  end
+  -- DISABLED: IsUsableItem() checks right-click usability (potions,
+  -- scrolls), NOT whether your class can equip gear. It returns false
+  -- for ALL equipment. Proper class restriction detection needs
+  -- tooltip scanning or a proficiency lookup table -- a separate story.
 
   -- Story 1.3: soulbound gear far below my level
   if item.isBound
