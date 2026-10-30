@@ -29,5 +29,14 @@ function Bagwise.Verdict.Evaluate(item, state)
     return "green", "Not usable by " .. state.class
   end
 
+  -- Story 1.2: soulbound gear restricted to another race
+  if item.isBound
+      and item.isEquippable
+      and item.raceRestriction
+      and not contains(item.raceRestriction, state.race)
+  then
+    return "green", "Restricted to " .. table.concat(item.raceRestriction, ", ")
+  end
+
   return nil, nil
 end

@@ -87,3 +87,62 @@ describe("Story 1.1: soulbound gear my class cannot use", function()
     assert.is_nil(verdict)
   end)
 end)
+
+describe("Story 1.2: soulbound gear restricted to another race", function()
+  it("green when soulbound and race-restricted to another race", function()
+    local item = {
+      id = 22345,
+      isBound = true,
+      isEquippable = true,
+      raceRestriction = { "Dwarf", "Gnome" },
+    }
+    local state = { class = "Warrior", race = "Orc" }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("Dwarf"))
+  end)
+
+  it("no dot when soulbound but the player's race IS in the list", function()
+    local item = {
+      id = 22345,
+      isBound = true,
+      isEquippable = true,
+      raceRestriction = { "Dwarf", "Gnome" },
+    }
+    local state = { class = "Warrior", race = "Dwarf" }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when race-restricted but NOT soulbound", function()
+    local item = {
+      id = 22345,
+      isBound = false,
+      isEquippable = true,
+      raceRestriction = { "Dwarf" },
+    }
+    local state = { class = "Warrior", race = "Orc" }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when soulbound but no race restriction", function()
+    local item = {
+      id = 22345,
+      isBound = true,
+      isEquippable = true,
+      raceRestriction = nil,
+    }
+    local state = { class = "Warrior", race = "Orc" }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+end)
