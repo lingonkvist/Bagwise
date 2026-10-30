@@ -6,36 +6,20 @@
 Bagwise = Bagwise or {}
 Bagwise.Verdict = {}
 
--- Helper: check if a value exists in a list
-local function contains(list, value)
-  for _, v in ipairs(list) do
-    if v == value then return true end
-  end
-  return false
-end
-
 --- Evaluate a single item and return a verdict.
 -- @param item   table  Item data gathered by the scanner
 -- @param state  table  Player state (class, race, level, professions, etc.)
 -- @return string|nil   "green", "yellow", or nil
 -- @return string|nil   Human-readable reason, or nil
 function Bagwise.Verdict.Evaluate(item, state)
-  -- Story 1.1: soulbound gear my class cannot use
+  -- Stories 1.1 + 1.2: soulbound gear not usable by your character
+  -- Covers class restrictions, race restrictions, and any other
+  -- reason the WoW client considers the item unusable.
   if item.isBound
       and item.isEquippable
-      and item.classRestriction
-      and not contains(item.classRestriction, state.class)
+      and item.isUsable == false
   then
-    return "green", "Not usable by " .. state.class
-  end
-
-  -- Story 1.2: soulbound gear restricted to another race
-  if item.isBound
-      and item.isEquippable
-      and item.raceRestriction
-      and not contains(item.raceRestriction, state.race)
-  then
-    return "green", "Restricted to " .. table.concat(item.raceRestriction, ", ")
+    return "green", "Not usable by your character"
   end
 
   -- Story 1.3: soulbound gear far below my level

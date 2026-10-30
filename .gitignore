@@ -1,0 +1,9 @@
+# VS Code
+.vscode/
+
+# Lua LS
+.luarc.json
+
+# OS junk
+.DS_Store
+Thumbs.db
