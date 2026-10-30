@@ -74,10 +74,11 @@ function Bagwise.Overlay.UpdateAll()
           local button = _G[buttonName]
 
           if button then
-            -- IMPORTANT: button:GetID() returns the actual
-            -- container slot. Button naming is reversed:
-            -- Item1 = last slot, ItemN = slot 1.
-            local slotID = button:GetID()
+            -- Classic Era button naming is reversed:
+            -- Item1 = last slot in the bag, ItemN = slot 1.
+            -- The scanner stores by actual slot number (1-N),
+            -- so we flip the index to match.
+            local slotID = numSlots - buttonIndex + 1
             local result = Bagwise.Scanner.GetResult(bagID, slotID)
             local dot = getDot(button)
 
