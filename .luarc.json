@@ -1,0 +1,4 @@
+{
+  "workspace.ignoreDir": ["tests"],
+  "diagnostics.disable": ["need-check-nil"]
+}

@@ -1,0 +1,18 @@
+## Interface: 11509
+## Title: Bagwise
+## Notes: Corner dots on bag items showing what is safe to delete
+## Author: lingonkvist
+## Version: 0.1.0
+## SavedVariablesPerCharacter: BagwiseDB
+
+src\verdict.lua
+src\scanner.lua
+src\overlay.lua
+src\tooltip.lua
+src\menu.lua
+src\overrides.lua
+src\commands.lua
+data\quests.lua
+data\recipes.lua
+data\gating.lua
+Bagwise.lua
