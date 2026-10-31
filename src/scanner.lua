@@ -87,12 +87,13 @@ end
 --- Gather player state once per scan.
 -- @return table  State table matching what Verdict.Evaluate expects
 local function getPlayerState()
-  local class = UnitClass("player")
+  local class, playerClass = UnitClass("player")
   local race = UnitRace("player")
   local level = UnitLevel("player")
 
   return {
     class = class,
+    playerClass = playerClass,
     race = race,
     level = level,
     professionSkillLines = gatherProfessionSkillLines(),
@@ -114,9 +115,9 @@ local EQUIP_SLOTS = {
   INVTYPE_HEAD           = true,
   INVTYPE_NECK           = true,
   INVTYPE_SHOULDER       = true,
-  INVTYPE_BODY           = true,    -- shirt
+  INVTYPE_BODY           = true, -- shirt
   INVTYPE_CHEST          = true,
-  INVTYPE_ROBE           = true,    -- also chest
+  INVTYPE_ROBE           = true, -- also chest
   INVTYPE_WAIST          = true,
   INVTYPE_LEGS           = true,
   INVTYPE_FEET           = true,
@@ -130,7 +131,7 @@ local EQUIP_SLOTS = {
   INVTYPE_2HWEAPON       = true,
   INVTYPE_WEAPONMAINHAND = true,
   INVTYPE_WEAPONOFFHAND  = true,
-  INVTYPE_HOLDABLE       = true,    -- off-hand frill
+  INVTYPE_HOLDABLE       = true, -- off-hand frill
   INVTYPE_RANGED         = true,
   INVTYPE_RANGEDRIGHT    = true,
   INVTYPE_THROWN         = true,

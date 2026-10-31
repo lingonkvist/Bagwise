@@ -13,8 +13,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
     -- Initialise per-character saved variables
     if not BagwiseDB then
       BagwiseDB = {
-        keepList = {},         -- item IDs the player never wants flagged
-        flagList = {},         -- item IDs the player always wants yellow
+        keepList = {},
+        flagList = {},
         version  = 1,
       }
     end
@@ -26,6 +26,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     self:RegisterEvent("PLAYER_LEVEL_UP")
     self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     self:RegisterEvent("QUEST_TURNED_IN")
+    self:RegisterEvent("SKILL_LINES_CHANGED")
 
     -- Hook bag frame Show/Hide so dots appear/disappear with bags.
     -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
@@ -41,7 +42,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
       end
     end
 
-    print("|cff66bb6a[Bagwise]|r v0.1.0 loaded. Type /bagwise help for commands.")
+    print("|cff66bb6a[Bagwise]|r v0.2.0 loaded. Type /bagwise help for commands.")
   elseif event == "BAG_UPDATE_DELAYED" then
     -- Bag contents changed: re-scan and repaint dots
     Bagwise.Scanner.ScanAll()
@@ -63,6 +64,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
     Bagwise.Scanner.ClearCache()
     Bagwise.Scanner.ScanAll()
     Bagwise.Overlay.UpdateAll()
+  elseif event == "SKILL_LINES_CHANGED" then
+    -- Professions learned or dropped: vendor reagent and class reagent
+    -- verdicts depend on the player's profession set, so clear everything.
+    Bagwise.Scanner.ClearCache()
+    Bagwise.Scanner.ScanAll()
+    Bagwise.Overlay.UpdateAll()
   end
 end)
 
@@ -75,9 +82,6 @@ SlashCmdList["BAGWISE"] = function(msg)
     print("|cff66bb6a[Bagwise]|r commands:")
     print("  /bagwise help   - show this list")
     print("  /bagwise status - show addon state")
-    -- Future commands will go here:
-    -- /bagwise keep [shift-click item]
-    -- /bagwise flag [shift-click item]
   elseif cmd == "status" then
     local keepCount = 0
     local flagCount = 0

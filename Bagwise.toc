@@ -16,4 +16,5 @@ data\quests.lua
 data\recipes.lua
 data\gating.lua
 data\vendor_reagents.lua
+data\class_reagents.lua
 Bagwise.lua

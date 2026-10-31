@@ -1,10 +1,11 @@
 -- Bagwise: verdict unit tests
--- Run with: busted tests/verdict_spec.lua (from the Bagwise/ root)
+-- Run with: lua5.1 tests/verdict_spec.lua (from the Bagwise/ root)
 
 -- Stub the global namespace before loading the module
 _G.Bagwise = nil
 
 dofile("data/vendor_reagents.lua")
+dofile("data/class_reagents.lua")
 dofile("src/verdict.lua")
 
 -- Stories 1.1 + 1.2 (class restriction check) are disabled:
@@ -113,7 +114,6 @@ end)
 
 describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
   it("green when reqLevel=0 but itemLevel is 20+ below player", function()
-    -- e.g. Fish Gutter: soulbound quest weapon, ilvl 10, on a lvl 32
     local item = {
       id = 44001,
       isBound = true,
@@ -192,9 +192,6 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
   end)
 
   it("reqLevel takes priority over itemLevel when both present", function()
-    -- reqLevel = 30, itemLevel = 10. Player level 55.
-    -- reqLevel gap = 25 (green), itemLevel gap = 45 (also green).
-    -- Should use reqLevel and say "Required level", not "Item level".
     local item = {
       id = 44006,
       isBound = true,
@@ -256,7 +253,6 @@ describe("Story 2.1: quest-starter items for completed quests", function()
   end)
 
   it("green with fallback text when quest name is nil", function()
-    -- C_QuestLog.GetQuestInfo might return nil for some quest IDs
     local item = {
       id = 55004,
       startsQuestID = 9999,
@@ -272,9 +268,6 @@ describe("Story 2.1: quest-starter items for completed quests", function()
   end)
 
   it("gear verdict takes priority over quest verdict for bound equippable items", function()
-    -- An item that is both soulbound equippable gear AND starts a
-    -- completed quest. The gear rule runs first, so if the gap is big
-    -- enough, we get the gear reason rather than the quest reason.
     local item = {
       id = 55005,
       isBound = true,
@@ -289,13 +282,11 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    -- Gear rule fires first (gap = 30, green)
     assert.is_truthy(reason:find("Required level"))
   end)
 end)
 
 describe("Epic 5: vendor reagents not needed by player's professions", function()
-  -- Helper: build a state with specific profession skillLine IDs
   local function stateWithProfessions(...)
     local skillLines = {}
     for _, id in ipairs({ ... }) do
@@ -310,8 +301,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end
 
   it("green when player has no matching profession (Empty Vial, no Alchemy)", function()
-    local item = { id = 3371 }                       -- Empty Vial: needs Alchemy (171)
-    local state = stateWithProfessions(164, 197)     -- BS + Tailoring
+    local item = { id = 3371 }
+    local state = stateWithProfessions(164, 197)
 
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
@@ -320,8 +311,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("no dot when player HAS a matching profession (Empty Vial, has Alchemy)", function()
-    local item = { id = 3371 }                       -- Empty Vial: needs Alchemy (171)
-    local state = stateWithProfessions(171, 164)     -- Alchemy + BS
+    local item = { id = 3371 }
+    local state = stateWithProfessions(171, 164)
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
 
@@ -329,9 +320,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("green when player has one profession but reagent needs two others", function()
-    -- Coarse Thread (2320): Tailoring (197) + Leatherworking (165)
     local item = { id = 2320 }
-    local state = stateWithProfessions(171)     -- Alchemy only
+    local state = stateWithProfessions(171)
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
 
@@ -339,9 +329,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("no dot when player matches ONE of multiple professions", function()
-    -- Coarse Thread (2320): Tailoring (197) + Leatherworking (165)
     local item = { id = 2320 }
-    local state = stateWithProfessions(197, 171)     -- Tailoring + Alchemy
+    local state = stateWithProfessions(197, 171)
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
 
@@ -349,7 +338,7 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("no dot for items NOT in the vendor reagent table", function()
-    local item = { id = 12345 }     -- random item, not a vendor reagent
+    local item = { id = 12345 }
     local state = stateWithProfessions(171)
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
@@ -358,14 +347,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("no dot when player has no professions at all (empty set)", function()
-    -- A fresh character with no professions shouldn't get green dots
-    -- on reagents -- they might be about to learn that profession.
-    -- Actually wait: empty professionSkillLines means no match,
-    -- so the rule WOULD fire green. Let's verify the intent.
-    -- Design decision: green IS correct here. If you have zero
-    -- professions, you truly don't need vendor reagents.
-    local item = { id = 3371 }               -- Empty Vial
-    local state = stateWithProfessions()     -- no professions
+    local item = { id = 3371 }
+    local state = stateWithProfessions()
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
 
@@ -373,12 +356,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("no dot when professionSkillLines is nil (API unavailable)", function()
-    -- If GetProfessions() isn't available (older client), the scanner
-    -- won't populate professionSkillLines. The rule should bail out
-    -- gracefully rather than mark everything green.
-    local item = { id = 3371 }     -- Empty Vial
+    local item = { id = 3371 }
     local state = { class = "Mage", race = "Human", level = 60 }
-    -- professionSkillLines not set at all
 
     local verdict = Bagwise.Verdict.Evaluate(item, state)
 
@@ -386,19 +365,246 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
   end)
 
   it("Salt shows green only when player has none of Tailoring, LW, or Cooking", function()
-    -- Salt (4289) is used by three professions
     local item = { id = 4289 }
 
-    -- Has Cooking: no dot
-    local state1 = stateWithProfessions(185)     -- Cooking
+    local state1 = stateWithProfessions(185)
     assert.is_nil(Bagwise.Verdict.Evaluate(item, state1))
 
-    -- Has Leatherworking: no dot
-    local state2 = stateWithProfessions(165)     -- LW
+    local state2 = stateWithProfessions(165)
     assert.is_nil(Bagwise.Verdict.Evaluate(item, state2))
 
-    -- Has neither: green
-    local state3 = stateWithProfessions(171, 333)     -- Alchemy + Enchanting
+    local state3 = stateWithProfessions(171, 333)
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state3)))
+  end)
+end)
+
+describe("Epic 5: vendor reagent excludeClasses (Rogue vials)", function()
+  local function stateWithProfessions(playerClass, ...)
+    local skillLines = {}
+    for _, id in ipairs({ ... }) do
+      skillLines[id] = true
+    end
+    return {
+      class = playerClass,
+      playerClass = playerClass,
+      race = "Human",
+      level = 60,
+      professionSkillLines = skillLines,
+    }
+  end
+
+  it("Rogue without Alchemy gets nil on Empty Vial (not false green)", function()
+    local item = { id = 3371 }
+    local state = stateWithProfessions("ROGUE", 164, 197)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("Rogue without Alchemy gets nil on Leaded Vial", function()
+    local item = { id = 3372 }
+    local state = stateWithProfessions("ROGUE", 164, 197)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("Rogue without Alchemy gets nil on Crystal Vial", function()
+    local item = { id = 8925 }
+    local state = stateWithProfessions("ROGUE", 164, 197)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("Mage without Alchemy still gets green on Empty Vial", function()
+    local item = { id = 3371 }
+    local state = stateWithProfessions("MAGE", 164, 197)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+  end)
+
+  it("Rogue WITH Alchemy gets nil on Empty Vial (has the profession)", function()
+    local item = { id = 3371 }
+    local state = stateWithProfessions("ROGUE", 171, 165)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("Imbued Vial has no excludeClasses, so Rogue without Alchemy gets green", function()
+    local item = { id = 18256 }
+    local state = stateWithProfessions("ROGUE", 164, 197)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+  end)
+end)
+
+describe("Class reagent verdict", function()
+  -- World-drop reagents: yellow when wrong class
+
+  it("returns yellow for Light Feather on a warrior", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17056 },
+      { playerClass = "WARRIOR" }
+    )
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Light Feather (Mage/Priest only)", reason)
+  end)
+
+  it("returns nil for Light Feather on a mage", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17056 },
+      { playerClass = "MAGE" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns nil for Light Feather on a priest", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17056 },
+      { playerClass = "PRIEST" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns yellow for Shiny Fish Scales on a paladin", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17057 },
+      { playerClass = "PALADIN" }
+    )
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Shiny Fish Scales (Shaman only)", reason)
+  end)
+
+  it("returns nil for Shiny Fish Scales on a shaman", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17057 },
+      { playerClass = "SHAMAN" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  -- Vendor-sold reagents: green when wrong class
+
+  it("returns green for Arcane Powder on a warrior", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17020 },
+      { playerClass = "WARRIOR" }
+    )
+    assert.are.equal("green", verdict)
+    assert.are.equal("Arcane Powder (Mage only)", reason)
+  end)
+
+  it("returns nil for Arcane Powder on a mage", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17020 },
+      { playerClass = "MAGE" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns green for Ankh on a druid", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17030 },
+      { playerClass = "DRUID" }
+    )
+    assert.are.equal("green", verdict)
+    assert.are.equal("Ankh (Shaman only)", reason)
+  end)
+
+  it("returns nil for Ankh on a shaman", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17030 },
+      { playerClass = "SHAMAN" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns green for Maple Seed on a hunter", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17034 },
+      { playerClass = "HUNTER" }
+    )
+    assert.are.equal("green", verdict)
+    assert.are.equal("Maple Seed (Druid only)", reason)
+  end)
+
+  it("returns nil for Maple Seed on a druid", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17034 },
+      { playerClass = "DRUID" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns green for Symbol of Kings on a mage", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 21177 },
+      { playerClass = "MAGE" }
+    )
+    assert.are.equal("green", verdict)
+    assert.are.equal("Symbol of Kings (Paladin only)", reason)
+  end)
+
+  it("returns green for Flash Powder on a warrior", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 5140 },
+      { playerClass = "WARRIOR" }
+    )
+    assert.are.equal("green", verdict)
+    assert.are.equal("Flash Powder (Rogue only)", reason)
+  end)
+
+  it("returns yellow for Blinding Powder on a warrior", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 5530 },
+      { playerClass = "WARRIOR" }
+    )
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Blinding Powder (Rogue only)", reason)
+  end)
+
+  -- Edge cases
+
+  it("returns nil for a non-reagent item regardless of class", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 99999 },
+      { playerClass = "WARRIOR" }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns nil when playerClass is missing from state", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17056 },
+      {}
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
+  end)
+
+  it("returns nil when playerClass is nil", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(
+      { id = 17056 },
+      { playerClass = nil }
+    )
+    assert.is_nil(verdict)
+    assert.is_nil(reason)
   end)
 end)

@@ -59,16 +59,47 @@ function Bagwise.Verdict.Evaluate(item, state)
   local reagentProfessions = Bagwise.Data.VendorReagents
       and Bagwise.Data.VendorReagents[item.id]
   if reagentProfessions and state.professionSkillLines then
-    local playerNeeds = false
-    for _, skillLine in ipairs(reagentProfessions) do
-      if state.professionSkillLines[skillLine] then
-        playerNeeds = true
-        break
+    -- Some classes use vendor reagents for non-profession purposes
+    -- (e.g. Rogues need vials for poison crafting). Skip the rule
+    -- for those classes so they don't get a false green dot.
+    if reagentProfessions.excludeClasses
+        and state.playerClass
+        and reagentProfessions.excludeClasses[state.playerClass] then
+      -- Fall through to later rules
+    else
+      local playerNeeds = false
+      for _, skillLine in ipairs(reagentProfessions) do
+        if state.professionSkillLines[skillLine] then
+          playerNeeds = true
+          break
+        end
+      end
+      if not playerNeeds then
+        return "green", "Vendor reagent, not needed by your professions"
       end
     end
-    if not playerNeeds then
-      return "green", "Vendor reagent, not needed by your professions"
+  end
+
+  -- Class reagent: green or yellow when the player's class cannot use it.
+  -- Green for vendor-sold reagents (cheap, replaceable).
+  -- Yellow for world-drop reagents (may have AH value).
+  local classReagent = Bagwise.Data.ClassReagents
+      and Bagwise.Data.ClassReagents[item.id]
+  if classReagent then
+    if not state.playerClass then
+      return nil, nil
     end
+    if not classReagent.classes[state.playerClass] then
+      local classList = {}
+      for class in pairs(classReagent.classes) do
+        classList[#classList + 1] = class:sub(1, 1)
+            .. class:sub(2):lower()
+      end
+      table.sort(classList)
+      return classReagent.verdict,
+          classReagent.name .. " (" .. table.concat(classList, "/") .. " only)"
+    end
+    return nil, nil
   end
 
   return nil, nil
