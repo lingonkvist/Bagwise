@@ -7,12 +7,12 @@ Bagwise.Overlay = {}
 
 -- Dot colors (RGBA, 0-1)
 local COLORS = {
-  green  = { 0.4, 0.73, 0.42, 1 },   -- #66bb6a
-  yellow = { 0.95, 0.8, 0.25, 1 },   -- #f2cc40
+  green  = { 0.56, 0.87, 0.56, 1 }, -- Material Green 200 #A5D6A7 (boosted)
+  yellow = { 1.0, 0.84, 0.28, 1 },  -- Material Amber 400 #FFD646
 }
 
 -- Dot size in pixels
-local DOT_SIZE = 8
+local DOT_SIZE = 12
 
 -- Where to put the dot on the icon
 local DOT_CORNER = "TOPRIGHT"
@@ -40,10 +40,9 @@ local function getDot(button)
   dot:SetSize(DOT_SIZE, DOT_SIZE)
   dot:SetPoint(DOT_CORNER, button, DOT_CORNER, DOT_OFFSET_X, DOT_OFFSET_Y)
 
-  -- SetColorTexture creates a solid-color square with no file dependency.
-  -- Guaranteed to work in every client version. We set the actual color
-  -- in UpdateAll, so use white here as a base.
-  dot:SetColorTexture(1, 1, 1, 1)
+  -- White filled circle, tinted per-verdict in UpdateAll.
+  dot:SetTexture("Interface\\AddOns\\Bagwise\\textures\\dot")
+  dot:SetVertexColor(1, 1, 1, 1)
 
   -- Store it on the button so we can find it next time
   button.BagwiseDot = dot
@@ -84,7 +83,7 @@ function Bagwise.Overlay.UpdateAll()
 
             if result and result.verdict then
               local color = COLORS[result.verdict]
-              dot:SetColorTexture(color[1], color[2], color[3], color[4])
+              dot:SetVertexColor(color[1], color[2], color[3], color[4])
               dot:Show()
             else
               dot:Hide()
