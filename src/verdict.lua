@@ -44,5 +44,32 @@ function Bagwise.Verdict.Evaluate(item, state)
     end
   end
 
+  -- Story 2.1: quest-starter items for completed quests
+  -- The scanner passes startsQuestID, startsQuestCompleted, and
+  -- startsQuestName from the WoW API. The verdict just checks data.
+  if item.startsQuestID and item.startsQuestCompleted then
+    local questName = item.startsQuestName or ("quest " .. item.startsQuestID)
+    return "green", "Quest '" .. questName .. "' completed"
+  end
+
+  -- Epic 5: vendor-bought profession reagents
+  -- Green dot when the player has NONE of the professions that use
+  -- this reagent. These are cheap vendor items (vials, thread, flux,
+  -- dyes, spices) so green is appropriate -- no AH value to worry about.
+  local reagentProfessions = Bagwise.Data.VendorReagents
+      and Bagwise.Data.VendorReagents[item.id]
+  if reagentProfessions and state.professionSkillLines then
+    local playerNeeds = false
+    for _, skillLine in ipairs(reagentProfessions) do
+      if state.professionSkillLines[skillLine] then
+        playerNeeds = true
+        break
+      end
+    end
+    if not playerNeeds then
+      return "green", "Vendor reagent, not needed by your professions"
+    end
+  end
+
   return nil, nil
 end

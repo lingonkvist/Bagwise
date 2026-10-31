@@ -25,6 +25,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("PLAYER_LEVEL_UP")
     self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    self:RegisterEvent("QUEST_TURNED_IN")
 
     -- Hook bag frame Show/Hide so dots appear/disappear with bags.
     -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
@@ -53,6 +54,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
   elseif event == "GET_ITEM_INFO_RECEIVED" then
     -- An item the client didn't have cached is now available.
     -- Re-scan so items we skipped earlier get their verdicts.
+    Bagwise.Scanner.ScanAll()
+    Bagwise.Overlay.UpdateAll()
+  elseif event == "QUEST_TURNED_IN" then
+    -- A quest was just completed. Quest-starter items for that quest
+    -- should now show green dots, so clear the cache (quest completion
+    -- status is part of the cache key) and rescan.
+    Bagwise.Scanner.ClearCache()
     Bagwise.Scanner.ScanAll()
     Bagwise.Overlay.UpdateAll()
   end

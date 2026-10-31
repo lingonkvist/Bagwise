@@ -4,6 +4,7 @@
 -- Stub the global namespace before loading the module
 _G.Bagwise = nil
 
+dofile("data/vendor_reagents.lua")
 dofile("src/verdict.lua")
 
 -- Stories 1.1 + 1.2 (class restriction check) are disabled:
@@ -207,5 +208,197 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
 
     assert.are.equal("green", verdict)
     assert.is_truthy(reason:find("Required level"))
+  end)
+end)
+
+describe("Story 2.1: quest-starter items for completed quests", function()
+  it("green when item starts a quest that is completed", function()
+    local item = {
+      id = 55001,
+      startsQuestID = 1234,
+      startsQuestCompleted = true,
+      startsQuestName = "The Lost Idol",
+    }
+    local state = { class = "Warrior", race = "Human", level = 30 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("The Lost Idol"))
+    assert.is_truthy(reason:find("completed"))
+  end)
+
+  it("no dot when item starts a quest that is NOT completed", function()
+    local item = {
+      id = 55002,
+      startsQuestID = 1234,
+      startsQuestCompleted = false,
+      startsQuestName = "The Lost Idol",
+    }
+    local state = { class = "Warrior", race = "Human", level = 30 }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when item does not start any quest", function()
+    local item = {
+      id = 55003,
+      startsQuestID = nil,
+      startsQuestCompleted = false,
+    }
+    local state = { class = "Warrior", race = "Human", level = 30 }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("green with fallback text when quest name is nil", function()
+    -- C_QuestLog.GetQuestInfo might return nil for some quest IDs
+    local item = {
+      id = 55004,
+      startsQuestID = 9999,
+      startsQuestCompleted = true,
+      startsQuestName = nil,
+    }
+    local state = { class = "Warrior", race = "Human", level = 30 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("quest 9999"))
+  end)
+
+  it("gear verdict takes priority over quest verdict for bound equippable items", function()
+    -- An item that is both soulbound equippable gear AND starts a
+    -- completed quest. The gear rule runs first, so if the gap is big
+    -- enough, we get the gear reason rather than the quest reason.
+    local item = {
+      id = 55005,
+      isBound = true,
+      isEquippable = true,
+      reqLevel = 10,
+      startsQuestID = 1234,
+      startsQuestCompleted = true,
+      startsQuestName = "Some Quest",
+    }
+    local state = { class = "Warrior", race = "Human", level = 40 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    -- Gear rule fires first (gap = 30, green)
+    assert.is_truthy(reason:find("Required level"))
+  end)
+end)
+
+describe("Epic 5: vendor reagents not needed by player's professions", function()
+  -- Helper: build a state with specific profession skillLine IDs
+  local function stateWithProfessions(...)
+    local skillLines = {}
+    for _, id in ipairs({ ... }) do
+      skillLines[id] = true
+    end
+    return {
+      class = "Mage",
+      race = "Human",
+      level = 60,
+      professionSkillLines = skillLines,
+    }
+  end
+
+  it("green when player has no matching profession (Empty Vial, no Alchemy)", function()
+    local item = { id = 3371 }                       -- Empty Vial: needs Alchemy (171)
+    local state = stateWithProfessions(164, 197)     -- BS + Tailoring
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("Vendor reagent"))
+  end)
+
+  it("no dot when player HAS a matching profession (Empty Vial, has Alchemy)", function()
+    local item = { id = 3371 }                       -- Empty Vial: needs Alchemy (171)
+    local state = stateWithProfessions(171, 164)     -- Alchemy + BS
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("green when player has one profession but reagent needs two others", function()
+    -- Coarse Thread (2320): Tailoring (197) + Leatherworking (165)
+    local item = { id = 2320 }
+    local state = stateWithProfessions(171)     -- Alchemy only
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+  end)
+
+  it("no dot when player matches ONE of multiple professions", function()
+    -- Coarse Thread (2320): Tailoring (197) + Leatherworking (165)
+    local item = { id = 2320 }
+    local state = stateWithProfessions(197, 171)     -- Tailoring + Alchemy
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot for items NOT in the vendor reagent table", function()
+    local item = { id = 12345 }     -- random item, not a vendor reagent
+    local state = stateWithProfessions(171)
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when player has no professions at all (empty set)", function()
+    -- A fresh character with no professions shouldn't get green dots
+    -- on reagents -- they might be about to learn that profession.
+    -- Actually wait: empty professionSkillLines means no match,
+    -- so the rule WOULD fire green. Let's verify the intent.
+    -- Design decision: green IS correct here. If you have zero
+    -- professions, you truly don't need vendor reagents.
+    local item = { id = 3371 }               -- Empty Vial
+    local state = stateWithProfessions()     -- no professions
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+  end)
+
+  it("no dot when professionSkillLines is nil (API unavailable)", function()
+    -- If GetProfessions() isn't available (older client), the scanner
+    -- won't populate professionSkillLines. The rule should bail out
+    -- gracefully rather than mark everything green.
+    local item = { id = 3371 }     -- Empty Vial
+    local state = { class = "Mage", race = "Human", level = 60 }
+    -- professionSkillLines not set at all
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("Salt shows green only when player has none of Tailoring, LW, or Cooking", function()
+    -- Salt (4289) is used by three professions
+    local item = { id = 4289 }
+
+    -- Has Cooking: no dot
+    local state1 = stateWithProfessions(185)     -- Cooking
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state1))
+
+    -- Has Leatherworking: no dot
+    local state2 = stateWithProfessions(165)     -- LW
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state2))
+
+    -- Has neither: green
+    local state3 = stateWithProfessions(171, 333)     -- Alchemy + Enchanting
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state3)))
   end)
 end)

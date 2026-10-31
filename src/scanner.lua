@@ -14,6 +14,76 @@ local verdictCache = {}
 -- Rebuilt on every scan. The overlay reads this.
 local slotResults = {}
 
+-- English profession name -> skillLine ID.
+-- Only needs the professions referenced by VendorReagents, but we include
+-- all Classic Era professions so the detected set is complete for future
+-- rules.  Gathering professions have no vendor reagents today but detecting
+-- them is free and harmless.
+-- TODO: add locale tables keyed by GetLocale() if non-English support is needed.
+local PROFESSION_NAME_TO_SKILL_LINE = {
+  ["Alchemy"]        = 171,
+  ["Blacksmithing"]  = 164,
+  ["Cooking"]        = 185,
+  ["Enchanting"]     = 333,
+  ["Engineering"]    = 202,
+  ["First Aid"]      = 129,
+  ["Fishing"]        = 356,
+  ["Herbalism"]      = 182,
+  ["Leatherworking"] = 165,
+  ["Mining"]         = 186,
+  ["Skinning"]       = 393,
+  ["Tailoring"]      = 197,
+}
+
+--- Gather the player's profession skillLine IDs.
+-- Returns a set-style table { [skillLineID] = true, ... } for fast lookup.
+--
+-- Strategy:
+--   1. Try GetProfessions() + GetProfessionInfo() first (works in some
+--      Classic builds, returns locale-independent skillLine IDs).
+--   2. Fall back to GetNumSkillLines() + GetSkillLineInfo() which iterates
+--      the Skills tab.  This returns profession NAMES (locale-dependent),
+--      so we map them via PROFESSION_NAME_TO_SKILL_LINE.
+-- @return table  Set of skillLine IDs the player currently has
+local function gatherProfessionSkillLines()
+  local skillLines = {}
+
+  -- Path A: modern API (returns nil for all slots in some Classic Era builds)
+  local prof1, prof2, _, fishing, cooking = GetProfessions()
+  if prof1 or prof2 or fishing or cooking then
+    local slots = { prof1, prof2, fishing, cooking }
+    for _, index in ipairs(slots) do
+      if index then
+        local name, texture, rank, maxRank, numSpells, spellOffset, skillLine =
+            GetProfessionInfo(index)
+        if skillLine then
+          skillLines[skillLine] = true
+        end
+      end
+    end
+    return skillLines
+  end
+
+  -- Path B: Classic Era fallback via the Skills tab.
+  -- GetNumSkillLines() returns total rows (headers + skills).
+  -- GetSkillLineInfo(i) returns: name, isHeader, isExpanded, skillRank,
+  --   numTempPoints, skillModifier, skillMaxRank, isAbandonable, ...
+  -- We skip header rows and match names against our lookup table.
+  if GetNumSkillLines then
+    for i = 1, GetNumSkillLines() do
+      local name, isHeader = GetSkillLineInfo(i)
+      if not isHeader and name then
+        local id = PROFESSION_NAME_TO_SKILL_LINE[name]
+        if id then
+          skillLines[id] = true
+        end
+      end
+    end
+  end
+
+  return skillLines
+end
+
 --- Gather player state once per scan.
 -- @return table  State table matching what Verdict.Evaluate expects
 local function getPlayerState()
@@ -25,6 +95,7 @@ local function getPlayerState()
     class = class,
     race = race,
     level = level,
+    professionSkillLines = gatherProfessionSkillLines(),
   }
 end
 
@@ -84,6 +155,17 @@ local function gatherItem(bag, slot)
 
   local isEquippable = equipSlot and EQUIP_SLOTS[equipSlot] or false
 
+  -- Quest data: does this item start a quest? Is that quest done?
+  local questInfo = C_Container.GetContainerItemQuestInfo(bag, slot)
+  local startsQuestID = questInfo and questInfo.questID or nil
+  local startsQuestCompleted = false
+  local startsQuestName = nil
+
+  if startsQuestID then
+    startsQuestCompleted = C_QuestLog.IsQuestFlaggedCompleted(startsQuestID)
+    startsQuestName = C_QuestLog.GetQuestInfo(startsQuestID)
+  end
+
   return {
     id = itemID,
     name = name,
@@ -93,12 +175,31 @@ local function gatherItem(bag, slot)
     isBound = containerInfo.isBound,
     isEquippable = isEquippable,
     bindType = bindType,
+    startsQuestID = startsQuestID,
+    startsQuestCompleted = startsQuestCompleted,
+    startsQuestName = startsQuestName,
   }
+end
+
+--- Build a short string key from the player's profession set.
+-- Sorted so the key is stable regardless of iteration order.
+-- @param state table  Player state from getPlayerState()
+-- @return string      e.g. "164,171" for Blacksmithing+Alchemy
+local function professionCacheKey(state)
+  local ids = {}
+  if state.professionSkillLines then
+    for id in pairs(state.professionSkillLines) do
+      ids[#ids + 1] = id
+    end
+    table.sort(ids)
+  end
+  return table.concat(ids, ",")
 end
 
 --- Scan all bag slots, evaluate verdicts, store results.
 function Bagwise.Scanner.ScanAll()
   local state = getPlayerState()
+  local profKey = professionCacheKey(state)
 
   -- Clear slot results, we're rebuilding from scratch
   slotResults = {}
@@ -113,7 +214,12 @@ function Bagwise.Scanner.ScanAll()
         -- Cache key includes bound state because the same itemID
         -- can be both soulbound and not (e.g. a BoE you equipped
         -- plus another you bought). Verdicts depend on isBound.
-        local cacheKey = item.id .. ":" .. tostring(item.isBound)
+        -- Profession key included because vendor reagent verdicts
+        -- depend on which professions the player currently has.
+        local cacheKey = item.id
+            .. ":" .. tostring(item.isBound)
+            .. ":" .. tostring(item.startsQuestCompleted)
+            .. ":" .. profKey
         local cached = verdictCache[cacheKey]
         if cached then
           slotResults[key] = cached
