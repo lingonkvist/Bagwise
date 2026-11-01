@@ -5,6 +5,7 @@
 _G.Bagwise = nil
 
 dofile("data/vendor_reagents.lua")
+dofile("data/reagent_professions.lua")
 dofile("data/class_reagents.lua")
 dofile("src/verdict.lua")
 
@@ -26,9 +27,7 @@ describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("Required level"))
-    assert.is_truthy(reason:find("20"))
-    assert.is_truthy(reason:find("45"))
+    assert.are.equal("Very low level: 20", reason)
   end)
 
   it("yellow when soulbound and 10-19 levels below", function()
@@ -43,7 +42,7 @@ describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.is_truthy(reason:find("30"))
+    assert.are.equal("Low level: 30", reason)
   end)
 
   it("no dot when soulbound but only 9 levels below", function()
@@ -126,8 +125,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("Item level"))
-    assert.is_truthy(reason:find("10"))
+    assert.are.equal("Very low item level: 10", reason)
   end)
 
   it("yellow when reqLevel=0 but itemLevel is 10-19 below player", function()
@@ -143,7 +141,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.is_truthy(reason:find("Item level"))
+    assert.are.equal("Low item level: 22", reason)
   end)
 
   it("no dot when reqLevel=0 and itemLevel is close to player level", function()
@@ -204,7 +202,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("Required level"))
+    assert.are.equal("Very low level: 30", reason)
   end)
 end)
 
@@ -282,7 +280,7 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("Required level"))
+    assert.are.equal("Very low level: 10", reason)
   end)
 end)
 
@@ -307,7 +305,9 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("Vendor reagent"))
+    assert.is_truthy(reason:find("reagent"))
+    assert.is_truthy(reason:find("vendor"))
+    assert.is_truthy(reason:find("Alchemy"))
   end)
 
   it("no dot when player HAS a matching profession (Empty Vial, has Alchemy)", function()
@@ -606,5 +606,225 @@ describe("Class reagent verdict", function()
     )
     assert.is_nil(verdict)
     assert.is_nil(reason)
+  end)
+end)
+
+describe("Epic 5.1: crafting reagent not needed by player's professions", function()
+  -- Helper: state with professionNames (English names) for the new rule.
+  -- Also includes professionSkillLines for compatibility with vendor reagent rule.
+  local NAME_TO_SKILL = {
+    Alchemy = 171,
+    Blacksmithing = 164,
+    Cooking = 185,
+    Enchanting = 333,
+    Engineering = 202,
+    ["First Aid"] = 129,
+    Leatherworking = 165,
+    Mining = 186,
+    Tailoring = 197,
+  }
+
+  local function stateWithProfs(...)
+    local names = {}
+    local skillLines = {}
+    for _, name in ipairs({ ... }) do
+      names[name] = true
+      if NAME_TO_SKILL[name] then
+        skillLines[NAME_TO_SKILL[name]] = true
+      end
+    end
+    return {
+      class = "Warrior",
+      playerClass = "WARRIOR",
+      race = "Human",
+      level = 60,
+      professionSkillLines = skillLines,
+      professionNames = names,
+    }
+  end
+
+  it("yellow when player has none of the reagent's professions", function()
+    -- Naga Scale: Tailoring reagent (Trade Goods). Player is Leatherworker.
+    Bagwise.Data.ReagentProfessions = {
+      [5784] = { { "Tailoring", 4, 200, 300 } },
+    }
+
+    local item = { id = 5784, classID = 7 }
+    local state = stateWithProfs("Leatherworking")
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Tailoring reagent (200-300)", reason)
+  end)
+
+  it("no dot when player HAS the profession", function()
+    Bagwise.Data.ReagentProfessions = {
+      [5784] = { { "Tailoring", 4, 200, 300 } },
+    }
+
+    local item = { id = 5784, classID = 7 }
+    local state = stateWithProfs("Tailoring")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when player has ONE of multiple professions", function()
+    Bagwise.Data.ReagentProfessions = {
+      [7067] = {
+        { "Alchemy",       2, 215, 290 },
+        { "Blacksmithing", 3, 180, 300 },
+        { "Engineering",   3, 205, 300 },
+      },
+    }
+
+    local item = { id = 7067, classID = 7 }
+    local state = stateWithProfs("Blacksmithing", "Mining")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("yellow lists all professions in reason string", function()
+    Bagwise.Data.ReagentProfessions = {
+      [7067] = {
+        { "Alchemy",       2, 215, 290 },
+        { "Blacksmithing", 3, 180, 300 },
+      },
+    }
+
+    local item = { id = 7067, classID = 7 }
+    local state = stateWithProfs("Tailoring")
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Alchemy, Blacksmithing reagent", reason)
+  end)
+
+  it("no dot when professionNames is nil (API unavailable)", function()
+    Bagwise.Data.ReagentProfessions = {
+      [5784] = { { "Tailoring", 4, 200, 300 } },
+    }
+
+    local item = { id = 5784, classID = 7 }
+    local state = { class = "Warrior", level = 60 }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot for raw gathering materials (only Mining)", function()
+    -- Copper Ore: only used by Mining (smelting). Raw material, skip.
+    Bagwise.Data.ReagentProfessions = {
+      [2770] = { { "Mining", 1, 1, 1 } },
+    }
+
+    local item = { id = 2770, classID = 7 }
+    local state = stateWithProfs("Leatherworking")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("still flags items that mix gathering + crafting professions", function()
+    -- Iron Bar: Mining + Blacksmithing + Engineering + Alchemy
+    Bagwise.Data.ReagentProfessions = {
+      [3575] = {
+        { "Alchemy",       2,  225, 225 },
+        { "Blacksmithing", 22, 145, 185 },
+        { "Engineering",   6,  160, 195 },
+        { "Mining",        1,  165, 165 },
+      },
+    }
+
+    local item = { id = 3575, classID = 7 }
+    local state = stateWithProfs("Tailoring")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+  end)
+
+  it("no dot for items listing only Herbalism or Skinning", function()
+    Bagwise.Data.ReagentProfessions = {
+      [100] = { { "Herbalism", 1, 1, 1 } },
+    }
+
+    local item = { id = 100, classID = 7 }
+    local state = stateWithProfs("Alchemy")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot for consumables even when listed in ReagentProfessions", function()
+    -- Healing Potion (929) is classID 0 (Consumable) but appears in
+    -- ReagentProfessions because some Tailoring recipes use it.
+    -- Consumables have inherent use value and should not get verdicts.
+    Bagwise.Data.ReagentProfessions = {
+      [929] = { { "Tailoring", 1, 150, 150 } },
+    }
+
+    local item = { id = 929, classID = 0 }
+    local state = stateWithProfs("Leatherworking")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot for consumables with multiple professions listed", function()
+    -- Elixir of Wisdom: used by LW + Tailoring. classID 0 (Consumable).
+    Bagwise.Data.ReagentProfessions = {
+      [3383] = {
+        { "Leatherworking", 1, 120, 120 },
+        { "Tailoring",      1, 130, 130 },
+      },
+    }
+
+    local item = { id = 3383, classID = 0 }
+    local state = stateWithProfs("Alchemy")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot when classID is nil (item info not cached)", function()
+    Bagwise.Data.ReagentProfessions = {
+      [5784] = { { "Tailoring", 4, 200, 300 } },
+    }
+
+    local item = { id = 5784 }
+    local state = stateWithProfs("Leatherworking")
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.is_nil(verdict)
+  end)
+
+  it("vendor reagent rule takes priority over crafting reagent rule", function()
+    -- Empty Vial is in both VendorReagents AND ReagentProfessions.
+    -- Vendor rule fires first (green), crafting rule should not also fire.
+    Bagwise.Data.ReagentProfessions = {
+      [3371] = { { "Alchemy", 20, 1, 300 } },
+    }
+
+    local item = { id = 3371, classID = 7 }
+    local state = stateWithProfs("Tailoring")
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    -- Should be green from vendor rule, not yellow from crafting rule
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("vendor"))
+    assert.is_truthy(reason:find("Alchemy"))
   end)
 end)

@@ -24,22 +24,23 @@ function Bagwise.Verdict.Evaluate(item, state)
   -- roughly follows: reqLevel = ilvl - 5.
   if item.isBound and item.isEquippable then
     local compareLevel = nil
-    local label = nil
+    local isItemLevel = false
 
     if item.reqLevel and item.reqLevel > 0 then
       compareLevel = item.reqLevel
-      label = "Required level"
     elseif item.itemLevel and item.itemLevel > 0 then
       compareLevel = item.itemLevel
-      label = "Item level"
+      isItemLevel = true
     end
 
     if compareLevel then
       local gap = state.level - compareLevel
-      if gap >= 20 then
-        return "green", label .. " " .. compareLevel .. ", you are " .. state.level
-      elseif gap >= 10 then
-        return "yellow", label .. " " .. compareLevel .. ", you are " .. state.level
+      if gap >= 10 then
+        local verdict = gap >= 20 and "green" or "yellow"
+        local prefix = verdict == "green" and "Very low" or "Low"
+        local kind = isItemLevel and " item level: " or " level: "
+        local reason = prefix .. kind .. compareLevel
+        return verdict, reason
       end
     end
   end
@@ -75,8 +76,75 @@ function Bagwise.Verdict.Evaluate(item, state)
         end
       end
       if not playerNeeds then
-        return "green", "Vendor reagent, not needed by your professions"
+        -- Build profession names from ReagentProfessions data so the
+        -- verdict line matches the tooltip info format exactly.
+        local profEntries = Bagwise.Data.ReagentProfessions
+            and Bagwise.Data.ReagentProfessions[item.id]
+        if profEntries then
+          local names = {}
+          for i = 1, #profEntries do
+            names[#names + 1] = profEntries[i][1]
+          end
+          return "green",
+              table.concat(names, ", ") .. " reagent (vendor)"
+        end
+        return "green", "Vendor reagent"
       end
+    end
+  end
+
+  -- Gathering professions whose raw materials should not get verdicts.
+  -- Ores only list Mining (smelting), herbs list Alchemy not Herbalism,
+  -- leather lists Leatherworking not Skinning. So this filter mostly
+  -- catches raw ores (Copper Ore, Tin Ore, etc.) that a Miner would
+  -- smelt -- tagging those yellow is noise.
+  local GATHERING_PROFESSIONS = {
+    Mining = true,
+    Herbalism = true,
+    Skinning = true,
+  }
+
+  -- Epic 5.1: crafting reagent not used by the player's professions.
+  -- Yellow because non-vendor reagents typically have AH value.
+  -- Skips items already handled by the vendor reagent rule above.
+  -- Skips raw materials only used by gathering professions.
+  -- Only applies to Trade Goods (classID 7). Consumables (classID 0)
+  -- like potions and elixirs may appear in ReagentProfessions because
+  -- some recipes use them as ingredients, but they have inherent use
+  -- value beyond being a reagent and should not get verdict dots.
+  local reagentProfs = Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[item.id]
+  if reagentProfs and state.professionNames and item.classID == 7 then
+    -- Skip items used only by gathering professions (raw materials)
+    local hasNonGathering = false
+    for i = 1, #reagentProfs do
+      if not GATHERING_PROFESSIONS[reagentProfs[i][1]] then
+        hasNonGathering = true
+        break
+      end
+    end
+    if not hasNonGathering then
+      return nil, nil
+    end
+    local playerNeeds = false
+    local profNames = {}
+    for i = 1, #reagentProfs do
+      local profName = reagentProfs[i][1]
+      profNames[#profNames + 1] = profName
+      if state.professionNames[profName] then
+        playerNeeds = true
+      end
+    end
+    if not playerNeeds then
+      local text = table.concat(profNames, ", ") .. " reagent"
+      -- Single-prof: include skill range to match tooltip info format
+      if #reagentProfs == 1 then
+        local e = reagentProfs[1]
+        local range = e[3] == e[4] and tostring(e[3])
+            or (e[3] .. "-" .. e[4])
+        text = text .. " (" .. range .. ")"
+      end
+      return "yellow", text
     end
   end
 

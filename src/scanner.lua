@@ -91,12 +91,28 @@ local function getPlayerState()
   local race = UnitRace("player")
   local level = UnitLevel("player")
 
+  local skillLines = gatherProfessionSkillLines()
+
+  -- Build reverse lookup: English profession name -> true.
+  -- Used by verdict rules that match against ReagentProfessions data
+  -- (which is keyed by English name, not skillLine ID).
+  local professionNames = {}
+  for name, id in pairs(PROFESSION_NAME_TO_SKILL_LINE) do
+    if skillLines[id] then
+      professionNames[name] = true
+    end
+  end
+
+  -- Expose for tooltip sorting (player's professions listed first)
+  Bagwise.Scanner.professionNames = professionNames
+
   return {
     class = class,
     playerClass = playerClass,
     race = race,
     level = level,
-    professionSkillLines = gatherProfessionSkillLines(),
+    professionSkillLines = skillLines,
+    professionNames = professionNames,
   }
 end
 
@@ -149,7 +165,7 @@ local function gatherItem(bag, slot)
   local itemID = containerInfo.itemID
 
   local name, _, quality, itemLevel, reqLevel, _, _, _,
-  equipSlot, _, _, _, _, bindType = ItemInfo(itemID)
+  equipSlot, _, _, classID, _, bindType = ItemInfo(itemID)
 
   -- Item not cached by the client yet, skip for now
   if not name then return nil end
@@ -175,6 +191,7 @@ local function gatherItem(bag, slot)
     reqLevel = reqLevel,
     isBound = containerInfo.isBound,
     isEquippable = isEquippable,
+    classID = classID,
     bindType = bindType,
     startsQuestID = startsQuestID,
     startsQuestCompleted = startsQuestCompleted,
@@ -219,6 +236,7 @@ function Bagwise.Scanner.ScanAll()
         -- depend on which professions the player currently has.
         local cacheKey = item.id
             .. ":" .. tostring(item.isBound)
+            .. ":" .. tostring(item.classID)
             .. ":" .. tostring(item.startsQuestCompleted)
             .. ":" .. profKey
         local cached = verdictCache[cacheKey]

@@ -42,6 +42,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
       end
     end
 
+    -- Hook GameTooltip so hovering bag items shows reagent info and
+    -- verdict reasons.
+    Bagwise.Tooltip.Init()
+
     print("|cff66bb6a[Bagwise]|r v0.2.0 loaded. Type /bagwise help for commands.")
   elseif event == "BAG_UPDATE_DELAYED" then
     -- Bag contents changed: re-scan and repaint dots
