@@ -61,4 +61,16 @@ Bagwise.Data.VendorReagents = {
   [2692]  = { SKILL_COOKING }, -- Hot Spices
   [3713]  = { SKILL_COOKING }, -- Soothing Spices
   [1179]  = { SKILL_COOKING }, -- Ice Cold Milk
+
+  -- Drinks (Cooking, Engineering)
+  [159]   = { SKILL_COOKING, SKILL_ENGINEERING }, -- Refreshing Spring Water
+
+  -- Vendor food and drink ingredients (Cooking)
+  [2596]  = { SKILL_COOKING }, -- Skin of Dwarven Stout
+  [2665]  = { SKILL_COOKING }, -- Stormwind Seasoning Herbs
+  [2894]  = { SKILL_COOKING }, -- Rhapsody Malt
+  [4536]  = { SKILL_COOKING }, -- Shiny Red Apple
+
+  -- Wood (Enchanting)
+  [4470]  = { SKILL_ENCHANTING }, -- Simple Wood
 }
