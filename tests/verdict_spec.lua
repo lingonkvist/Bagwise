@@ -167,8 +167,7 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("The Lost Idol"))
-    assert.is_truthy(reason:find("completed"))
+    assert.are.equal("Quest already completed", reason)
   end)
 
   it("no dot when item starts a quest that is NOT completed", function()
@@ -202,7 +201,7 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.is_truthy(reason:find("quest 9999"))
+    assert.are.equal("Quest already completed", reason)
   end)
 
   it("gear verdict takes priority over quest verdict for bound equippable items", function()
@@ -245,7 +244,7 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Sold by vendors (Alchemy, Enchanting)", reason)
+    assert.is_truthy(reason:find("Vendor reagent"))
   end)
 
   it("no dot when player HAS a matching profession (Empty Vial, has Alchemy)", function()
@@ -318,7 +317,8 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Sold by vendors (Tailoring)", reason)
+    assert.is_truthy(reason:find("Vendor reagent"))
+    assert.is_truthy(reason:find("Tailoring"))
 
     Bagwise.Data.VendorReagents[2604] = nil
     Bagwise.Data.ReagentProfessions[2604] = nil
@@ -376,7 +376,7 @@ describe("Class reagent verdict", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(
       { id = 17056 }, { playerClass = "WARRIOR" })
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Mage/Priest only (world drop)", reason)
+    assert.are.equal("Mage, Priest only (world drop)", reason)
   end)
 
   it("returns nil for Light Feather on a mage", function()

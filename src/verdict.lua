@@ -53,8 +53,7 @@ end
 
 local function evaluateCompletedQuestStarter(item)
   if not (item.startsQuestID and item.startsQuestCompleted) then return nil end
-  local questName = item.startsQuestName or ("quest " .. item.startsQuestID)
-  return "green", "Quest '" .. questName .. "' completed"
+  return "green", "Quest already completed"
 end
 
 local function evaluateVendorReagent(item, state)
@@ -70,22 +69,16 @@ local function evaluateVendorReagent(item, state)
 
   local profEntries = Bagwise.Data.ReagentProfessions
       and Bagwise.Data.ReagentProfessions[item.id]
-  local suffix
-  if profEntries then
-    suffix = " (" .. table.concat(professionNamesOf(profEntries), ", ") .. ")"
-  else
-    suffix = ""
-  end
 
   if profEntries and state.professionNames then
     local names = professionNamesOf(profEntries)
     if needsAnyOf(state.professionNames, names) then return nil end
-    return "green", "Sold by vendors" .. suffix
+    return "green", "Vendor reagent (" .. table.concat(names, ", ") .. ")"
   end
 
   if not state.professionSkillLines then return nil end
   if needsAnyOf(state.professionSkillLines, vendorData) then return nil end
-  return "green", "Sold by vendors" .. suffix
+  return "green", "Vendor reagent"
 end
 
 local function evaluateClassReagent(item, state)
@@ -101,8 +94,9 @@ local function evaluateClassReagent(item, state)
   table.sort(classList)
 
   local source = classReagent.verdict == "green" and "vendor" or "world drop"
-  return classReagent.verdict,
-      table.concat(classList, "/") .. " only (" .. source .. ")"
+  local classString = table.concat(classList, ", ")
+
+  return classReagent.verdict, classString .. " only (" .. source .. ")"
 end
 
 local RULES = {
@@ -113,10 +107,6 @@ local RULES = {
 }
 
 --- Evaluate a single item and return a verdict.
--- @param item   table  Item data gathered by the scanner
--- @param state  table  Player state (class, race, level, professions)
--- @return string|nil   "green", "yellow", or nil
--- @return string|nil   Human-readable reason, or nil
 function Bagwise.Verdict.Evaluate(item, state)
   for i = 1, #RULES do
     local verdict, reason = RULES[i](item, state)

@@ -1,102 +1,69 @@
 -- Bagwise: entry point
--- Registers events, initialises saved variables, wires up slash commands.
+-- Registers events, initialises saved variables, hooks bag frames.
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 
-frame:SetScript("OnEvent", function(self, event, ...)
-  if event == "ADDON_LOADED" then
-    local addonName = ...
-    if addonName ~= "Bagwise" then return end
-
-    -- Initialise per-character saved variables
-    if not BagwiseDB then
-      BagwiseDB = {
-        keepList = {},
-        flagList = {},
-        version  = 1,
-      }
-    end
-
-    self:UnregisterEvent("ADDON_LOADED")
-  elseif event == "PLAYER_LOGIN" then
-    -- Now that the player is in-world, listen for bag changes
-    self:RegisterEvent("BAG_UPDATE_DELAYED")
-    self:RegisterEvent("PLAYER_LEVEL_UP")
-    self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-    self:RegisterEvent("QUEST_TURNED_IN")
-    self:RegisterEvent("SKILL_LINES_CHANGED")
-
-    -- Hook bag frame Show/Hide so dots appear/disappear with bags.
-    -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
-    -- frame can hold any bag, so hook them all.
-    local maxFrames = NUM_CONTAINER_FRAMES or 13
-    for i = 1, maxFrames do
-      local bagFrame = _G["ContainerFrame" .. i]
-      if bagFrame then
-        bagFrame:HookScript("OnShow", function()
-          Bagwise.Scanner.ScanAll()
-          Bagwise.Overlay.UpdateAll()
-        end)
-      end
-    end
-
-    -- Hook GameTooltip so hovering bag items shows reagent info and
-    -- verdict reasons.
-    Bagwise.Tooltip.Init()
-
-    print("|cff66bb6a[Bagwise]|r v0.2.0 loaded. Type /bagwise help for commands.")
-  elseif event == "BAG_UPDATE_DELAYED" then
-    -- Bag contents changed: re-scan and repaint dots
-    Bagwise.Scanner.ScanAll()
-    Bagwise.Overlay.UpdateAll()
-  elseif event == "PLAYER_LEVEL_UP" then
-    -- Level changed, so level-gap verdicts may be stale
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
-    Bagwise.Overlay.UpdateAll()
-  elseif event == "GET_ITEM_INFO_RECEIVED" then
-    -- An item the client didn't have cached is now available.
-    -- Re-scan so items we skipped earlier get their verdicts.
-    Bagwise.Scanner.ScanAll()
-    Bagwise.Overlay.UpdateAll()
-  elseif event == "QUEST_TURNED_IN" then
-    -- A quest was just completed. Quest-starter items for that quest
-    -- should now show green dots, so clear the cache (quest completion
-    -- status is part of the cache key) and rescan.
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
-    Bagwise.Overlay.UpdateAll()
-  elseif event == "SKILL_LINES_CHANGED" then
-    -- Professions learned or dropped: vendor reagent and class reagent
-    -- verdicts depend on the player's profession set, so clear everything.
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
-    Bagwise.Overlay.UpdateAll()
-  end
-end)
-
--- Slash commands
-SLASH_BAGWISE1 = "/bagwise"
-SlashCmdList["BAGWISE"] = function(msg)
-  local cmd = strtrim(msg):lower()
-
-  if cmd == "" or cmd == "help" then
-    print("|cff66bb6a[Bagwise]|r commands:")
-    print("  /bagwise help   - show this list")
-    print("  /bagwise status - show addon state")
-  elseif cmd == "status" then
-    local keepCount = 0
-    local flagCount = 0
-    for _ in pairs(BagwiseDB.keepList) do keepCount = keepCount + 1 end
-    for _ in pairs(BagwiseDB.flagList) do flagCount = flagCount + 1 end
-    print("|cff66bb6a[Bagwise]|r status:")
-    print("  Keep list: " .. keepCount .. " items")
-    print("  Flag list: " .. flagCount .. " items")
-    print("  DB version: " .. (BagwiseDB.version or "?"))
-  else
-    print("|cff66bb6a[Bagwise]|r unknown command: " .. cmd)
-    print("  Type /bagwise help for a list of commands.")
-  end
+local function rescanAll()
+  Bagwise.Scanner.ScanAll()
+  Bagwise.Overlay.UpdateAll()
 end
+
+local function invalidateAndRescan()
+  Bagwise.Scanner.ClearCache()
+  rescanAll()
+end
+
+local function onAddonLoaded(self, addonName)
+  if addonName ~= "Bagwise" then return end
+
+  if not BagwiseDB then
+    BagwiseDB = {
+      keepList = {},
+      flagList = {},
+      version  = 1,
+    }
+  end
+
+  self:UnregisterEvent("ADDON_LOADED")
+end
+
+local function onPlayerLogin(self)
+  self:RegisterEvent("BAG_UPDATE_DELAYED")
+  self:RegisterEvent("PLAYER_LEVEL_UP")
+  self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+  self:RegisterEvent("QUEST_TURNED_IN")
+  self:RegisterEvent("SKILL_LINES_CHANGED")
+
+  -- Hook bag frame Show so dots appear when bags open.
+  -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
+  -- frame can hold any bag, so hook them all.
+  local maxFrames = NUM_CONTAINER_FRAMES or 13
+  for i = 1, maxFrames do
+    local bagFrame = _G["ContainerFrame" .. i]
+    if bagFrame then
+      bagFrame:HookScript("OnShow", rescanAll)
+    end
+  end
+
+  Bagwise.Tooltip.Init()
+  Bagwise.Commands.Init()
+
+  print("|cff66bb6a[Bagwise]|r v0.2.0 loaded. Type /bagwise help for commands.")
+end
+
+local EVENT_HANDLERS = {
+  ADDON_LOADED           = onAddonLoaded,
+  PLAYER_LOGIN           = onPlayerLogin,
+  BAG_UPDATE_DELAYED     = rescanAll,
+  GET_ITEM_INFO_RECEIVED = rescanAll,
+  PLAYER_LEVEL_UP        = invalidateAndRescan,
+  QUEST_TURNED_IN        = invalidateAndRescan,
+  SKILL_LINES_CHANGED    = invalidateAndRescan,
+}
+
+frame:SetScript("OnEvent", function(self, event, ...)
+  local handler = EVENT_HANDLERS[event]
+  if handler then handler(self, ...) end
+end)
