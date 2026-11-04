@@ -4,6 +4,7 @@
 ## Author: lingonkvist
 ## Version: 0.3.0
 ## SavedVariablesPerCharacter: BagwiseDB
+## OptionalDeps: Baganator
 
 src\verdict.lua
 src\scanner.lua

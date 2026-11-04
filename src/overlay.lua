@@ -1,93 +1,70 @@
 -- Bagwise: dot overlay
--- Creates small colored corner dots on bag slot frames.
--- Each dot is a Texture attached to a bag slot button.
+-- Blizzard ContainerFrames + Baganator corner widgets.
 
 Bagwise = Bagwise or {}
 Bagwise.Overlay = {}
 
--- Dot colors (RGBA, 0-1)
 local COLORS = {
-  green  = { 0.56, 0.87, 0.56, 1 }, -- Material Green 200 #A5D6A7 (boosted)
-  yellow = { 1.0, 0.84, 0.28, 1 },  -- Material Amber 400 #FFD646
+  green  = { 0.56, 0.87, 0.56, 1 },
+  yellow = { 1.0, 0.84, 0.28, 1 },
 }
 
--- Dot size in pixels
 local DOT_SIZE = 12
 
--- Where to put the dot on the icon
-local DOT_CORNER = "TOPRIGHT"
-
--- Offset from the corner (negative = inward)
-local DOT_OFFSET_X = -2
-local DOT_OFFSET_Y = -2
-
--- ContainerFrame pool size in Classic Era.
--- Frames are shared across player bags and bank bags.
--- WoW assigns whichever frame is free, so we must check them all.
-local MAX_FRAMES = NUM_CONTAINER_FRAMES or 13
-
---- Get or create a dot texture on a bag slot button.
--- @param button  Frame  The bag slot button frame
--- @return Texture  The dot texture (reused if already created)
-local function getDot(button)
-  -- If we already created a dot on this button, reuse it
-  if button.BagwiseDot then
-    return button.BagwiseDot
-  end
-
-  -- Create a new texture as a child of the button
-  local dot = button:CreateTexture(nil, "OVERLAY")
+-- ---------------------------------------------------------------------------
+-- Shared helpers
+-- ---------------------------------------------------------------------------
+local function makeDot(parent)
+  local dot = parent:CreateTexture(nil, "OVERLAY")
   dot:SetSize(DOT_SIZE, DOT_SIZE)
-  dot:SetPoint(DOT_CORNER, button, DOT_CORNER, DOT_OFFSET_X, DOT_OFFSET_Y)
-
-  -- White filled circle, tinted per-verdict in UpdateAll.
   dot:SetTexture("Interface\\AddOns\\Bagwise\\textures\\dot")
   dot:SetVertexColor(1, 1, 1, 1)
-
-  -- Store it on the button so we can find it next time
-  button.BagwiseDot = dot
-
   return dot
 end
 
---- Update all dots on all open bag frames.
--- Called after Scanner.ScanAll() has refreshed the results.
-function Bagwise.Overlay.UpdateAll()
-  -- ContainerFrame numbering is dynamic: WoW assigns whichever frame
-  -- is free when a bag opens. We check all frames and read bagID from
-  -- each with GetID(), rather than assuming frame N = bag N.
+local function applyDot(dot, result)
+  if result and result.verdict then
+    local c = COLORS[result.verdict]
+    dot:SetVertexColor(c[1], c[2], c[3], c[4])
+    dot:Show()
+    return true
+  else
+    dot:Hide()
+    return false
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Adapter 1: Blizzard ContainerFrames
+-- ---------------------------------------------------------------------------
+local MAX_FRAMES = NUM_CONTAINER_FRAMES or 13
+
+local function getBlizzardDot(button)
+  if button.BagwiseDot then return button.BagwiseDot end
+  local dot = makeDot(button)
+  dot:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
+  button.BagwiseDot = dot
+  return dot
+end
+
+local function updateBlizzard()
   for frameIndex = 1, MAX_FRAMES do
     local frameName = "ContainerFrame" .. frameIndex
     local frame = _G[frameName]
 
-    -- Frame might not exist or might not be visible (bag not open)
     if frame and frame:IsShown() then
       local bagID = frame:GetID()
 
-      -- Only paint dots on player bags (0-4), not bank bags
-      if bagID >= 0 and bagID <= 4 then
+      if bagID and bagID >= 0 and bagID <= 4 then
         local numSlots = C_Container.GetContainerNumSlots(bagID)
 
         for buttonIndex = 1, numSlots do
-          local buttonName = frameName .. "Item" .. buttonIndex
-          local button = _G[buttonName]
-
+          local button = _G[frameName .. "Item" .. buttonIndex]
           if button then
-            -- Classic Era button naming is reversed:
-            -- Item1 = last slot in the bag, ItemN = slot 1.
-            -- The scanner stores by actual slot number (1-N),
-            -- so we flip the index to match.
+            -- Classic Era reverses button order; slot 1 is the last button.
             local slotID = numSlots - buttonIndex + 1
             local result = Bagwise.Scanner.GetResult(bagID, slotID)
-            local dot = getDot(button)
-
-            if result and result.verdict then
-              local color = COLORS[result.verdict]
-              dot:SetVertexColor(color[1], color[2], color[3], color[4])
-              dot:Show()
-            else
-              dot:Hide()
-            end
+            applyDot(getBlizzardDot(button), result)
           end
         end
       end
@@ -95,15 +72,91 @@ function Bagwise.Overlay.UpdateAll()
   end
 end
 
---- Hide all dots on every frame that has them.
+-- ---------------------------------------------------------------------------
+-- Adapter 2: Baganator
+-- ---------------------------------------------------------------------------
+local function initBaganator()
+  if not Baganator or not Baganator.API or not Baganator.API.RegisterCornerWidget then
+    return false
+  end
+
+  -- onUpdate: called by Baganator whenever an item button is refreshed.
+  -- details.itemLocation contains the bagID and slotIndex.
+  local function onUpdate(dot, details)
+    if not details.itemLocation then return false end
+
+    local bagID = details.itemLocation.bagID
+    local slotID = details.itemLocation.slotIndex
+
+    if not bagID or not slotID then return false end
+
+    local result = Bagwise.Scanner.GetResult(bagID, slotID)
+    return applyDot(dot, result)
+  end
+
+  -- onInit: called once per item button to create the widget.
+  -- Baganator will parent and position the returned frame.
+  local function onInit(itemButton)
+    local dot = makeDot(itemButton)
+    -- Baganator handles the anchoring, so no SetPoint is needed here.
+    return dot
+  end
+
+  -- RegisterCornerWidget(label, id, onUpdate, onInit, defaultPosition, isFast)
+  local ok, err = pcall(
+    Baganator.API.RegisterCornerWidget,
+    "Bagwise", "bagwise", onUpdate, onInit,
+    { corner = "top_right", priority = 1 }, true
+  )
+
+  if not ok then
+    print("|cff66bb6a[Bagwise]|r Baganator corner widget registration failed: " .. tostring(err))
+  end
+
+  return ok
+end
+
+-- ---------------------------------------------------------------------------
+-- Adapter 3: Generic fallback for other bag addons
+-- ---------------------------------------------------------------------------
+-- If another bag addon exposes item buttons via a global frame name pattern,
+-- you can hook those here. For now, EllesmereUI and others will get tooltip
+-- context only until they expose a per-item widget API.
+local function initGeneric()
+  -- Intentionally left as a hook point for future adapters.
+end
+
+-- ---------------------------------------------------------------------------
+-- Public API
+-- ---------------------------------------------------------------------------
+function Bagwise.Overlay.Init()
+  if not initBaganator() then
+    -- If Baganator isn't loaded yet, wait for its ADDON_LOADED event.
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("ADDON_LOADED")
+    f:SetScript("OnEvent", function(self, event, addonName)
+      if addonName == "Baganator" then
+        initBaganator()
+        self:UnregisterEvent("ADDON_LOADED")
+      end
+    end)
+  end
+
+  initGeneric()
+end
+
+function Bagwise.Overlay.UpdateAll()
+  updateBlizzard()
+  -- Baganator handles its own updates natively.
+end
+
 function Bagwise.Overlay.HideAll()
   for frameIndex = 1, MAX_FRAMES do
-    local frameName = "ContainerFrame" .. frameIndex
-    local frame = _G[frameName]
+    local frame = _G["ContainerFrame" .. frameIndex]
     if frame then
       local numSlots = C_Container.GetContainerNumSlots(frame:GetID())
       for buttonIndex = 1, numSlots do
-        local button = _G[frameName .. "Item" .. buttonIndex]
+        local button = _G["ContainerFrame" .. frameIndex .. "Item" .. buttonIndex]
         if button and button.BagwiseDot then
           button.BagwiseDot:Hide()
         end
