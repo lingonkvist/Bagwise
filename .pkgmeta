@@ -1,0 +1,7 @@
+package-as: Bagwise
+
+ignore:
+  - tests
+  - tools
+  - README.md
+  - .luacheckrc

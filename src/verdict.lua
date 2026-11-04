@@ -99,11 +99,46 @@ local function evaluateClassReagent(item, state)
   return classReagent.verdict, classString .. " only (" .. source .. ")"
 end
 
+local TRADE_GOODS_CLASS_ID = 7
+
+local function evaluateNoRecipeUse(item, state)
+  -- Epic 5.1: Trade Goods that no recipe uses for any profession.
+  -- Gear, consumables, and quest items are excluded by the classID gate.
+  if item.classID ~= TRADE_GOODS_CLASS_ID then return nil end
+
+  -- Already used in at least one recipe -- nothing to flag
+  if Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[item.id] then
+    return nil
+  end
+
+  -- Quest objective or starter -- leave for quest rules / tooltip context
+  if Bagwise.Data.QuestItems
+      and Bagwise.Data.QuestItems[item.id] then
+    return nil
+  end
+
+  -- Vendor reagent -- already handled by evaluateVendorReagent
+  if Bagwise.Data.VendorReagents
+      and Bagwise.Data.VendorReagents[item.id] then
+    return nil
+  end
+
+  -- Class reagent -- already handled by evaluateClassReagent
+  if Bagwise.Data.ClassReagents
+      and Bagwise.Data.ClassReagents[item.id] then
+    return nil
+  end
+
+  return "green", "No recipe uses this"
+end
+
 local RULES = {
   evaluateLevelGap,
   evaluateCompletedQuestStarter,
   evaluateVendorReagent,
   evaluateClassReagent,
+  evaluateNoRecipeUse,
 }
 
 --- Evaluate a single item and return a verdict.

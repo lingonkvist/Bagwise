@@ -6,6 +6,7 @@ _G.Bagwise = nil
 dofile("data/vendor_reagents.lua")
 dofile("data/reagent_professions.lua")
 dofile("data/class_reagents.lua")
+dofile("data/quest_items.lua")
 dofile("src/verdict.lua")
 
 describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
@@ -470,5 +471,132 @@ describe("Class reagent verdict", function()
   it("returns nil when playerClass is nil", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(
       { id = 17056 }, { playerClass = nil })))
+  end)
+end)
+
+describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
+  -- Use an item ID that is NOT in any data table
+  local ORPHAN_ITEM_ID = 88888
+
+  -- Ensure test isolation: this ID must not be in any table
+  assert(not Bagwise.Data.ReagentProfessions[ORPHAN_ITEM_ID],
+    "test setup: orphan ID must not be in ReagentProfessions")
+  assert(not Bagwise.Data.QuestItems[ORPHAN_ITEM_ID],
+    "test setup: orphan ID must not be in QuestItems")
+  assert(not Bagwise.Data.VendorReagents[ORPHAN_ITEM_ID],
+    "test setup: orphan ID must not be in VendorReagents")
+  assert(not Bagwise.Data.ClassReagents[ORPHAN_ITEM_ID],
+    "test setup: orphan ID must not be in ClassReagents")
+
+  it("green for Trade Goods item not used in any recipe or quest", function()
+    local item = { id = ORPHAN_ITEM_ID, classID = 7 }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("No recipe uses this", reason)
+  end)
+
+  it("no dot when item IS in ReagentProfessions (used in a recipe)", function()
+    -- Silverleaf (765) is in ReagentProfessions for Alchemy
+    local item = { id = 765, classID = 7 }
+    local state = {
+      class = "Warrior",
+      playerClass = "WARRIOR",
+      level = 60,
+      professionSkillLines = {},
+      professionNames = {},
+    }
+
+    -- Should get vendor reagent verdict or nil, never "No recipe uses this"
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    if verdict then
+      assert.is_truthy(reason ~= "No recipe uses this")
+    end
+  end)
+
+  it("no dot when item IS in QuestItems (quest objective)", function()
+    -- Refreshing Spring Water (159) is in QuestItems for quest 16
+    local item = { id = 159, classID = 7 }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    -- Should not fire 5.1 -- quest items are excluded
+    if verdict then
+      assert.is_truthy(reason ~= "No recipe uses this")
+    end
+  end)
+
+  it("no dot when item IS in VendorReagents", function()
+    -- Empty Vial (3371) is in VendorReagents
+    local item = { id = 3371, classID = 7 }
+    local state = {
+      class = "Mage",
+      playerClass = "MAGE",
+      level = 60,
+      professionSkillLines = { [171] = true },
+      professionNames = { Alchemy = true },
+    }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    -- Has Alchemy, so vendor reagent rule returns nil; 5.1 should also skip
+    assert.is_nil(verdict)
+  end)
+
+  it("no dot for non-Trade-Goods items (consumable, gear, etc.)", function()
+    -- classID 0 = Consumable, not Trade Goods
+    local item = { id = ORPHAN_ITEM_ID, classID = 0 }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("no dot when classID is nil", function()
+    local item = { id = ORPHAN_ITEM_ID, classID = nil }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("no dot for equippable gear even if classID happens to be 7", function()
+    -- Hypothetical edge case: a Trade Goods item that is somehow equippable
+    -- Level gap rule fires first for bound equippable items
+    local item = {
+      id = ORPHAN_ITEM_ID,
+      classID = 7,
+      isBound = true,
+      isEquippable = true,
+      reqLevel = 10,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    -- Level gap rule should fire first, not 5.1
+    assert.are.equal("green", verdict)
+    assert.are.equal("Well below your level", reason)
+  end)
+
+  it("no dot when item is in ClassReagents", function()
+    -- Temporarily add a fake classID=7 class reagent to test exclusion
+    Bagwise.Data.ClassReagents[ORPHAN_ITEM_ID] = {
+      classes = { MAGE = true },
+      verdict = "green",
+    }
+
+    local item = { id = ORPHAN_ITEM_ID, classID = 7 }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    -- ClassReagent rule fires first: "Mage only (vendor)"
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("Mage"))
+
+    Bagwise.Data.ClassReagents[ORPHAN_ITEM_ID] = nil
   end)
 end)

@@ -2,7 +2,7 @@
 ## Title: Bagwise
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariablesPerCharacter: BagwiseDB
 
 src\verdict.lua
@@ -18,4 +18,5 @@ data\gating.lua
 data\vendor_reagents.lua
 data\class_reagents.lua
 data\reagent_professions.lua
+data\quest_items.lua
 Bagwise.lua
