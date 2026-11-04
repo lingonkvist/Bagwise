@@ -11,12 +11,12 @@ Bags fill up fast in WoW Forever and most of what sits in them you kept because 
 - Not a gear or profession evaluator. It only flags items that can't or won't be used. It does not grade equippable gear or weigh offspec choices.
 
 ## License
--- Bagwise is free software: you can redistribute it and/or modify
--- it under the terms of the GNU General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or
--- (at your option) any later version.
---
--- This addon includes data derived from QuestieDB (https://github.com/Questie/QuestieDB),
--- which is also licensed under the GPLv3.
---
--- Copyright (C) 2026 lingonkvist
+Bagwise is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This addon includes data derived from QuestieDB (https://github.com/Questie/QuestieDB),
+which is also licensed under the GPLv3.
+
+Copyright (C) 2026 lingonkvist

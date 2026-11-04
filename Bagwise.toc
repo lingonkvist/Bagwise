@@ -1,4 +1,4 @@
-## Interface: 11509
+## Interface: 16001, 11509
 ## Title: Bagwise
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist

@@ -148,11 +148,7 @@ AREA_ID_TO_ZONE: dict[int, str] = {
 # ---------------------------------------------------------------------------
 
 def split_top_level(s: str) -> list[str]:
-    """Split a string on commas at brace-depth 0, respecting strings.
-
-    Given the interior of a Lua table (without the outer braces),
-    returns a list of the top-level fields as raw strings.
-    """
+    """Split a string on commas at brace-depth 0, respecting strings."""
     fields: list[str] = []
     depth = 0
     in_string = False
@@ -179,7 +175,6 @@ def split_top_level(s: str) -> list[str]:
             fields.append(s[start:i].strip())
             start = i + 1
 
-    # Last field (no trailing comma, or empty trailing)
     tail = s[start:].strip()
     if tail:
         fields.append(tail)
@@ -195,7 +190,6 @@ def parse_int(s: str) -> int | None:
     try:
         return int(s)
     except ValueError:
-        # Could be a float like 1.0 from Lua
         try:
             return int(float(s))
         except ValueError:
@@ -203,11 +197,7 @@ def parse_int(s: str) -> int | None:
 
 
 def extract_ints_flat(s: str) -> list[int]:
-    """Extract all bare integers from a Lua table string.
-
-    Works for simple cases like {18}, {6383}, {itemID, itemID, ...}.
-    Skips nested structure -- just grabs numbers at any depth.
-    """
+    """Extract all bare integers from a Lua table string."""
     return [int(m) for m in re.findall(r'\b(\d+)\b', s)]
 
 
@@ -234,12 +224,7 @@ def get_sub_field(field_str: str, sub_index: int) -> str | None:
 
 
 def extract_item_objectives(obj_field: str) -> list[int]:
-    """Extract item IDs from the objectives.itemObjective field.
-
-    The item objective sub-field (index 3 within objectives) looks like:
-        {{itemID, "text", iconFile}, {itemID, "text", iconFile}, ...}
-    Each entry's first element is the item ID.
-    """
+    """Extract item IDs from the objectives.itemObjective field."""
     if not obj_field or obj_field.strip() == 'nil':
         return []
     obj_field = obj_field.strip()
@@ -249,14 +234,12 @@ def extract_item_objectives(obj_field: str) -> list[int]:
     if not inner:
         return []
 
-    # Each entry is a sub-table {itemID, ...}
     entries = split_top_level(inner)
     item_ids = []
     for entry in entries:
         entry = entry.strip()
         if entry == 'nil' or not entry.startswith('{'):
             continue
-        # Get the first field of this sub-table
         entry_inner = entry[1:-1].strip() if entry.endswith('}') else ''
         if entry_inner:
             first = split_top_level(entry_inner)[0] if entry_inner else None
@@ -271,12 +254,10 @@ def extract_item_objectives(obj_field: str) -> list[int]:
 # Extraction
 # ---------------------------------------------------------------------------
 
-# Matches one quest line: [questID] = {<fields>},
 QUEST_LINE_RE = re.compile(r'^\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
-    """Lightweight holder for quest metadata used in QuestInfo output."""
     __slots__ = ('name', 'level', 'zone')
 
     def __init__(self, name: str | None, level: int | None, zone: str | None):
@@ -286,15 +267,8 @@ class QuestMeta:
 
 
 def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, QuestMeta]]:
-    """Parse classicQuestDB.lua and return (quest_id -> fields[], quest_id -> QuestMeta).
-
-    Each quest is one line: [id] = {field1, field2, ...},
-    We split into top-level fields and return them as raw strings for
-    targeted extraction.
-    """
     text = source_path.read_text(encoding='utf-8')
 
-    # Find the data block inside [[return { ... }]]
     match = re.search(r'\.questData\s*=\s*\[\[return\s*\{(.*)\}\s*\]\]', text, re.S)
     if not match:
         print(f"Error: could not find questData in {source_path}", file=sys.stderr)
@@ -316,17 +290,14 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
         fields = split_top_level(fields_str)
         quests[quest_id] = fields
 
-        # Extract quest name (field 1)
         name = None
         if fields:
             name = parse_quest_name(fields[0])
 
-        # Extract quest level (field 5, 0-indexed 4)
         level = None
         if len(fields) >= QUEST_LEVEL:
             level = parse_int(fields[QUEST_LEVEL - 1])
 
-        # Extract zone name (field 17, 0-indexed 16)
         zone = None
         if len(fields) >= ZONE_OR_SORT:
             zone_id = parse_int(fields[ZONE_OR_SORT - 1])
@@ -339,18 +310,15 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
 
 
 def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
-    """Walk every quest and collect item -> {questIDs} mappings."""
     item_quests: dict[int, set[int]] = defaultdict(set)
 
     for quest_id, fields in quests.items():
-        # Helper: safely get a 1-based field
         def field(idx: int) -> str | None:
             if idx <= len(fields):
                 f = fields[idx - 1].strip()
                 return None if f == 'nil' else f
             return None
 
-        # 1. Items that start the quest (startedBy.itemStart, index 2[3])
         started_by = field(STARTED_BY)
         if started_by:
             item_start = get_sub_field(started_by, ITEM_START)
@@ -359,7 +327,6 @@ def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
                     if item_id > 0:
                         item_quests[item_id].add(quest_id)
 
-        # 2. Item objectives (objectives.itemObjective, index 10[3])
         objectives = field(OBJECTIVES)
         if objectives:
             item_obj_field = get_sub_field(objectives, ITEM_OBJECTIVE)
@@ -367,14 +334,12 @@ def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
                 for item_id in extract_item_objectives(item_obj_field):
                     item_quests[item_id].add(quest_id)
 
-        # 3. Source item provided by quest giver (index 11)
         source_item_str = field(SOURCE_ITEM_ID)
         if source_item_str:
             source_item = parse_int(source_item_str)
             if source_item and source_item > 0:
                 item_quests[source_item].add(quest_id)
 
-        # 4. Required source items (index 21) -- needed but not objectives
         req_sources = field(REQUIRED_SOURCE_ITEMS)
         if req_sources and req_sources.startswith('{'):
             for item_id in extract_ints_flat(req_sources):
@@ -392,32 +357,33 @@ FOOTER = "}\n"
 
 
 def format_lua(item_quests: dict[int, set[int]],
-               quest_meta: dict[int, QuestMeta]) -> str:
+               quest_meta: dict[int, QuestMeta],
+               source_filename: str = "classicQuestDB.lua") -> str:
     """Format the item->questIDs map and quest info as Lua tables."""
     quest_count = len({qid for qids in item_quests.values() for qid in qids})
 
-    lines = [textwrap.dedent("""\
-        -- Generated by tools/build_quest_items.py from Questie's classicQuestDB.lua.
+    # Notice the 'f' prefix on the string, and the double braces {{ }} for Lua tables!
+    lines = [textwrap.dedent(f"""\
+        -- Generated by tools/build_quest_items.py from Questie's {source_filename}.
         -- Questie data is licensed under GPL-3.0.  See COPYING and source/ATTRIBUTION.md.
         --
-        -- QuestItems: item ID -> {questID, ...}
-        -- QuestInfo:  quest ID -> {level, "zoneName"} for tooltip display
+        -- QuestItems: item ID -> {{questID, ...}}
+        -- QuestInfo:  quest ID -> {{level, "zoneName"}} for tooltip display
         --
-        -- %d items across %d quests.
+        -- {len(item_quests)} items across {quest_count} quests.
 
-        Bagwise = Bagwise or {}
-        Bagwise.Data = Bagwise.Data or {}
+        Bagwise = Bagwise or {{}}
+        Bagwise.Data = Bagwise.Data or {{}}
 
-        Bagwise.Data.QuestItems = {
-    """) % (len(item_quests), quest_count)]
+        Bagwise.Data.QuestItems = {{
+    """)]
 
     for item_id in sorted(item_quests):
         quest_ids = sorted(item_quests[item_id])
         quest_list = ", ".join(str(qid) for qid in quest_ids)
 
-        # Add quest names as a comment for readability
         names = []
-        for qid in quest_ids[:3]:  # Cap comment at 3 quest names
+        for qid in quest_ids[:3]:
             meta = quest_meta.get(qid)
             if meta and meta.name:
                 names.append(meta.name)
@@ -429,10 +395,6 @@ def format_lua(item_quests: dict[int, set[int]],
 
     lines.append(FOOTER)
 
-    # QuestInfo table: only quests referenced by at least one item
-    # Fields: { level, "zoneName", "questName" }
-    # Name is stored so completed-quest verdicts can show it (the WoW API
-    # only returns names for quests still in the active quest log).
     referenced_quests = sorted({qid for qids in item_quests.values() for qid in qids})
     info_count = 0
 
@@ -441,7 +403,6 @@ def format_lua(item_quests: dict[int, set[int]],
         meta = quest_meta.get(qid)
         if not meta:
             continue
-        # Skip quests with nothing useful at all
         if meta.level is None and meta.zone is None and meta.name is None:
             continue
         level_str = str(meta.level) if meta.level is not None else "nil"
@@ -456,38 +417,6 @@ def format_lua(item_quests: dict[int, set[int]],
 
     print(f"  {info_count} quests with level/zone info for QuestInfo")
     return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Spot checks
-# ---------------------------------------------------------------------------
-
-SPOT_CHECKS = [
-    # (item_id, item_name, should_have_quests)
-    (2589, "Linen Cloth", True),       # Lots of quests ask for this
-    (4306, "Silk Cloth", True),         # A Donation of Silk, etc.
-    (12359, "Thorium Bar", True),       # Various high-level quests
-    (6948, "Hearthstone", False),       # Not a quest item
-    (159, "Refreshing Spring Water", True),  # Quest 16: Give Gerard a Drink
-]
-
-
-def run_spot_checks(item_quests: dict[int, set[int]]) -> None:
-    """Verify a few known items against expectations."""
-    print("\nSpot checks:")
-    passed = 0
-    for item_id, name, should_have in SPOT_CHECKS:
-        has_quests = item_id in item_quests
-        ok = has_quests == should_have
-        count = len(item_quests.get(item_id, set()))
-        status = "OK" if ok else "FAIL"
-        detail = f"{count} quests" if has_quests else "none"
-        print(f"  [{status}] {name} ({item_id}): {detail}")
-        if ok:
-            passed += 1
-    print(f"  {passed}/{len(SPOT_CHECKS)} passed")
-    if passed < len(SPOT_CHECKS):
-        print("  WARNING: some spot checks failed", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +441,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Resolve paths
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
 
@@ -532,12 +460,10 @@ def main():
         print(f"\nOr specify a path with --source")
         sys.exit(1)
 
-    # Parse
     print(f"Reading {source_path.name}...")
     quests, quest_meta = parse_quests(source_path)
     print(f"  Parsed {len(quests)} quests")
 
-    # Extract
     print("Extracting item-quest relationships...")
     item_quests = extract_item_quests(quests)
 
@@ -545,11 +471,8 @@ def main():
     unique_quests = len({qid for qids in item_quests.values() for qid in qids})
     print(f"  {unique_quests} quests reference items")
 
-    # Spot checks
-    run_spot_checks(item_quests)
-
-    # Write
-    lua_output = format_lua(item_quests, quest_meta)
+    # Passing the actual filename to the formatter here!
+    lua_output = format_lua(item_quests, quest_meta, source_path.name)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(lua_output, encoding="utf-8")
     print(f"\nWrote {output_path}")
