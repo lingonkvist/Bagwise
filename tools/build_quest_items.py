@@ -32,16 +32,115 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Questie quest-data field indices (1-based, matching Lua)
 # ---------------------------------------------------------------------------
+QUEST_NAME = 1
 STARTED_BY = 2        # table: {creatureStart, objectStart, itemStart}
 ITEM_START = 3        # sub-index within startedBy
+QUEST_LEVEL = 5       # int: quest level (not reqLevel)
 
 OBJECTIVES = 10       # table: {creature, object, item, reputation, ...}
 ITEM_OBJECTIVE = 3    # sub-index within objectives
 
 SOURCE_ITEM_ID = 11   # int: item provided by quest giver
+ZONE_OR_SORT = 17     # int: positive = AreaID, negative = QuestSortID
 REQUIRED_SOURCE_ITEMS = 21  # table: {itemID, ...}
 
-QUEST_NAME = 1
+
+# ---------------------------------------------------------------------------
+# Classic Era AreaID -> zone name mapping (from AreaTable)
+# Only positive zoneOrSort values are real zones; negative = QuestSort categories.
+# ---------------------------------------------------------------------------
+AREA_ID_TO_ZONE: dict[int, str] = {
+    1: "Dun Morogh",
+    3: "Badlands",
+    4: "Blasted Lands",
+    8: "Swamp of Sorrows",
+    9: "Northshire Valley",
+    10: "Duskwood",
+    11: "Wetlands",
+    12: "Elwynn Forest",
+    14: "Durotar",
+    15: "Dustwallow Marsh",
+    16: "Azshara",
+    17: "The Barrens",
+    19: "Zul'Gurub",
+    25: "Blackrock Mountain",
+    28: "Western Plaguelands",
+    33: "Stranglethorn Vale",
+    35: "Booty Bay",
+    36: "Alterac Mountains",
+    38: "Loch Modan",
+    40: "Westfall",
+    44: "Redridge Mountains",
+    45: "Arathi Highlands",
+    46: "Burning Steppes",
+    47: "The Hinterlands",
+    51: "Searing Gorge",
+    85: "Tirisfal Glades",
+    130: "Silverpine Forest",
+    132: "Coldridge Valley",
+    133: "Gnomeregan",
+    139: "Eastern Plaguelands",
+    141: "Teldrassil",
+    148: "Darkshore",
+    154: "Deathknell",
+    188: "Shadowglen",
+    209: "Shadowfang Keep",
+    215: "Mulgore",
+    220: "Red Cloud Mesa",
+    221: "Camp Narache",
+    267: "Hillsbrad Foothills",
+    331: "Ashenvale",
+    357: "Feralas",
+    361: "Felwood",
+    363: "Valley of Trials",
+    400: "Thousand Needles",
+    405: "Desolace",
+    406: "Stonetalon Mountains",
+    440: "Tanaris",
+    490: "Un'Goro Crater",
+    493: "Moonglade",
+    618: "Winterspring",
+    702: "Rut'theran Village",
+    717: "The Stockade",
+    718: "Wailing Caverns",
+    719: "Blackfathom Deeps",
+    722: "Razorfen Downs",
+    796: "Scarlet Monastery",
+    978: "Zul'Farrak",
+    1116: "Feathermoon Stronghold",
+    1377: "Silithus",
+    1417: "Sunken Temple",
+    1497: "Undercity",
+    1517: "Uldaman",
+    1519: "Stormwind City",
+    1537: "Ironforge",
+    1581: "The Deadmines",
+    1583: "Blackrock Spire",
+    1584: "Blackrock Depths",
+    1637: "Orgrimmar",
+    1638: "Thunder Bluff",
+    1657: "Darnassus",
+    1717: "Razorfen Kraul",
+    1769: "Timbermaw Hold",
+    1977: "Zul'Gurub",
+    2017: "Stratholme",
+    2057: "Scholomance",
+    2079: "Alcaz Island",
+    2100: "Maraudon",
+    2159: "Onyxia's Lair",
+    2257: "Deeprun Tram",
+    2437: "Ragefire Chasm",
+    2557: "Dire Maul",
+    2597: "Alterac Valley",
+    2677: "Blackwing Lair",
+    2717: "Molten Core",
+    2839: "Alterac Valley",
+    3277: "Warsong Gulch",
+    3358: "Arathi Basin",
+    3428: "Ahn'Qiraj",
+    3429: "Ruins of Ahn'Qiraj",
+    3456: "Naxxramas",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -176,8 +275,18 @@ def extract_item_objectives(obj_field: str) -> list[int]:
 QUEST_LINE_RE = re.compile(r'^\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
-def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, str]]:
-    """Parse classicQuestDB.lua and return (quest_id -> fields[], quest_id -> name).
+class QuestMeta:
+    """Lightweight holder for quest metadata used in QuestInfo output."""
+    __slots__ = ('name', 'level', 'zone')
+
+    def __init__(self, name: str | None, level: int | None, zone: str | None):
+        self.name = name
+        self.level = level
+        self.zone = zone
+
+
+def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, QuestMeta]]:
+    """Parse classicQuestDB.lua and return (quest_id -> fields[], quest_id -> QuestMeta).
 
     Each quest is one line: [id] = {field1, field2, ...},
     We split into top-level fields and return them as raw strings for
@@ -194,7 +303,7 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, str
     data_block = match.group(1)
 
     quests: dict[int, list[str]] = {}
-    quest_names: dict[int, str] = {}
+    quest_meta: dict[int, QuestMeta] = {}
 
     for line in data_block.splitlines():
         line = line.strip()
@@ -208,12 +317,25 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, str
         quests[quest_id] = fields
 
         # Extract quest name (field 1)
+        name = None
         if fields:
             name = parse_quest_name(fields[0])
-            if name:
-                quest_names[quest_id] = name
 
-    return quests, quest_names
+        # Extract quest level (field 5, 0-indexed 4)
+        level = None
+        if len(fields) >= QUEST_LEVEL:
+            level = parse_int(fields[QUEST_LEVEL - 1])
+
+        # Extract zone name (field 17, 0-indexed 16)
+        zone = None
+        if len(fields) >= ZONE_OR_SORT:
+            zone_id = parse_int(fields[ZONE_OR_SORT - 1])
+            if zone_id is not None and zone_id > 0:
+                zone = AREA_ID_TO_ZONE.get(zone_id)
+
+        quest_meta[quest_id] = QuestMeta(name, level, zone)
+
+    return quests, quest_meta
 
 
 def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
@@ -266,14 +388,20 @@ def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
 # Lua output
 # ---------------------------------------------------------------------------
 
-def make_header(count: int, quest_count: int) -> str:
-    return textwrap.dedent("""\
+FOOTER = "}\n"
+
+
+def format_lua(item_quests: dict[int, set[int]],
+               quest_meta: dict[int, QuestMeta]) -> str:
+    """Format the item->questIDs map and quest info as Lua tables."""
+    quest_count = len({qid for qids in item_quests.values() for qid in qids})
+
+    lines = [textwrap.dedent("""\
         -- Generated by tools/build_quest_items.py from Questie's classicQuestDB.lua.
         -- Questie data is licensed under GPL-3.0.  See COPYING and source/ATTRIBUTION.md.
         --
-        -- Maps item IDs to the quest IDs that use them (as objectives, starters,
-        -- or required source items).  Quest names and details are looked up at
-        -- runtime via the WoW API.
+        -- QuestItems: item ID -> {questID, ...}
+        -- QuestInfo:  quest ID -> {level, "zoneName"} for tooltip display
         --
         -- %d items across %d quests.
 
@@ -281,18 +409,7 @@ def make_header(count: int, quest_count: int) -> str:
         Bagwise.Data = Bagwise.Data or {}
 
         Bagwise.Data.QuestItems = {
-    """) % (count, quest_count)
-
-
-FOOTER = "}\n"
-
-
-def format_lua(item_quests: dict[int, set[int]],
-               quest_names: dict[int, str]) -> str:
-    """Format the item->questIDs map as a Lua table."""
-    quest_count = len({qid for qids in item_quests.values() for qid in qids})
-
-    lines = [make_header(len(item_quests), quest_count)]
+    """) % (len(item_quests), quest_count)]
 
     for item_id in sorted(item_quests):
         quest_ids = sorted(item_quests[item_id])
@@ -301,9 +418,9 @@ def format_lua(item_quests: dict[int, set[int]],
         # Add quest names as a comment for readability
         names = []
         for qid in quest_ids[:3]:  # Cap comment at 3 quest names
-            name = quest_names.get(qid)
-            if name:
-                names.append(name)
+            meta = quest_meta.get(qid)
+            if meta and meta.name:
+                names.append(meta.name)
         if len(quest_ids) > 3:
             names.append(f"+{len(quest_ids) - 3} more")
         comment = " -- " + "; ".join(names) if names else ""
@@ -311,6 +428,33 @@ def format_lua(item_quests: dict[int, set[int]],
         lines.append(f"    [{item_id}] = {{ {quest_list} }},{comment}")
 
     lines.append(FOOTER)
+
+    # QuestInfo table: only quests referenced by at least one item
+    # Fields: { level, "zoneName", "questName" }
+    # Name is stored so completed-quest verdicts can show it (the WoW API
+    # only returns names for quests still in the active quest log).
+    referenced_quests = sorted({qid for qids in item_quests.values() for qid in qids})
+    info_count = 0
+
+    lines.append("Bagwise.Data.QuestInfo = {")
+    for qid in referenced_quests:
+        meta = quest_meta.get(qid)
+        if not meta:
+            continue
+        # Skip quests with nothing useful at all
+        if meta.level is None and meta.zone is None and meta.name is None:
+            continue
+        level_str = str(meta.level) if meta.level is not None else "nil"
+        zone_str = f'"{meta.zone}"' if meta.zone else "nil"
+        escaped_name = meta.name.replace('\\', '\\\\').replace('"', '\\"') if meta.name else None
+        name_str = f'"{escaped_name}"' if escaped_name else "nil"
+        name_comment = f" -- {meta.name}" if meta.name else ""
+        lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str} }},{name_comment}")
+        info_count += 1
+
+    lines.append(FOOTER)
+
+    print(f"  {info_count} quests with level/zone info for QuestInfo")
     return "\n".join(lines)
 
 
@@ -390,7 +534,7 @@ def main():
 
     # Parse
     print(f"Reading {source_path.name}...")
-    quests, quest_names = parse_quests(source_path)
+    quests, quest_meta = parse_quests(source_path)
     print(f"  Parsed {len(quests)} quests")
 
     # Extract
@@ -405,7 +549,7 @@ def main():
     run_spot_checks(item_quests)
 
     # Write
-    lua_output = format_lua(item_quests, quest_names)
+    lua_output = format_lua(item_quests, quest_meta)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(lua_output, encoding="utf-8")
     print(f"\nWrote {output_path}")

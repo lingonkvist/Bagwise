@@ -191,6 +191,22 @@ local function gatherItem(bag, slot)
     startsQuestName = C_QuestLog.GetQuestInfo(startsQuestID)
   end
 
+  -- Quest-objective data: does this item appear in the QuestItems table?
+  -- If so, check which of those quests are completed.
+  local questItemQuestIDs = Bagwise.Data.QuestItems
+      and Bagwise.Data.QuestItems[itemID]
+  local allQuestObjectivesCompleted = nil
+
+  if questItemQuestIDs and #questItemQuestIDs > 0 then
+    allQuestObjectivesCompleted = true
+    for _, qid in ipairs(questItemQuestIDs) do
+      if not C_QuestLog.IsQuestFlaggedCompleted(qid) then
+        allQuestObjectivesCompleted = false
+        break
+      end
+    end
+  end
+
   return {
     id = itemID,
     name = name,
@@ -204,6 +220,8 @@ local function gatherItem(bag, slot)
     startsQuestID = startsQuestID,
     startsQuestCompleted = startsQuestCompleted,
     startsQuestName = startsQuestName,
+    questItemQuestIDs = questItemQuestIDs,
+    allQuestObjectivesCompleted = allQuestObjectivesCompleted,
   }
 end
 
@@ -246,13 +264,14 @@ function Bagwise.Scanner.ScanAll()
             .. ":" .. tostring(item.isBound)
             .. ":" .. tostring(item.classID)
             .. ":" .. tostring(item.startsQuestCompleted)
+            .. ":" .. tostring(item.allQuestObjectivesCompleted)
             .. ":" .. profKey
         local cached = verdictCache[cacheKey]
         if cached then
           slotResults[key] = cached
         else
-          local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
-          local result = { verdict = verdict, reason = reason }
+          local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
+          local result = { verdict = verdict, reason = reason, detail = detail }
           verdictCache[cacheKey] = result
           slotResults[key] = result
         end

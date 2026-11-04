@@ -16,6 +16,10 @@ _G.C_Container = {
   GetBagName = function(id) return id == 0 and "Backpack" or nil end,
   GetContainerItemInfo = function() return nil end,
 }
+_G.C_QuestLog = {
+  GetQuestInfo = function(id) return "Test Quest " .. id end,
+  IsQuestFlaggedCompleted = function() return false end,
+}
 
 _G.Bagwise = nil
 dofile("src/tooltip.lua")
@@ -72,7 +76,7 @@ describe("tooltip basic output", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Well below your level", tt.lines[1].text)
+    assert.are.equal("Well below your level", tt.lines[1].text)
     assert.are.equal(0.4, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
   end)
@@ -91,7 +95,7 @@ describe("tooltip basic output", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Probably sell: Below your level", tt.lines[1].text)
+    assert.are.equal("Below your level", tt.lines[1].text)
     assert.are.equal(1.0, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
   end)
@@ -292,7 +296,7 @@ describe("tooltip vendor reagent verdict", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Vendor reagent (Alchemy)", tt.lines[1].text)
+    assert.are.equal("Vendor reagent (Alchemy)", tt.lines[1].text)
     Bagwise.Data.VendorReagents = nil
   end)
 
@@ -318,9 +322,27 @@ describe("tooltip vendor reagent verdict", function()
     local tt = makeTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
-    assert.are.equal("Safe to delete:", tt.lines[1].text)
-    assert.are.equal("Vendor reagent (Leatherworking, Tailoring)", tt.lines[2].text)
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Vendor reagent (Leatherworking, Tailoring)", tt.lines[1].text)
+    Bagwise.Data.VendorReagents = nil
+  end)
+
+  it("no profession rows when vendor reagent has no verdict", function()
+    Bagwise.Data.ReagentProfessions = {
+      [159] = { { "Cooking", 7, 90, 315 }, { "Engineering", 3, 130, 275 } },
+    }
+    Bagwise.Data.VendorReagents = {
+      [159] = { 185, 202 },
+    }
+    Bagwise.Scanner = {
+      professionNames = { Cooking = true },
+      GetResult = function() return {} end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:159:...|h[Refreshing Spring Water]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(0, #tt.lines)
     Bagwise.Data.VendorReagents = nil
   end)
 end)
@@ -338,7 +360,7 @@ describe("tooltip merged verdict lines", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Rogue only (vendor)", tt.lines[1].text)
+    assert.are.equal("Rogue only (vendor)", tt.lines[1].text)
     assert.are.equal(0.4, tt.lines[1].r)
   end)
 
@@ -354,7 +376,7 @@ describe("tooltip merged verdict lines", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Probably sell: Rogue only (world drop)", tt.lines[1].text)
+    assert.are.equal("Rogue only (world drop)", tt.lines[1].text)
   end)
 
   it("quest verdict: single line", function()
@@ -372,7 +394,105 @@ describe("tooltip merged verdict lines", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Quest already completed", tt.lines[1].text)
+    assert.are.equal("Quest already completed", tt.lines[1].text)
+  end)
+end)
+
+describe("tooltip quest details with level and zone", function()
+  it("shows [level] name (zone) when QuestInfo has both", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3456] = { 204 } }
+    Bagwise.Data.QuestInfo = { [204] = { 34, "Stranglethorn Vale" } }
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = nil, reason = nil }
+      end,
+      professionNames = nil,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:3456:...|h[Sgt's Cloak]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("[34] Test Quest 204 (Stranglethorn Vale)", tt.lines[1].text)
+  end)
+
+  it("shows [level] name when QuestInfo has level but no zone", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3457] = { 100 } }
+    Bagwise.Data.QuestInfo = { [100] = { 22, nil } }
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = nil, reason = nil }
+      end,
+      professionNames = nil,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:3457:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("[22] Test Quest 100", tt.lines[1].text)
+  end)
+
+  it("shows name (zone) when QuestInfo has zone but no level", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3458] = { 300 } }
+    Bagwise.Data.QuestInfo = { [300] = { nil, "Ashenvale" } }
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = nil, reason = nil }
+      end,
+      professionNames = nil,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:3458:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Test Quest 300 (Ashenvale)", tt.lines[1].text)
+  end)
+
+  it("falls back to plain name when no QuestInfo entry", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3459] = { 999 } }
+    Bagwise.Data.QuestInfo = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = nil, reason = nil }
+      end,
+      professionNames = nil,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:3459:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Test Quest 999", tt.lines[1].text)
+  end)
+
+  it("respects 2-line limit with overflow count", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3460] = { 10, 20, 30 } }
+    Bagwise.Data.QuestInfo = {
+      [10] = { 15, "Westfall" },
+      [20] = { 25, "Duskwood" },
+      [30] = { 35, "Stranglethorn Vale" },
+    }
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = nil, reason = nil }
+      end,
+      professionNames = nil,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:3460:...|h[Multi Quest]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("[15] Test Quest 10 (Westfall)", tt.lines[1].text)
+    -- Second line should have +1 overflow
+    assert.is_truthy(tt.lines[2].text:find("%+1"))
   end)
 end)
 
@@ -404,5 +524,67 @@ describe("tooltip verdict edge cases", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #tt.lines)
+  end)
+end)
+
+describe("tooltip quest completed two-line format", function()
+  it("renders verdict green and detail info-blue on second line", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = "Quest completed", detail = "[34] Bad Medicine" }
+      end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Quest completed", tt.lines[1].text)
+    assert.are.equal(0.4, tt.lines[1].r)
+    assert.are.equal(0.9, tt.lines[1].g)
+    assert.are.equal(0.4, tt.lines[1].b)
+    assert.are.equal("[34] Bad Medicine", tt.lines[2].text)
+    assert.are.equal(0.5, tt.lines[2].r)
+    assert.are.equal(0.8, tt.lines[2].g)
+    assert.are.equal(1.0, tt.lines[2].b)
+  end)
+
+  it("no detail line when detail is nil", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = "Quest completed", detail = nil }
+      end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Quest completed", tt.lines[1].text)
+  end)
+end)
+
+describe("tooltip vendor reagent quest row suppression", function()
+  it("no quest rows when vendor reagent has no verdict", function()
+    Bagwise.Data.ReagentProfessions = {
+      [159] = { { "Cooking", 7, 50, 275 } },
+    }
+    Bagwise.Data.QuestItems = { [159] = { 16 } }
+    Bagwise.Data.QuestInfo = { [16] = { 10, "Elwynn Forest", "Give Gerard a Drink" } }
+    Bagwise.Data.VendorReagents = {
+      [159] = { 185, 202 },
+    }
+    Bagwise.Scanner = {
+      professionNames = { Cooking = true },
+      GetResult = function() return {} end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:159:...|h[Refreshing Spring Water]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(0, #tt.lines)
+    Bagwise.Data.VendorReagents = nil
   end)
 end)

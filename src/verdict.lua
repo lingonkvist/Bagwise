@@ -40,20 +40,41 @@ local function evaluateLevelGap(item, state)
 
   if gap >= LEVEL_GAP_GREEN then
     if isItemLevel then
-      return "green", "Item level " .. compareLevel
+      return "green", "Very low item level (" .. compareLevel .. ")"
     end
-    return "green", "Well below your level"
+    return "green", "Very low level gear"
   end
 
   if isItemLevel then
-    return "yellow", "Item level " .. compareLevel
+    return "yellow", "Low item level (" .. compareLevel .. ")"
   end
-  return "yellow", "Below your level"
+  return "yellow", "Low level gear"
+end
+
+-- QuestInfo field indices (data/quest_items.lua is generated).
+local QUEST_INFO_LEVEL = 1
+local QUEST_INFO_NAME  = 3
+
+--- Build "[level] name" from QuestInfo, using runtimeName as override.
+-- The WoW API only returns quest names for quests still in the active log,
+-- so completed quests need the static name from QuestInfo.
+local function questLabel(questID, runtimeName)
+  local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
+  local name = runtimeName
+  if not name and info then
+    name = info[QUEST_INFO_NAME]
+  end
+  if not name then return nil end
+  if info and info[QUEST_INFO_LEVEL] then
+    return "[" .. info[QUEST_INFO_LEVEL] .. "] " .. name
+  end
+  return name
 end
 
 local function evaluateCompletedQuestStarter(item)
   if not (item.startsQuestID and item.startsQuestCompleted) then return nil end
-  return "green", "Quest already completed"
+  local label = questLabel(item.startsQuestID, item.startsQuestName)
+  return "green", "Quest completed", label
 end
 
 local function evaluateVendorReagent(item, state)
@@ -73,6 +94,9 @@ local function evaluateVendorReagent(item, state)
   if profEntries and state.professionNames then
     local names = professionNamesOf(profEntries)
     if needsAnyOf(state.professionNames, names) then return nil end
+    if #names >= 3 then
+      return "green", "Vendor reagent (" .. #names .. " professions)"
+    end
     return "green", "Vendor reagent (" .. table.concat(names, ", ") .. ")"
   end
 
@@ -97,6 +121,17 @@ local function evaluateClassReagent(item, state)
   local classString = table.concat(classList, ", ")
 
   return classReagent.verdict, classString .. " only (" .. source .. ")"
+end
+
+local function evaluateQuestObjective(item)
+  if not item.questItemQuestIDs then return nil end
+  if not item.allQuestObjectivesCompleted then return nil end
+  local count = #item.questItemQuestIDs
+  if count > 1 then
+    return "green", "All " .. count .. " quests completed"
+  end
+  local label = questLabel(item.questItemQuestIDs[1], nil)
+  return "green", "Quest completed", label
 end
 
 local TRADE_GOODS_CLASS_ID = 7
@@ -130,12 +165,13 @@ local function evaluateNoRecipeUse(item, state)
     return nil
   end
 
-  return "green", "No recipe uses this"
+  return "green", "Not used for any quest or recipe"
 end
 
 local RULES = {
   evaluateLevelGap,
   evaluateCompletedQuestStarter,
+  evaluateQuestObjective,
   evaluateVendorReagent,
   evaluateClassReagent,
   evaluateNoRecipeUse,
@@ -144,8 +180,8 @@ local RULES = {
 --- Evaluate a single item and return a verdict.
 function Bagwise.Verdict.Evaluate(item, state)
   for i = 1, #RULES do
-    local verdict, reason = RULES[i](item, state)
-    if verdict then return verdict, reason end
+    local verdict, reason, detail = RULES[i](item, state)
+    if verdict then return verdict, reason, detail end
   end
-  return nil, nil
+  return nil, nil, nil
 end

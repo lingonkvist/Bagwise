@@ -17,7 +17,7 @@ describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Well below your level", reason)
+    assert.are.equal("Very low level gear", reason)
   end)
 
   it("yellow when soulbound and 10-19 levels below", function()
@@ -27,7 +27,7 @@ describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Below your level", reason)
+    assert.are.equal("Low level gear", reason)
   end)
 
   it("no dot when soulbound but only 9 levels below", function()
@@ -80,7 +80,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Item level 10", reason)
+    assert.are.equal("Very low item level (10)", reason)
   end)
 
   it("yellow when reqLevel=0 but itemLevel is 10-19 below player", function()
@@ -96,7 +96,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Item level 22", reason)
+    assert.are.equal("Low item level (22)", reason)
   end)
 
   it("no dot when reqLevel=0 and itemLevel is close to player level", function()
@@ -151,7 +151,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Well below your level", reason)
+    assert.are.equal("Very low level gear", reason)
   end)
 end)
 
@@ -165,10 +165,27 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     }
     local state = { class = "Warrior", race = "Human", level = 30 }
 
-    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+    local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Quest already completed", reason)
+    assert.are.equal("Quest completed", reason)
+    assert.are.equal("The Lost Idol", detail)
+  end)
+
+  it("includes quest level from QuestInfo in detail", function()
+    local item = {
+      id = 55010,
+      startsQuestID = 204,
+      startsQuestCompleted = true,
+      startsQuestName = "Bad Medicine",
+    }
+    local state = { class = "Warrior", race = "Human", level = 60 }
+
+    local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Quest completed", reason)
+    assert.are.equal("[34] Bad Medicine", detail)
   end)
 
   it("no dot when item starts a quest that is NOT completed", function()
@@ -199,10 +216,11 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     }
     local state = { class = "Warrior", race = "Human", level = 30 }
 
-    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+    local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Quest already completed", reason)
+    assert.are.equal("Quest completed", reason)
+    assert.is_nil(detail)
   end)
 
   it("gear verdict takes priority over quest verdict for bound equippable items", function()
@@ -220,7 +238,7 @@ describe("Story 2.1: quest-starter items for completed quests", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Well below your level", reason)
+    assert.are.equal("Very low level gear", reason)
   end)
 end)
 
@@ -323,6 +341,32 @@ describe("Epic 5: vendor reagents not needed by player's professions", function(
 
     Bagwise.Data.VendorReagents[2604] = nil
     Bagwise.Data.ReagentProfessions[2604] = nil
+  end)
+
+  it("collapses 3+ professions to count", function()
+    Bagwise.Data.VendorReagents[99901] = { 171, 164, 185 }
+    Bagwise.Data.ReagentProfessions[99901] = {
+      { "Alchemy",       2, 100, 200 },
+      { "Blacksmithing", 3, 150, 250 },
+      { "Cooking",       5, 50,  150 },
+    }
+
+    local item = { id = 99901 }
+    local state = {
+      class = "Warrior",
+      playerClass = "WARRIOR",
+      level = 60,
+      professionSkillLines = {},
+      professionNames = {},
+    }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Vendor reagent (3 professions)", reason)
+
+    Bagwise.Data.VendorReagents[99901] = nil
+    Bagwise.Data.ReagentProfessions[99901] = nil
   end)
 end)
 
@@ -474,6 +518,99 @@ describe("Class reagent verdict", function()
   end)
 end)
 
+describe("Story 3.3: quest objective items", function()
+  it("green when item is a quest objective and all quests completed", function()
+    local item = {
+      id = 66001,
+      questItemQuestIDs = { 100, 200 },
+      allQuestObjectivesCompleted = true,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("All 2 quests completed", reason)
+  end)
+
+  it("no dot when some quests are not completed", function()
+    local item = {
+      id = 66002,
+      questItemQuestIDs = { 100, 200 },
+      allQuestObjectivesCompleted = false,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("no dot when item has no quest associations", function()
+    local item = { id = 66003 }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("no dot when questItemQuestIDs is nil", function()
+    local item = {
+      id = 66004,
+      questItemQuestIDs = nil,
+      allQuestObjectivesCompleted = nil,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("level gap rule takes priority over quest objective for bound gear", function()
+    local item = {
+      id = 66005,
+      isBound = true,
+      isEquippable = true,
+      reqLevel = 10,
+      questItemQuestIDs = { 100 },
+      allQuestObjectivesCompleted = true,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Very low level gear", reason)
+  end)
+
+  it("quest-starter rule takes priority over quest-objective rule", function()
+    local item = {
+      id = 66006,
+      startsQuestID = 100,
+      startsQuestCompleted = true,
+      questItemQuestIDs = { 100 },
+      allQuestObjectivesCompleted = true,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 40 }
+
+    local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Quest completed", reason)
+  end)
+
+  it("green with single quest completed, shows name and level in detail", function()
+    local item = {
+      id = 66007,
+      questItemQuestIDs = { 500 },
+      allQuestObjectivesCompleted = true,
+    }
+    local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
+
+    local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Quest completed", reason)
+    assert.are.equal("[36] Crushridge Bounty", detail)
+  end)
+end)
+
 describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
   -- Use an item ID that is NOT in any data table
   local ORPHAN_ITEM_ID = 88888
@@ -495,7 +632,7 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("No recipe uses this", reason)
+    assert.are.equal("Not used for any quest or recipe", reason)
   end)
 
   it("no dot when item IS in ReagentProfessions (used in a recipe)", function()
@@ -513,7 +650,7 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     if verdict then
-      assert.is_truthy(reason ~= "No recipe uses this")
+      assert.is_truthy(reason ~= "Not used for any quest or recipe")
     end
   end)
 
@@ -526,7 +663,7 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
 
     -- Should not fire 5.1 -- quest items are excluded
     if verdict then
-      assert.is_truthy(reason ~= "No recipe uses this")
+      assert.is_truthy(reason ~= "Not used for any quest or recipe")
     end
   end)
 
@@ -578,7 +715,7 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
 
     -- Level gap rule should fire first, not 5.1
     assert.are.equal("green", verdict)
-    assert.are.equal("Well below your level", reason)
+    assert.are.equal("Very low level gear", reason)
   end)
 
   it("no dot when item is in ClassReagents", function()

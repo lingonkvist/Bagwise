@@ -40,6 +40,7 @@ local SECONDARY_PROFESSIONS = {
 }
 
 local FALLBACK_LIMIT        = 2
+local QUEST_DETAIL_LIMIT    = 2
 
 local getBagName            = (C_Container and C_Container.GetBagName) or GetBagName
 
@@ -161,22 +162,87 @@ local function renderProfessionDetails(tooltip, profEntries)
   end
 end
 
-local function renderVerdict(tooltip, verdict, reason)
-  local color = VERDICT_COLORS[verdict]
-  local action = verdict == "green" and "Safe to delete:" or "Probably sell:"
+-- Classic Era uses GetQuestInfo; retail renamed it to GetTitleForQuestID.
+local getQuestTitle    = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo
 
-  -- If the reason contains a comma, it means there are multiple professions/classes.
-  -- That makes the line long, so we break it into two lines.
-  local hasMultiple = reason and string.find(reason, ",")
+-- QuestInfo field indices (data/quest_items.lua is generated).
+local QUEST_INFO_LEVEL = 1
+local QUEST_INFO_ZONE  = 2
+local QUEST_INFO_NAME  = 3
 
-  if reason and not hasMultiple then
-    tooltip:AddLine(action .. " " .. reason, color.r, color.g, color.b)
-  else
-    tooltip:AddLine(action, color.r, color.g, color.b)
-    if reason then
-      tooltip:AddLine(reason, color.r, color.g, color.b)
+local function formatQuestLine(questID)
+  local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
+
+  -- Try runtime API first, fall back to static data (API returns nil
+  -- for completed quests no longer in the active quest log).
+  local name = getQuestTitle and getQuestTitle(questID)
+  if not name and info then
+    name = info[QUEST_INFO_NAME]
+  end
+  if not name then return nil end
+
+  if info then
+    local level = info[QUEST_INFO_LEVEL]
+    local zone  = info[QUEST_INFO_ZONE]
+    if level and zone then
+      return "[" .. level .. "] " .. name .. " (" .. zone .. ")"
+    elseif level then
+      return "[" .. level .. "] " .. name
+    elseif zone then
+      return name .. " (" .. zone .. ")"
     end
   end
+
+  return name
+end
+
+local function renderQuestDetails(tooltip, questIDs)
+  -- Build unique display lines (Alliance/Horde versions share names).
+  local unique = {}
+  local seen = {}
+  for i = 1, #questIDs do
+    local text = formatQuestLine(questIDs[i])
+    if text and not seen[text] then
+      seen[text] = true
+      unique[#unique + 1] = text
+    end
+  end
+
+  local shown = 0
+  for i = 1, math.min(#unique, QUEST_DETAIL_LIMIT) do
+    local text = unique[i]
+    if i == QUEST_DETAIL_LIMIT and #unique > QUEST_DETAIL_LIMIT then
+      text = text .. " +" .. (#unique - QUEST_DETAIL_LIMIT)
+    end
+    tooltip:AddLine(text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    shown = shown + 1
+  end
+  return shown
+end
+
+local VERDICT_LINE_WRAP = 45
+
+local function renderVerdict(tooltip, verdict, reason)
+  local color = VERDICT_COLORS[verdict]
+  if not reason then return end
+
+  -- Break long lines at the last comma before the wrap threshold.
+  if #reason > VERDICT_LINE_WRAP then
+    local breakAt = nil
+    for i = VERDICT_LINE_WRAP, 1, -1 do
+      if reason:sub(i, i) == "," then
+        breakAt = i
+        break
+      end
+    end
+    if breakAt then
+      tooltip:AddLine(reason:sub(1, breakAt), color.r, color.g, color.b)
+      tooltip:AddLine(reason:sub(breakAt + 2), color.r, color.g, color.b)
+      return
+    end
+  end
+
+  tooltip:AddLine(reason, color.r, color.g, color.b)
 end
 
 function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
@@ -198,10 +264,26 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local profEntries = Bagwise.Data.ReagentProfessions
       and Bagwise.Data.ReagentProfessions[itemID]
 
+  local questIDs = Bagwise.Data.QuestItems
+      and Bagwise.Data.QuestItems[itemID]
+
   if verdict then
     renderVerdict(tooltip, verdict, reason)
-  elseif profEntries then
-    renderProfessionDetails(tooltip, profEntries)
+    -- Quest-completed verdicts: show quest detail on a second line in info-blue.
+    if result.detail then
+      tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    end
+  else
+    -- No verdict: show context rows (profession and/or quest).
+    -- Design doc 4.3: never more than 2 detail rows total.
+    -- Skip all detail rows for vendor reagents (cheap, repurchasable).
+    local isVendorReagent = Bagwise.Data.VendorReagents
+        and Bagwise.Data.VendorReagents[itemID]
+    if profEntries and not isVendorReagent then
+      renderProfessionDetails(tooltip, profEntries)
+    elseif questIDs and not isVendorReagent then
+      renderQuestDetails(tooltip, questIDs)
+    end
   end
 
   tooltip:Show()
