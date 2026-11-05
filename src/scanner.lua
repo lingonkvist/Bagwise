@@ -56,7 +56,7 @@ local PROFESSION_NAME_TO_SKILL_LINE = {
 local function gatherProfessionSkillLines()
   local skillLines = {}
 
-  -- Path A: modern API (returns nil for all slots in some Classic Era builds)
+  -- Path A: Modern profession API
   local prof1, prof2, _, fishing, cooking = GetProfessions()
   if prof1 or prof2 or fishing or cooking then
     local slots = { prof1, prof2, fishing, cooking }
@@ -72,14 +72,13 @@ local function gatherProfessionSkillLines()
     return skillLines
   end
 
-  -- Path B: Classic Era fallback via the Skills tab.
-  -- GetNumSkillLines() returns total rows (headers + skills).
-  -- GetSkillLineInfo(i) returns: name, isHeader, isExpanded, skillRank,
-  --   numTempPoints, skillModifier, skillMaxRank, isAbandonable, ...
-  -- We skip header rows and match names against our lookup table.
-  if GetNumSkillLines then
-    for i = 1, GetNumSkillLines() do
-      local name, isHeader = GetSkillLineInfo(i)
+  -- Path B: Fallback for Classic Era OR Forever
+  local getNum = GetNumSkillLines or (C_SkillInfo and C_SkillInfo.GetNumSkillLines)
+  local getInfo = GetSkillLineInfo or (C_SkillInfo and C_SkillInfo.GetSkillLineInfo)
+
+  if getNum and getInfo then
+    for i = 1, getNum() do
+      local name, isHeader = getInfo(i)
       if not isHeader and name then
         local id = PROFESSION_NAME_TO_SKILL_LINE[name]
         if id then

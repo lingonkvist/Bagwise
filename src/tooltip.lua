@@ -246,6 +246,11 @@ local function renderVerdict(tooltip, verdict, reason)
 end
 
 function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+  -- The TooltipDataProcessor fires for every tooltip that shows an item,
+  -- including ShoppingTooltip1/2 (the Shift-hover comparison tooltips).
+  -- Those don't have GetItem() and have no bag-slot owner, so skip them.
+  if not tooltip.GetItem then return end
+
   local _, link = tooltip:GetItem()
   if not link then return end
 
@@ -290,6 +295,15 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
 end
 
 function Bagwise.Tooltip.Init()
-  GameTooltip:HookScript("OnTooltipSetItem",
-    Bagwise.Tooltip.OnTooltipSetItem)
+  -- Forever uses the modern TooltipDataProcessor API.
+  -- Classic Era still uses the old GameTooltip:HookScript.
+  if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
+      Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+    end)
+  elseif GameTooltip and GameTooltip.HookScript then
+    GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
+      Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+    end)
+  end
 end
