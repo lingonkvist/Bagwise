@@ -87,19 +87,40 @@ local function bagSlotOf(tooltip)
   local parent = owner:GetParent()
   if not (parent and parent.GetID) then return nil end
 
-  local slotID = owner:GetID()
+  local buttonID = owner:GetID()
   local bagID = parent:GetID()
-  if not slotID or not bagID then return nil end
+  if not buttonID or not bagID then return nil end
 
   if parent.GetName then
     local parentName = parent:GetName()
     if parentName and parentName:match("^ContainerFrame%d+$") then
-      return bagID, slotID
+      -- Classic Era reverses button indices: button 1 = last slot.
+      -- Validate by matching the tooltip item against container data.
+      local numSlots = C_Container.GetContainerNumSlots(bagID)
+      if not numSlots or numSlots < 1 then return nil end
+
+      local reversedSlot = numSlots - buttonID + 1
+      local _, itemLink = tooltip:GetItem()
+      local tipItemID = itemLink and tonumber(itemLink:match("item:(%d+)"))
+
+      if tipItemID then
+        local info = C_Container.GetContainerItemInfo(bagID, reversedSlot)
+        if info and info.itemID == tipItemID then
+          return bagID, reversedSlot
+        end
+        info = C_Container.GetContainerItemInfo(bagID, buttonID)
+        if info and info.itemID == tipItemID then
+          return bagID, buttonID
+        end
+      end
+
+      -- Cannot validate; use reversed (matches overlay convention)
+      return bagID, reversedSlot
     end
   end
 
   if owner.BGR then
-    return bagID, slotID
+    return bagID, buttonID
   end
 
   if not getBagName or not getBagName(bagID) then return nil end
@@ -110,18 +131,12 @@ local function bagSlotOf(tooltip)
   local tooltipItemID = tonumber(link:match("item:(%d+)"))
   if not tooltipItemID then return nil end
 
-  local containerInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+  local containerInfo = C_Container.GetContainerItemInfo(bagID, buttonID)
   if not containerInfo or containerInfo.itemID ~= tooltipItemID then
     return nil
   end
 
-  return bagID, slotID
-end
-
-local function bagSlotVerdict(tooltip)
-  local bag, slot = bagSlotOf(tooltip)
-  if not bag then return nil end
-  return Bagwise.Scanner.GetResult(bag, slot)
+  return bagID, buttonID
 end
 
 local function renderProfessionDetails(tooltip, profEntries)
@@ -257,14 +272,15 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local itemID = tonumber(link:match("item:(%d+)"))
   if not itemID then return end
 
-  local result = bagSlotVerdict(tooltip)
-  if not result then
+  local bag, slot = bagSlotOf(tooltip)
+  if not bag then
     tooltip:Show()
     return
   end
 
-  local verdict = result.verdict
-  local reason = result.reason
+  local result = Bagwise.Scanner.GetResult(bag, slot)
+  local verdict = result and result.verdict
+  local reason = result and result.reason
 
   local profEntries = Bagwise.Data.ReagentProfessions
       and Bagwise.Data.ReagentProfessions[itemID]
@@ -275,7 +291,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   if verdict then
     renderVerdict(tooltip, verdict, reason)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
-    if result.detail then
+    if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
   else
