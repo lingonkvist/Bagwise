@@ -143,7 +143,7 @@ def resolve_build(expansion):
     products = {
         "classic_era": "wow_classic_era",
         "classic":     "wow_classic_era",
-        "forever":     "wow_classic_beta",
+        "forever":     "wow_classic_era",
     }
     product = products.get(expansion)
     if not product:

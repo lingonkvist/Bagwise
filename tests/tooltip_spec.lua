@@ -82,8 +82,8 @@ describe("tooltip basic output", function()
       "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Well below your level", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Well below your level", tt.lines[2].text)
     assert.are.equal(0.4, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
   end)
@@ -101,10 +101,32 @@ describe("tooltip basic output", function()
       "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Worth a glance: Below your level", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Below your level", tt.lines[2].text)
     assert.are.equal(1.0, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
+  end)
+
+  it("header: dot and verdict in words in the verdict color, detail in plain text", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "yellow", reason = "Below your level" }
+      end,
+    }
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:127:...|h[Old Boots]|h|r",
+      "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-dot.-:255:230:77|t Worth a glance$"))
+    assert.are.equal(1.0, tt.lines[1].r)
+    assert.are.equal(0.9, tt.lines[1].g)
+    assert.are.equal("Below your level", tt.lines[2].text)
+    assert.are.equal(0.85, tt.lines[2].r)
+    assert.are.equal(0.85, tt.lines[2].b)
   end)
 
   it("never adds a blank spacer line", function()
@@ -120,7 +142,7 @@ describe("tooltip basic output", function()
       "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
+    assert.are.equal(3, #tt.lines)
     for i = 1, #tt.lines do
       assert.is_truthy(tt.lines[i].text:find("%S"))
     end
@@ -142,9 +164,9 @@ describe("tooltip basic output", function()
       "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
-    assert.are.equal("Safe to delete: Vendor reagent (Alchemy,", tt.lines[1].text)
-    assert.are.equal("Enchanting, Tailoring)", tt.lines[2].text)
+    assert.are.equal(3, #tt.lines)
+    assert.are.equal("Vendor reagent (Alchemy, Enchanting,", tt.lines[2].text)
+    assert.are.equal("Tailoring)", tt.lines[3].text)
   end)
 
   it("no output for non-bag tooltips (no owner)", function()
@@ -205,7 +227,7 @@ describe("tooltip bag and slot lookup", function()
     assert.are.equal(1, #lookups)
     assert.are.equal(3, lookups[1].bag)
     assert.are.equal(7, lookups[1].slot)
-    assert.are.equal("Safe to delete: Test reason", tt.lines[1].text)
+    assert.are.equal("Test reason", tt.lines[2].text)
   end)
 
   it("combined bags: backpack items still resolve", function()
@@ -428,12 +450,12 @@ describe("tooltip vendor reagent verdict", function()
     local tt = makeTooltip("|cff...|Hitem:3371:...|h[Empty Vial]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Vendor reagent (Alchemy)", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Vendor reagent (Alchemy)", tt.lines[2].text)
     Bagwise.Data.VendorReagents = nil
   end)
 
-  it("multi-prof vendor: too long for one line, so the label gets its own line", function()
+  it("multi-prof vendor: a reason that fits stays on one line", function()
     Bagwise.Data.ReagentProfessions = {
       [2320] = {
         { "Leatherworking", 10, 1, 300 },
@@ -456,7 +478,6 @@ describe("tooltip vendor reagent verdict", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
-    assert.are.equal("Safe to delete:", tt.lines[1].text)
     assert.are.equal("Vendor reagent (Leatherworking, Tailoring)", tt.lines[2].text)
     Bagwise.Data.VendorReagents = nil
   end)
@@ -493,8 +514,8 @@ describe("tooltip merged verdict lines", function()
     local tt = makeTooltip("|cff...|Hitem:5140:...|h[Flash Powder]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Rogue only (vendor)", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Rogue only (vendor)", tt.lines[2].text)
     assert.are.equal(0.4, tt.lines[1].r)
   end)
 
@@ -509,8 +530,8 @@ describe("tooltip merged verdict lines", function()
     local tt = makeTooltip("|cff...|Hitem:5530:...|h[Soul Shard]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Worth a glance: Rogue only (world drop)", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Rogue only (world drop)", tt.lines[2].text)
   end)
 
   it("quest verdict: single line", function()
@@ -527,8 +548,8 @@ describe("tooltip merged verdict lines", function()
     local tt = makeTooltip("|cff...|Hitem:200:...|h[Lost Necklace]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Quest already completed", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Quest already completed", tt.lines[2].text)
   end)
 end)
 
@@ -673,15 +694,15 @@ describe("tooltip quest completed two-line format", function()
     local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
-    assert.are.equal("Safe to delete: Quest completed", tt.lines[1].text)
+    assert.are.equal(3, #tt.lines)
+    assert.are.equal("Quest completed", tt.lines[2].text)
     assert.are.equal(0.4, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
     assert.are.equal(0.4, tt.lines[1].b)
-    assert.are.equal("[34] Bad Medicine", tt.lines[2].text)
-    assert.are.equal(0.5, tt.lines[2].r)
-    assert.are.equal(0.8, tt.lines[2].g)
-    assert.are.equal(1.0, tt.lines[2].b)
+    assert.are.equal("[34] Bad Medicine", tt.lines[3].text)
+    assert.are.equal(0.5, tt.lines[3].r)
+    assert.are.equal(0.8, tt.lines[3].g)
+    assert.are.equal(1.0, tt.lines[3].b)
   end)
 
   it("no detail line when detail is nil", function()
@@ -695,8 +716,8 @@ describe("tooltip quest completed two-line format", function()
     local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(1, #tt.lines)
-    assert.are.equal("Safe to delete: Quest completed", tt.lines[1].text)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Quest completed", tt.lines[2].text)
   end)
 end)
 

@@ -18,6 +18,15 @@ local VERDICT_COLORS        = {
   yellow = { r = 1.0, g = 0.9, b = 0.3 },
 }
 
+-- Detail text under a verdict header uses the same blue as every other
+-- Bagwise detail row, so all of it reads as one family.
+local DETAIL_COLOR          = INFO_COLOR
+
+-- The tooltip header carries the same dot as the bag slot. The dot texture is
+-- white and tinted here through the texture escape (0-255 per channel).
+local DOT_TEXTURE           = "Interface\\AddOns\\Bagwise\\textures\\dot"
+local DOT_TEXTURE_SIZE      = 64
+
 local PROFESSION_ICONS      = {
   ["Alchemy"] = 136240,
   ["Blacksmithing"] = 136241,
@@ -233,44 +242,41 @@ end
 
 local VERDICT_LINE_WRAP = 45
 
--- The label names the action, so the verdict reads without its color and
--- stands apart from the item's own tooltip lines. It shares the line with
--- the reason: no spacer, no header line.
-local VERDICT_LABELS = {
-  green  = "Safe to delete:",
-  yellow = "Worth a glance:",
+-- The header names the verdict in words, so it never depends on color alone.
+local VERDICT_HEADINGS = {
+  green  = "Safe to delete",
+  yellow = "Worth a glance",
 }
+
+local function dotEscape(color)
+  return "|T" .. DOT_TEXTURE .. ":12:12:0:0:"
+      .. DOT_TEXTURE_SIZE .. ":" .. DOT_TEXTURE_SIZE .. ":0:"
+      .. DOT_TEXTURE_SIZE .. ":0:" .. DOT_TEXTURE_SIZE .. ":"
+      .. math.floor(color.r * 255 + 0.5) .. ":"
+      .. math.floor(color.g * 255 + 0.5) .. ":"
+      .. math.floor(color.b * 255 + 0.5) .. "|t"
+end
 
 local function renderVerdict(tooltip, verdict, reason)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
-  local label = VERDICT_LABELS[verdict]
-  local text = label .. " " .. reason
+  tooltip:AddLine(dotEscape(color) .. " " .. VERDICT_HEADINGS[verdict],
+    color.r, color.g, color.b)
 
-  if #text > VERDICT_LINE_WRAP then
-    -- Break at the last comma before the wrap threshold.
-    local breakAt = nil
+  -- Break long reasons at the last comma before the wrap threshold so
+  -- multi-profession lists don't make the tooltip wider than the item's own.
+  if #reason > VERDICT_LINE_WRAP then
     for i = VERDICT_LINE_WRAP, 1, -1 do
-      if text:sub(i, i) == "," then
-        breakAt = i
-        break
+      if reason:sub(i, i) == "," then
+        tooltip:AddLine(reason:sub(1, i), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
+        tooltip:AddLine(reason:sub(i + 2), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
+        return
       end
     end
-    if breakAt then
-      tooltip:AddLine(text:sub(1, breakAt), color.r, color.g, color.b)
-      tooltip:AddLine(text:sub(breakAt + 2), color.r, color.g, color.b)
-      return
-    end
-
-    -- No comma to break at: the label alone on the first line keeps the
-    -- tooltip from growing wider than the item's own lines.
-    tooltip:AddLine(label, color.r, color.g, color.b)
-    tooltip:AddLine(reason, color.r, color.g, color.b)
-    return
   end
 
-  tooltip:AddLine(text, color.r, color.g, color.b)
+  tooltip:AddLine(reason, DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
 end
 
 function Bagwise.Tooltip.OnTooltipSetItem(tooltip)

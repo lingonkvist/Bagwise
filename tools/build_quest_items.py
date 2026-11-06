@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate data/quest_items.lua from Questie's classicQuestDB.lua.
+"""Generate data/quest_items.lua from Questie's merged Forever quest database.
 
 Maps every item ID that any quest asks for (as an objective, a starter, or a
 required-but-untracked source item) to the list of quest IDs that use it.
@@ -7,13 +7,18 @@ The addon can then ask the game for quest names at runtime.
 
 No external dependencies -- uses only Python stdlib.
 
-Usage:
-    python3 tools/build_quest_items.py [--source path/to/classicQuestDB.lua]
-                                       [--output data/quest_items.lua]
+Refreshing the data (new Forever content lives in QuestieDB's corrections, not
+in the raw per-expansion files, so use the merged export):
+    git clone https://github.com/Questie/QuestieDB
+    cd QuestieDB
+    ./tools/lua-binary/linux-x64/lua tools/export-forever.lua --include-authored
+        (Windows: .\\tools\\lua-binary\\lua.exe tools/export-forever.lua --include-authored)
+    cd ../Bagwise
+    python3 tools/build_quest_items.py \\
+        --source ../QuestieDB/src/corrections/Forever/combined/foreverQuestDB.lua
 
-The source file is Questie's raw quest database, available at:
-    https://github.com/Questie/QuestieDB
-    data/Classic/classicQuestDB.lua
+The raw data/Forever/foreverQuestDB.lua is also accepted, but it lacks the
+quests added since the Era data was converted.
 
 Questie data is GPL-3.0.  The generated file carries that license forward.
 """
@@ -151,7 +156,7 @@ def split_top_level(s: str) -> list[str]:
     """Split a string on commas at brace-depth 0, respecting strings."""
     fields: list[str] = []
     depth = 0
-    in_string = False
+    quote = None          # the quote character that opened the current string
     escape = False
     start = 0
 
@@ -159,13 +164,15 @@ def split_top_level(s: str) -> list[str]:
         if escape:
             escape = False
             continue
-        if ch == '\\' and in_string:
+        if ch == '\\' and quote:
             escape = True
             continue
-        if ch == '"':
-            in_string = not in_string
+        if quote:
+            if ch == quote:
+                quote = None
             continue
-        if in_string:
+        if ch in ('"', "'"):
+            quote = ch
             continue
         if ch == '{':
             depth += 1
@@ -185,7 +192,7 @@ def split_top_level(s: str) -> list[str]:
 def parse_int(s: str) -> int | None:
     """Parse a bare integer from a field string, or None if nil/table/string."""
     s = s.strip()
-    if s == 'nil' or s == '' or s.startswith('{') or s.startswith('"'):
+    if s == 'nil' or s == '' or s.startswith('{') or s[0] in '"\'':
         return None
     try:
         return int(s)
@@ -203,23 +210,38 @@ def extract_ints_flat(s: str) -> list[int]:
 
 def parse_quest_name(s: str) -> str | None:
     """Extract the string value from a quoted Lua string field."""
-    m = re.match(r'^"((?:[^"\\]|\\.)*)"$', s.strip())
+    m = re.match(r'^(["\'])((?:(?!\1)[^\\]|\\.)*)\1$', s.strip())
     if m:
-        return m.group(1).replace('\\"', '"').replace('\\\\', '\\')
+        return re.sub(r'\\(.)', r'\1', m.group(2))
     return None
 
 
+KEYED_ENTRY_RE = re.compile(r'^\[(\d+)\]\s*=\s*(.*)$', re.S)
+
+
 def get_sub_field(field_str: str, sub_index: int) -> str | None:
-    """Given a field that is itself a table, return its Nth sub-field (1-based)."""
+    """Given a field that is itself a table, return its Nth sub-field (1-based).
+
+    The merged Forever export skips nils with explicit keys ({[3]={...}}),
+    so an entry may carry its own index; plain entries count up from there.
+    """
     field_str = field_str.strip()
     if not field_str.startswith('{') or not field_str.endswith('}'):
         return None
     inner = field_str[1:-1].strip()
     if not inner:
         return None
-    subs = split_top_level(inner)
-    if sub_index <= len(subs):
-        return subs[sub_index - 1]
+    position = 0
+    for entry in split_top_level(inner):
+        keyed = KEYED_ENTRY_RE.match(entry.strip())
+        if keyed:
+            position = int(keyed.group(1))
+            value = keyed.group(2).strip()
+        else:
+            position += 1
+            value = entry
+        if position == sub_index:
+            return value
     return None
 
 
@@ -238,6 +260,9 @@ def extract_item_objectives(obj_field: str) -> list[int]:
     item_ids = []
     for entry in entries:
         entry = entry.strip()
+        keyed = KEYED_ENTRY_RE.match(entry)
+        if keyed:
+            entry = keyed.group(2).strip()
         if entry == 'nil' or not entry.startswith('{'):
             continue
         entry_inner = entry[1:-1].strip() if entry.endswith('}') else ''
@@ -254,7 +279,9 @@ def extract_item_objectives(obj_field: str) -> list[int]:
 # Extraction
 # ---------------------------------------------------------------------------
 
-QUEST_LINE_RE = re.compile(r'^\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
+# Raw QuestieDB file:    [123] = {...},
+# Merged Forever export: quest[123]={...}
+QUEST_LINE_RE = re.compile(r'^(?:quest)?\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
@@ -270,11 +297,13 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
     text = source_path.read_text(encoding='utf-8')
 
     match = re.search(r'\.questData\s*=\s*\[\[return\s*\{(.*)\}\s*\]\]', text, re.S)
-    if not match:
-        print(f"Error: could not find questData in {source_path}", file=sys.stderr)
+    if match:
+        data_block = match.group(1)
+    elif re.search(r'^quest\[\d+\]\s*=', text, re.M):
+        data_block = text      # merged export: one quest[id]={...} per line
+    else:
+        print(f"Error: no quest data found in {source_path}", file=sys.stderr)
         sys.exit(1)
-
-    data_block = match.group(1)
 
     quests: dict[int, list[str]] = {}
     quest_meta: dict[int, QuestMeta] = {}
