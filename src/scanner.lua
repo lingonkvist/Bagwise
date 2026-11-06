@@ -221,6 +221,8 @@ local function gatherItem(bag, slot)
     startsQuestName = startsQuestName,
     questItemQuestIDs = questItemQuestIDs,
     allQuestObjectivesCompleted = allQuestObjectivesCompleted,
+    isKept = Bagwise.Overrides.IsKept(itemID),
+    isFlagged = Bagwise.Overrides.IsFlagged(itemID),
   }
 end
 
@@ -264,6 +266,8 @@ function Bagwise.Scanner.ScanAll()
             .. ":" .. tostring(item.classID)
             .. ":" .. tostring(item.startsQuestCompleted)
             .. ":" .. tostring(item.allQuestObjectivesCompleted)
+            .. ":" .. tostring(item.isKept)
+            .. ":" .. tostring(item.isFlagged)
             .. ":" .. profKey
         local cached = verdictCache[cacheKey]
         if cached then

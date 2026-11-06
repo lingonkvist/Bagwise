@@ -737,3 +737,37 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
     Bagwise.Data.ClassReagents[ORPHAN_ITEM_ID] = nil
   end)
 end)
+
+describe("Epic 6: player overrides", function()
+  local belowLevelGear = { id = 33010, isBound = true, isEquippable = true, reqLevel = 20 }
+  local state = { class = "Warrior", race = "Human", level = 45 }
+
+  it("kept item gets no dot even when a rule would make it green", function()
+    local item = { id = 33010, isBound = true, isEquippable = true, reqLevel = 20, isKept = true }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("flagged item is yellow even when no rule fires", function()
+    local item = { id = 33011, isBound = false, isEquippable = false, isFlagged = true }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Flagged by you", reason)
+  end)
+
+  it("flagged item stays yellow even when a rule would make it green", function()
+    local item = { id = 33010, isBound = true, isEquippable = true, reqLevel = 20, isFlagged = true }
+
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+  end)
+
+  it("unmarked item still follows the normal rules", function()
+    local verdict = Bagwise.Verdict.Evaluate(belowLevelGear, state)
+
+    assert.are.equal("green", verdict)
+  end)
+end)

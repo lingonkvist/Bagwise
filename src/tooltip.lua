@@ -80,47 +80,43 @@ local function widestRangesFirst(entries)
   return copy
 end
 
+-- Bags 0-4 are the ones Scanner.ScanAll covers. Keep in step with it.
+local LAST_SCANNED_BAG = 4
+
 local function bagSlotOf(tooltip)
   local owner = tooltip:GetOwner()
   if not (owner and owner.GetParent and owner.GetID) then return nil end
 
+  local slotID = owner:GetID()
+  if not slotID then return nil end
+
+  -- Forever (Mainline bag code): every item button knows its own bag.
+  -- Combined bags put all buttons under one frame, so the parent's ID
+  -- says nothing about which bag an item is in.
+  if owner.GetBagID then
+    local bagID = owner:GetBagID()
+    if bagID and bagID >= 0 and bagID <= LAST_SCANNED_BAG then
+      return bagID, slotID
+    end
+    return nil
+  end
+
+  -- Classic Era: one ContainerFrameN per bag, and the button's ID is the slot.
   local parent = owner:GetParent()
   if not (parent and parent.GetID) then return nil end
 
-  local buttonID = owner:GetID()
   local bagID = parent:GetID()
-  if not buttonID or not bagID then return nil end
+  if not bagID then return nil end
 
   if parent.GetName then
     local parentName = parent:GetName()
     if parentName and parentName:match("^ContainerFrame%d+$") then
-      -- Classic Era reverses button indices: button 1 = last slot.
-      -- Validate by matching the tooltip item against container data.
-      local numSlots = C_Container.GetContainerNumSlots(bagID)
-      if not numSlots or numSlots < 1 then return nil end
-
-      local reversedSlot = numSlots - buttonID + 1
-      local _, itemLink = tooltip:GetItem()
-      local tipItemID = itemLink and tonumber(itemLink:match("item:(%d+)"))
-
-      if tipItemID then
-        local info = C_Container.GetContainerItemInfo(bagID, reversedSlot)
-        if info and info.itemID == tipItemID then
-          return bagID, reversedSlot
-        end
-        info = C_Container.GetContainerItemInfo(bagID, buttonID)
-        if info and info.itemID == tipItemID then
-          return bagID, buttonID
-        end
-      end
-
-      -- Cannot validate; use reversed (matches overlay convention)
-      return bagID, reversedSlot
+      return bagID, slotID
     end
   end
 
   if owner.BGR then
-    return bagID, buttonID
+    return bagID, slotID
   end
 
   if not getBagName or not getBagName(bagID) then return nil end
@@ -131,12 +127,12 @@ local function bagSlotOf(tooltip)
   local tooltipItemID = tonumber(link:match("item:(%d+)"))
   if not tooltipItemID then return nil end
 
-  local containerInfo = C_Container.GetContainerItemInfo(bagID, buttonID)
+  local containerInfo = C_Container.GetContainerItemInfo(bagID, slotID)
   if not containerInfo or containerInfo.itemID ~= tooltipItemID then
     return nil
   end
 
-  return bagID, buttonID
+  return bagID, slotID
 end
 
 local function renderProfessionDetails(tooltip, profEntries)

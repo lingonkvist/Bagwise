@@ -24,7 +24,10 @@ _G.C_QuestLog = {
 _G.Bagwise = nil
 dofile("src/tooltip.lua")
 
-local function makeTooltip(itemLink, ownerParent, bag, slot)
+-- buttonBagID is optional. When given, the owner button reports its own bag
+-- through GetBagID, like Forever's item buttons do. ownerParent and bag then
+-- describe the parent frame (the combined bags frame), which is no help.
+local function makeTooltip(itemLink, ownerParent, bag, slot, buttonBagID)
   local lines = {}
   return {
     GetItem = function() return "ItemName", itemLink end,
@@ -46,7 +49,7 @@ local function makeTooltip(itemLink, ownerParent, bag, slot)
     Show = function() end,
     GetOwner = function()
       if not ownerParent then return nil end
-      return {
+      local owner = {
         GetID = function() return slot or 1 end,
         GetParent = function()
           return {
@@ -55,6 +58,10 @@ local function makeTooltip(itemLink, ownerParent, bag, slot)
           }
         end,
       }
+      if buttonBagID then
+        owner.GetBagID = function() return buttonBagID end
+      end
+      return owner
     end,
     lines = lines,
   }
@@ -100,7 +107,7 @@ describe("tooltip basic output", function()
     assert.are.equal(0.9, tt.lines[1].g)
   end)
 
-  it("no output at all when item has no data", function()
+  it("no output for non-bag tooltips (no owner)", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {
       GetResult = function() return nil end,
@@ -109,6 +116,92 @@ describe("tooltip basic output", function()
     local tt = makeTooltip("|cff...|Hitem:999:...|h[Unknown]|h|r")
     Bagwise.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(0, #tt.lines)
+  end)
+
+  it("shows profession info even when scan result is nil", function()
+    Bagwise.Data = Bagwise.Data or {}
+    Bagwise.Data.ReagentProfessions = {
+      [765] = { { "Alchemy", 5, 1, 50 } },
+    }
+    Bagwise.Data.VendorReagents = nil
+    Bagwise.Scanner = {
+      professionNames = nil,
+      GetResult = function() return nil end,
+    }
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Alchemy %(1%-50%)"))
+  end)
+end)
+
+describe("tooltip bag and slot lookup", function()
+  local function recordLookups()
+    local lookups = {}
+    Bagwise.Data = Bagwise.Data or {}
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function(bag, slot)
+        lookups[#lookups + 1] = { bag = bag, slot = slot }
+        return { verdict = "green", reason = "Test reason" }
+      end,
+    }
+    return lookups
+  end
+
+  it("combined bags: takes the bag from the button, not the parent frame", function()
+    local lookups = recordLookups()
+
+    -- Parent is the combined frame (ID 0). The item is really in bag 3, slot 7.
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "ContainerFrameCombinedBags", 0, 7, 3)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #lookups)
+    assert.are.equal(3, lookups[1].bag)
+    assert.are.equal(7, lookups[1].slot)
+    assert.are.equal("Test reason", tt.lines[1].text)
+  end)
+
+  it("combined bags: backpack items still resolve", function()
+    local lookups = recordLookups()
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "ContainerFrameCombinedBags", 0, 2, 0)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(0, lookups[1].bag)
+    assert.are.equal(2, lookups[1].slot)
+  end)
+
+  it("button in an unscanned bag (bank) shows nothing", function()
+    local lookups = recordLookups()
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "BankFrame", 0, 4, 6)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(0, #lookups)
+    assert.are.equal(0, #tt.lines)
+  end)
+
+  it("classic frames: slot is the button ID, bag is the parent frame ID", function()
+    local lookups = recordLookups()
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "ContainerFrame2", 2, 9)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(2, lookups[1].bag)
+    assert.are.equal(9, lookups[1].slot)
   end)
 end)
 

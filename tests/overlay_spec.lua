@@ -1,0 +1,114 @@
+-- Bagwise: overlay tests (EllesmereUI Bags adapter and recycled buttons)
+-- Run with: python3 -I tests/run_tests.py (from the Bagwise/ root)
+
+_G.Bagwise = nil
+dofile("src/overlay.lua")
+
+local function makeDotTexture()
+  local dot = { shown = false }
+  function dot:SetSize() end
+  function dot:SetTexture() end
+  function dot:SetPoint() end
+  function dot:SetVertexColor(r, g, b) self.color = { r, g, b } end
+  function dot:Show() self.shown = true end
+  function dot:Hide() self.shown = false end
+  return dot
+end
+
+-- A fake item button: its parent frame carries the bag ID, its own ID is the slot.
+local function makeButton(bagID, slotID, visible)
+  local parent = { GetID = function() return bagID end }
+  local button = { visible = visible ~= false, dots = {} }
+  function button:GetID() return slotID end
+  function button:GetParent() return parent end
+  function button:IsVisible() return self.visible end
+  function button:CreateTexture()
+    local dot = makeDotTexture()
+    self.dots[#self.dots + 1] = dot
+    return dot
+  end
+  return button
+end
+
+local function installEllesmere(pool)
+  _G.EllesmereUI = {
+    _ModuleNS = { EllesmereUIBags = { _bagsInternals = { itemSlots = pool } } },
+  }
+end
+
+-- results is keyed "bag:slot"
+local function installScanner(results)
+  Bagwise.Scanner = {
+    GetResult = function(bag, slot) return results[bag .. ":" .. slot] end,
+  }
+end
+
+describe("Ellesmere Bags adapter", function()
+  it("paints each visible button from its parent's bag ID and its own slot", function()
+    local first = makeButton(0, 3)
+    local second = makeButton(2, 5)
+    installEllesmere({ first, second })
+    installScanner({
+      ["0:3"] = { verdict = "green" },
+      ["2:5"] = { verdict = "yellow" },
+    })
+
+    Bagwise.Overlay.UpdateAll()
+
+    assert.are.equal(1, #first.dots)
+    assert.is_truthy(first.dots[1].shown)
+    assert.are.equal(0.56, first.dots[1].color[1])
+    assert.are.equal(1, #second.dots)
+    assert.is_truthy(second.dots[1].shown)
+    assert.are.equal(1.0, second.dots[1].color[1])
+    assert.are.equal(0.84, second.dots[1].color[2])
+    _G.EllesmereUI = nil
+  end)
+
+  it("hides the dot when a recycled button no longer has a verdict", function()
+    local button = makeButton(1, 7)
+    installEllesmere({ button })
+    installScanner({ ["1:7"] = { verdict = "green" } })
+    Bagwise.Overlay.UpdateAll()
+    assert.is_truthy(button.dots[1].shown)
+
+    installScanner({})
+    Bagwise.Overlay.UpdateAll()
+
+    assert.are.equal(1, #button.dots)
+    assert.is_truthy(not button.dots[1].shown)
+    _G.EllesmereUI = nil
+  end)
+
+  it("creates no dot for hidden buttons, unscanned bags or silent items", function()
+    local hidden = makeButton(0, 1, false)
+    local bankBag = makeButton(6, 1)
+    local silent = makeButton(0, 2)
+    installEllesmere({ hidden, bankBag, silent })
+    installScanner({
+      ["0:1"] = { verdict = "green" },
+      ["6:1"] = { verdict = "green" },
+    })
+
+    Bagwise.Overlay.UpdateAll()
+
+    assert.are.equal(0, #hidden.dots)
+    assert.are.equal(0, #bankBag.dots)
+    assert.are.equal(0, #silent.dots)
+    _G.EllesmereUI = nil
+  end)
+
+  it("does nothing, and does not error, when EllesmereUI is not installed", function()
+    _G.EllesmereUI = nil
+    installScanner({})
+    Bagwise.Overlay.UpdateAll()
+    assert.is_nil(_G.EllesmereUI)
+  end)
+
+  it("does nothing when the pool is missing (a renamed internal)", function()
+    _G.EllesmereUI = { _ModuleNS = { EllesmereUIBags = { _bagsInternals = {} } } }
+    installScanner({})
+    Bagwise.Overlay.UpdateAll()
+    _G.EllesmereUI = nil
+  end)
+end)

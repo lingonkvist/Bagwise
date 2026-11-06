@@ -39,12 +39,9 @@ local function onPlayerLogin(self)
   -- Hook bag frame Show so dots appear when bags open.
   -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
   -- frame can hold any bag, so hook them all.
-  local maxFrames = NUM_CONTAINER_FRAMES or 13
-  for i = 1, maxFrames do
-    local bagFrame = _G["ContainerFrame" .. i]
-    if bagFrame then
-      bagFrame:HookScript("OnShow", rescanAll)
-    end
+  -- Includes the combined-bags frame on Forever and EllesmereUI Bags.
+  for _, bagFrame in ipairs(Bagwise.Overlay.BagWindows()) do
+    bagFrame:HookScript("OnShow", rescanAll)
   end
 
   Bagwise.Tooltip.Init()
