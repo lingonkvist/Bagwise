@@ -771,3 +771,50 @@ describe("Epic 6: player overrides", function()
     assert.are.equal("green", verdict)
   end)
 end)
+
+describe("Consumables never get a verdict", function()
+  local CONSUMABLE = 0
+  local TRADE_GOODS = 7
+  local REFRESHING_SPRING_WATER = 159
+  local ICE_COLD_MILK = 1179
+  local EMPTY_VIAL = 3371
+
+  -- A mage with no professions: every vendor reagent rule would fire.
+  local mage = {
+    class = "Mage",
+    playerClass = "MAGE",
+    level = 60,
+    professionSkillLines = {},
+    professionNames = {},
+  }
+
+  it("no dot on drinks that are also vendor reagents (water)", function()
+    local item = { id = REFRESHING_SPRING_WATER, classID = CONSUMABLE }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, mage))
+  end)
+
+  it("no dot on food that is also a vendor reagent (milk)", function()
+    local item = { id = ICE_COLD_MILK, classID = CONSUMABLE }
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, mage))
+  end)
+
+  it("a flagged consumable is still yellow: your own mark wins", function()
+    local item = { id = REFRESHING_SPRING_WATER, classID = CONSUMABLE, isFlagged = true }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, mage)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Flagged by you", reason)
+  end)
+
+  it("real vendor reagents that are not consumables keep their green dot", function()
+    local item = { id = EMPTY_VIAL, classID = TRADE_GOODS }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, mage)
+
+    assert.are.equal("green", verdict)
+    assert.is_truthy(reason:find("Vendor reagent"))
+  end)
+end)

@@ -177,12 +177,19 @@ local RULES = {
   evaluateNoRecipeUse,
 }
 
+local CONSUMABLE_CLASS_ID = 0
+
 --- Evaluate a single item and return a verdict.
 -- Player overrides win over every rule: a kept item is always silent,
 -- a flagged item is always yellow.
+-- Consumables (food, drink, potions, bandages) never get a rule verdict: they
+-- are used up in play, so "you don't need this" is never safe to say. Some
+-- are also vendor reagents (water, milk) and would otherwise read as green.
+-- Scrolls may earn their own rules later.
 function Bagwise.Verdict.Evaluate(item, state)
   if item.isKept then return nil, nil, nil end
   if item.isFlagged then return "yellow", "Flagged by you", nil end
+  if item.classID == CONSUMABLE_CLASS_ID then return nil, nil, nil end
 
   for i = 1, #RULES do
     local verdict, reason, detail = RULES[i](item, state)

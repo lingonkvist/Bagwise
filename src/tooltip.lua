@@ -233,27 +233,44 @@ end
 
 local VERDICT_LINE_WRAP = 45
 
+-- The label names the action, so the verdict reads without its color and
+-- stands apart from the item's own tooltip lines. It shares the line with
+-- the reason: no spacer, no header line.
+local VERDICT_LABELS = {
+  green  = "Safe to delete:",
+  yellow = "Worth a glance:",
+}
+
 local function renderVerdict(tooltip, verdict, reason)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
-  -- Break long lines at the last comma before the wrap threshold.
-  if #reason > VERDICT_LINE_WRAP then
+  local label = VERDICT_LABELS[verdict]
+  local text = label .. " " .. reason
+
+  if #text > VERDICT_LINE_WRAP then
+    -- Break at the last comma before the wrap threshold.
     local breakAt = nil
     for i = VERDICT_LINE_WRAP, 1, -1 do
-      if reason:sub(i, i) == "," then
+      if text:sub(i, i) == "," then
         breakAt = i
         break
       end
     end
     if breakAt then
-      tooltip:AddLine(reason:sub(1, breakAt), color.r, color.g, color.b)
-      tooltip:AddLine(reason:sub(breakAt + 2), color.r, color.g, color.b)
+      tooltip:AddLine(text:sub(1, breakAt), color.r, color.g, color.b)
+      tooltip:AddLine(text:sub(breakAt + 2), color.r, color.g, color.b)
       return
     end
+
+    -- No comma to break at: the label alone on the first line keeps the
+    -- tooltip from growing wider than the item's own lines.
+    tooltip:AddLine(label, color.r, color.g, color.b)
+    tooltip:AddLine(reason, color.r, color.g, color.b)
+    return
   end
 
-  tooltip:AddLine(reason, color.r, color.g, color.b)
+  tooltip:AddLine(text, color.r, color.g, color.b)
 end
 
 function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
