@@ -55,6 +55,34 @@ end
 local QUEST_INFO_LEVEL = 1
 local QUEST_INFO_NAME  = 3
 
+-- QuestInfo[questID][QUEST_INFO_FACTION] is "A" or "H" when only that
+-- faction can take the quest; absent means open to both.
+local QUEST_INFO_FACTION = 4
+local FACTION_CODES = { Alliance = "A", Horde = "H" }
+
+--- Drop the quests the player's faction can never take.
+-- Alliance and Horde versions of the same quest have separate IDs, so an
+-- item used by both would otherwise wait forever on the other side's quest.
+-- Quests with no faction data are kept: when unsure, the item stays needed.
+-- @param questIDs table        quest IDs from QuestItems
+-- @param faction  string|nil   "Alliance" or "Horde"; anything else keeps all
+-- @return table  the quests that can matter to this player (may be empty)
+function Bagwise.Verdict.QuestsForFaction(questIDs, faction)
+  local code = FACTION_CODES[faction]
+  if not code then return questIDs end
+
+  local info = Bagwise.Data.QuestInfo
+  local kept = {}
+  for i = 1, #questIDs do
+    local questInfo = info and info[questIDs[i]]
+    local questFaction = questInfo and questInfo[QUEST_INFO_FACTION]
+    if questFaction == nil or questFaction == code then
+      kept[#kept + 1] = questIDs[i]
+    end
+  end
+  return kept
+end
+
 --- Build "[level] name" from QuestInfo, using runtimeName as override.
 -- The WoW API only returns quest names for quests still in the active log,
 -- so completed quests need the static name from QuestInfo.

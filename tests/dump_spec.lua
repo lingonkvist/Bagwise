@@ -37,7 +37,7 @@ describe("Dump.Format", function()
         maxStack = 20, quality = 1, classID = 7, subClassID = 5, bindType = 0,
         isBound = false, sellPrice = 13, verdict = "green",
         reason = "Vendor reagent", recipeProfessions = { "Tailoring", "First Aid" },
-        quests = { { id = 100, done = true }, { id = 101, done = false } },
+        quests = { { id = 100, done = true }, { id = 101, done = false, faction = "H" } },
         isVendorReagent = false, isClassReagent = false,
       },
     }), {})
@@ -53,7 +53,7 @@ describe("Dump.Format", function()
     assert.are.equal("Linen Cloth", row[4])
     assert.are.equal("green", row[16])
     assert.are.equal("Tailoring,First Aid", row[20])
-    assert.are.equal("100:done,101:open", row[21])
+    assert.are.equal("100:done,101:open:H", row[21])
   end)
 
   it("leaves missing values empty and writes booleans as 1 and 0", function()

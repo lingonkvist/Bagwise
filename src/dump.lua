@@ -25,6 +25,7 @@ local function questCell(quests)
   local parts = {}
   for _, quest in ipairs(quests or {}) do
     parts[#parts + 1] = quest.id .. (quest.done and ":done" or ":open")
+        .. (quest.faction and (":" .. quest.faction) or "")
   end
   return table.concat(parts, ",")
 end

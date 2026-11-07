@@ -818,3 +818,69 @@ describe("Consumables never get a verdict", function()
     assert.is_truthy(reason:find("Vendor reagent"))
   end)
 end)
+
+
+describe("Verdict.QuestsForFaction", function()
+  local savedInfo
+
+  local function withQuestInfo(info)
+    savedInfo = Bagwise.Data.QuestInfo
+    Bagwise.Data.QuestInfo = info
+  end
+
+  local function restore()
+    Bagwise.Data.QuestInfo = savedInfo
+  end
+
+  it("drops quests only the other faction can take", function()
+    withQuestInfo({
+      [1] = { 10, "Elwynn Forest", "Alliance version", "A" },
+      [2] = { 10, "Durotar", "Horde version", "H" },
+    })
+
+    local alliance = Bagwise.Verdict.QuestsForFaction({ 1, 2 }, "Alliance")
+    local horde = Bagwise.Verdict.QuestsForFaction({ 1, 2 }, "Horde")
+    restore()
+
+    assert.are.equal(1, #alliance)
+    assert.are.equal(1, alliance[1])
+    assert.are.equal(1, #horde)
+    assert.are.equal(2, horde[1])
+  end)
+
+  it("keeps quests open to both factions", function()
+    withQuestInfo({ [3] = { 40, "Tanaris", "Neutral quest" } })
+
+    local kept = Bagwise.Verdict.QuestsForFaction({ 3 }, "Horde")
+    restore()
+
+    assert.are.equal(1, #kept)
+  end)
+
+  it("keeps quests it has no data for, so the item stays needed", function()
+    withQuestInfo({})
+
+    local kept = Bagwise.Verdict.QuestsForFaction({ 99 }, "Alliance")
+    restore()
+
+    assert.are.equal(1, #kept)
+  end)
+
+  it("keeps everything when the faction is unknown", function()
+    withQuestInfo({ [2] = { 10, "Durotar", "Horde version", "H" } })
+
+    local kept = Bagwise.Verdict.QuestsForFaction({ 2 }, nil)
+    restore()
+
+    assert.are.equal(1, #kept)
+  end)
+
+  it("returns an empty list when every quest belongs to the other faction", function()
+    withQuestInfo({ [2] = { 10, "Durotar", "Horde version", "H" } })
+
+    local kept = Bagwise.Verdict.QuestsForFaction({ 2 }, "Alliance")
+    restore()
+
+    assert.are.equal(0, #kept)
+  end)
+end)

@@ -97,6 +97,7 @@ local function getPlayerState()
   local class, playerClass = UnitClass("player")
   local race = UnitRace("player")
   local level = UnitLevel("player")
+  local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
 
   local skillLines = gatherProfessionSkillLines()
 
@@ -117,6 +118,7 @@ local function getPlayerState()
     class = class,
     playerClass = playerClass,
     race = race,
+    faction = faction,
     level = level,
     professionSkillLines = skillLines,
     professionNames = professionNames,
@@ -164,8 +166,9 @@ local EQUIP_SLOTS = {
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index (0-4)
 -- @param slot  number  Slot index (1-N)
+-- @param state table   Player state from getPlayerState()
 -- @return table|nil  Item table matching what Verdict.Evaluate expects, or nil
-local function gatherItem(bag, slot)
+local function gatherItem(bag, slot, state)
   local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
   if not containerInfo then return nil end
 
@@ -192,8 +195,14 @@ local function gatherItem(bag, slot)
 
   -- Quest-objective data: does this item appear in the QuestItems table?
   -- If so, check which of those quests are completed.
+  -- Only quests this player's faction can take count: the other faction's
+  -- versions of a quest can never be completed from here.
   local questItemQuestIDs = Bagwise.Data.QuestItems
       and Bagwise.Data.QuestItems[itemID]
+  if questItemQuestIDs then
+    questItemQuestIDs = Bagwise.Verdict.QuestsForFaction(questItemQuestIDs, state.faction)
+    if #questItemQuestIDs == 0 then questItemQuestIDs = nil end
+  end
   local allQuestObjectivesCompleted = nil
 
   if questItemQuestIDs and #questItemQuestIDs > 0 then
@@ -253,7 +262,7 @@ function Bagwise.Scanner.ScanAll()
     local numSlots = C_Container.GetContainerNumSlots(bag)
     for slot = 1, numSlots do
       local key = bag .. ":" .. slot
-      local item = gatherItem(bag, slot)
+      local item = gatherItem(bag, slot, state)
 
       if item then
         -- Cache key includes bound state because the same itemID
@@ -320,9 +329,11 @@ end
 local function questProgressOf(questIDs)
   local progress = {}
   for _, questID in ipairs(questIDs or {}) do
+    local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
     progress[#progress + 1] = {
       id = questID,
       done = C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false,
+      faction = info and info[4] or nil, -- "A", "H" or nil for both
     }
   end
   return progress
