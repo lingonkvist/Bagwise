@@ -164,6 +164,96 @@ end
 
 local TRADE_GOODS_CLASS_ID = 7
 
+-- Vendor value that counts as "worth a trip to the vendor", in copper. It
+-- grows with the player's level because the same coins mean less later on:
+-- 30c at level 1, about 1s25c at 20, 3s25c at 60. Nothing here is set by
+-- the player.
+local WORTH_KEEPING_BASE_COPPER = 25
+local WORTH_KEEPING_PER_LEVEL = 5
+local POOR_QUALITY = 0
+-- Marks a verdict as "gray item" so the scanner can thin them out.
+Bagwise.Verdict.POOR_QUALITY_TAG = "poorQuality"
+local POOR_QUALITY_TAG = Bagwise.Verdict.POOR_QUALITY_TAG
+-- Marks a green the player can sell instead of destroy (the tooltip says
+-- "Safe to vendor"). Only set when the item actually has a vendor price.
+Bagwise.Verdict.VENDOR_TAG = "vendor"
+local VENDOR_TAG = Bagwise.Verdict.VENDOR_TAG
+
+local function vendorTagFor(item)
+  if (item.sellPrice or 0) > 0 then return VENDOR_TAG end
+  return nil
+end
+
+local function valueThreshold(state)
+  return WORTH_KEEPING_BASE_COPPER + WORTH_KEEPING_PER_LEVEL * (state.level or 1)
+end
+
+--- What the whole stack sells for to a vendor, in copper.
+local function stackValue(item)
+  return (item.sellPrice or 0) * (item.count or 1)
+end
+
+local COPPER_PER_SILVER = 100
+local COPPER_PER_GOLD = 10000
+
+--- "1g 20s 5c" for an amount in copper (zero parts left out).
+function Bagwise.Verdict.FormatMoney(copper)
+  copper = math.floor(copper or 0)
+  local gold = math.floor(copper / COPPER_PER_GOLD)
+  local silver = math.floor((copper % COPPER_PER_GOLD) / COPPER_PER_SILVER)
+  local rest = copper % COPPER_PER_SILVER
+  local parts = {}
+  if gold > 0 then parts[#parts + 1] = gold .. "g" end
+  if silver > 0 then parts[#parts + 1] = silver .. "s" end
+  if rest > 0 or #parts == 0 then parts[#parts + 1] = rest .. "c" end
+  return table.concat(parts, " ")
+end
+
+--- The reason line for a gray. When other grays were silenced, the one that
+-- keeps its dot says it is the cheapest, so the single dot makes sense.
+-- @param value     number   what the stack sells for, in copper
+-- @param isCheapestOfSeveral boolean
+function Bagwise.Verdict.PoorQualityReason(value, isCheapestOfSeveral)
+  local label = isCheapestOfSeveral and "Cheapest gray" or "Poor quality"
+  if value == 0 then return label .. ", no vendor value" end
+  return label .. ", sells for " .. Bagwise.Verdict.FormatMoney(value)
+end
+
+-- Gray items. Cheap ones are safe to delete; ones that sell for real money
+-- stay silent so the player vendors them instead. Anything a quest or recipe
+-- still lists is left alone.
+local function evaluatePoorQuality(item, state)
+  if item.quality ~= POOR_QUALITY then return nil end
+  if item.questItemQuestIDs then return nil end
+  if Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[item.id] then
+    return nil
+  end
+
+  local value = stackValue(item)
+  if value >= valueThreshold(state) then return nil end
+  return "green", Bagwise.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
+end
+
+--- Keep only the cheapest few poor-quality greens, so a bag full of grays
+-- doesn't turn into a wall of dots. Deleting one lights up the next.
+-- @param entries table  list of { key, bag, slot, value } for every poor-quality green
+-- @param maxDots number how many may stay green
+-- @return table  set of keys that should go silent
+function Bagwise.Verdict.SilenceAllButCheapest(entries, maxDots)
+  local sorted = {}
+  for i = 1, #entries do sorted[i] = entries[i] end
+  table.sort(sorted, function(a, b)
+    if a.value ~= b.value then return a.value < b.value end
+    if a.bag ~= b.bag then return a.bag < b.bag end
+    return a.slot < b.slot
+  end)
+
+  local silenced = {}
+  for i = maxDots + 1, #sorted do silenced[sorted[i].key] = true end
+  return silenced
+end
+
 local function evaluateNoRecipeUse(item, state)
   -- Epic 5.1: Trade Goods that no recipe uses for any profession.
   -- Gear, consumables, and quest items are excluded by the classID gate.
@@ -193,12 +283,83 @@ local function evaluateNoRecipeUse(item, state)
     return nil
   end
 
+  -- Unused is not the same as worthless: something that sells well might be
+  -- worth the vendor trip, so it only gets a yellow.
+  local value = stackValue(item)
+  if value >= valueThreshold(state) then
+    return "yellow", "Not used for any quest or recipe, sells for "
+        .. Bagwise.Verdict.FormatMoney(value)
+  end
+
   return "green", "Not used for any quest or recipe"
 end
 
 local COMMON_QUALITY = 1
 local UNCOMMON_QUALITY = 2
 local ARMOR_CLASS_ID = 4
+
+-- Armor and shield types by class. A number is the player level at which the
+-- class learns to wear that type (warriors and paladins get plate at 40,
+-- hunters and shamans get mail at 40); true means from the start; absent
+-- means never.
+local ARMOR_SUBCLASS_NAMES = {
+  [2] = "leather", [3] = "mail", [4] = "plate",
+}
+local OTHER_SUBCLASS_PHRASES = {
+  [6] = "shields", [7] = "librams", [8] = "idols", [9] = "totems",
+}
+local CAN_USE_SUBCLASSES = {
+  WARRIOR = { [1] = true, [2] = true, [3] = true, [4] = 40, [6] = true },
+  PALADIN = { [1] = true, [2] = true, [3] = true, [4] = 40, [6] = true, [7] = true },
+  HUNTER  = { [1] = true, [2] = true, [3] = 40 },
+  ROGUE   = { [1] = true, [2] = true },
+  PRIEST  = { [1] = true },
+  MAGE    = { [1] = true },
+  WARLOCK = { [1] = true },
+  SHAMAN  = { [1] = true, [2] = true, [3] = 40, [6] = true, [9] = true },
+  DRUID   = { [1] = true, [2] = true, [8] = true },
+}
+
+local CLASS_PLURALS = {
+  WARRIOR = "Warriors", PALADIN = "Paladins", HUNTER = "Hunters",
+  ROGUE = "Rogues", PRIEST = "Priests", MAGE = "Mages",
+  WARLOCK = "Warlocks", SHAMAN = "Shamans", DRUID = "Druids",
+}
+
+local function unwearableWording(subClassID)
+  if ARMOR_SUBCLASS_NAMES[subClassID] then
+    return "wear " .. ARMOR_SUBCLASS_NAMES[subClassID]
+  end
+  if OTHER_SUBCLASS_PHRASES[subClassID] then
+    return "use " .. OTHER_SUBCLASS_PHRASES[subClassID]
+  end
+  return nil
+end
+
+-- White armor the player can't wear right now: the class never can, or
+-- can't until a later level. Unknown classes (anything not listed above)
+-- get no verdict rather than a guess. The reason stays short; the game's own
+-- tooltip already shows the sell price for anyone who would rather vendor it.
+local function evaluateUnwearableWhite(item, state)
+  if item.quality ~= COMMON_QUALITY then return nil end
+  if not item.isEquippable or item.classID ~= ARMOR_CLASS_ID then return nil end
+
+  local usable = CAN_USE_SUBCLASSES[state.playerClass]
+  if not usable or not item.subClassID then return nil end
+
+  local wording = unwearableWording(item.subClassID)
+  if not wording then return nil end
+
+  local rule = usable[item.subClassID]
+  if rule == true then return nil end
+
+  local reason = CLASS_PLURALS[state.playerClass] .. " can't " .. wording
+  if rule ~= nil then
+    if (state.level or 1) >= rule then return nil end
+    reason = reason .. " until " .. rule
+  end
+  return "green", reason, nil, vendorTagFor(item)
+end
 
 -- A white piece of armor you have already out-geared. Every slot it could go
 -- in must hold something better than white and at least as high in item
@@ -221,16 +382,18 @@ local function evaluateOutgearedWhite(item)
     end
   end
 
-  return "green", "Worse than your equipped gear"
+  return "green", "Worse than your equipped gear", nil, vendorTagFor(item)
 end
 
 local RULES = {
+  evaluateUnwearableWhite,
   evaluateLevelGap,
   evaluateOutgearedWhite,
   evaluateCompletedQuestStarter,
   evaluateQuestObjective,
   evaluateVendorReagent,
   evaluateClassReagent,
+  evaluatePoorQuality,
   evaluateNoRecipeUse,
 }
 
@@ -249,8 +412,8 @@ function Bagwise.Verdict.Evaluate(item, state)
   if item.classID == CONSUMABLE_CLASS_ID then return nil, nil, nil end
 
   for i = 1, #RULES do
-    local verdict, reason, detail = RULES[i](item, state)
-    if verdict then return verdict, reason, detail end
+    local verdict, reason, detail, tag = RULES[i](item, state)
+    if verdict then return verdict, reason, detail, tag end
   end
   return nil, nil, nil
 end

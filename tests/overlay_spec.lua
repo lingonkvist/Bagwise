@@ -8,7 +8,7 @@ dofile("src/overlay.lua")
 local function makeDotTexture()
   local dot = { shown = false }
   function dot:SetSize() end
-  function dot:SetTexture() end
+  function dot:SetTexture(path) self.texture = path end
   function dot:SetPoint() end
   function dot:SetVertexColor(r, g, b) self.color = { r, g, b } end
   function dot:Show() self.shown = true end
@@ -58,11 +58,10 @@ describe("Ellesmere Bags adapter", function()
 
     assert.are.equal(1, #first.dots)
     assert.is_truthy(first.dots[1].shown)
-    assert.are.equal(0.56, first.dots[1].color[1])
+    assert.is_truthy(first.dots[1].texture:find("dot_green$"))
     assert.are.equal(1, #second.dots)
     assert.is_truthy(second.dots[1].shown)
-    assert.are.equal(1.0, second.dots[1].color[1])
-    assert.are.equal(0.84, second.dots[1].color[2])
+    assert.is_truthy(second.dots[1].texture:find("dot_yellow$"))
     _G.EllesmereUI = nil
   end)
 

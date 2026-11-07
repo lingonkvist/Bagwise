@@ -49,7 +49,7 @@ local function onPlayerLogin(self)
   Bagwise.Commands.Init()
   Bagwise.Overlay.Init() -- <-- Registers the Baganator corner widget
 
-  print("|cff66bb6a[Bagwise]|r v" .. Bagwise.Commands.Version()
+  print("|cff54de7d[Bagwise]|r v" .. Bagwise.Commands.Version()
     .. " loaded. Type /bagwise help for commands.")
 end
 

@@ -4,7 +4,7 @@
 Bagwise = Bagwise or {}
 Bagwise.Commands = {}
 
-local PREFIX = "|cff66bb6a[Bagwise]|r "
+local PREFIX = "|cff54de7d[Bagwise]|r "
 
 local function say(text)
   print(PREFIX .. text)

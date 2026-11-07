@@ -961,3 +961,271 @@ describe("Outgeared white armor", function()
     assert.is_nil(Bagwise.Verdict.Evaluate(kept, state))
   end)
 end)
+
+describe("Verdict.FormatMoney", function()
+  it("writes gold, silver and copper, leaving out zero parts", function()
+    assert.are.equal("1g 20s 5c", Bagwise.Verdict.FormatMoney(12005))
+    assert.are.equal("2g", Bagwise.Verdict.FormatMoney(20000))
+    assert.are.equal("45s", Bagwise.Verdict.FormatMoney(4500))
+    assert.are.equal("7c", Bagwise.Verdict.FormatMoney(7))
+    assert.are.equal("0c", Bagwise.Verdict.FormatMoney(0))
+  end)
+end)
+
+describe("Gray items by vendor value", function()
+  local function gray(overrides)
+    local item = {
+      id = 7001, quality = 0, classID = 15, isBound = false,
+      sellPrice = 10, count = 1,
+    }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  local function stateAtLevel(level)
+    return { level = level, professionNames = {}, professionSkillLines = {} }
+  end
+
+  it("cheap grays are green and say what they sell for", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(gray(), stateAtLevel(30))
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Poor quality, sells for 10c", reason)
+  end)
+
+  it("grays with no vendor value are green", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(gray({ sellPrice = 0 }), stateAtLevel(30))
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Poor quality, no vendor value", reason)
+  end)
+
+  it("a gray that sells for real money stays silent", function()
+    local verdict = Bagwise.Verdict.Evaluate(gray({ sellPrice = 500 }), stateAtLevel(30))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("judges the whole stack, not one item", function()
+    local verdict = Bagwise.Verdict.Evaluate(gray({ sellPrice = 20, count = 20 }), stateAtLevel(30))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("the bar rises with level: 60c is worth keeping at level 1 but not at level 60", function()
+    local early = Bagwise.Verdict.Evaluate(gray({ sellPrice = 60 }), stateAtLevel(1))
+    local late = Bagwise.Verdict.Evaluate(gray({ sellPrice = 60 }), stateAtLevel(60))
+
+    assert.is_nil(early)
+    assert.are.equal("green", late)
+  end)
+
+  it("leaves a gray alone while a quest still lists it", function()
+    local verdict = Bagwise.Verdict.Evaluate(gray({ questItemQuestIDs = { 55 } }), stateAtLevel(30))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("leaves a gray alone when a recipe uses it", function()
+    Bagwise.Data.ReagentProfessions = { [7001] = { { "Cooking", 1, 1, 50 } } }
+
+    local verdict = Bagwise.Verdict.Evaluate(gray(), stateAtLevel(30))
+    Bagwise.Data.ReagentProfessions = nil
+
+    assert.is_nil(verdict)
+  end)
+
+  it("does not touch white or better items", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(gray({ quality = 1 }), stateAtLevel(30))))
+  end)
+
+  it("keeps a kept gray silent and a flagged gray yellow", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(gray({ isKept = true }), stateAtLevel(30))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(gray({ isFlagged = true }), stateAtLevel(30))))
+  end)
+end)
+
+describe("Unused trade goods that sell well", function()
+  local function unusedTradeGood(overrides)
+    local item = { id = 7002, quality = 1, classID = 7, isBound = false, sellPrice = 0, count = 1 }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  local state = { level = 30, professionNames = {}, professionSkillLines = {} }
+
+  it("a cheap unused trade good is still green", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 20 }), state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Not used for any quest or recipe", reason)
+  end)
+
+  it("one that sells for real money is yellow and says how much", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 4000 }), state)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Not used for any quest or recipe, sells for 40s", reason)
+  end)
+
+  it("a stack of cheap ones can add up to yellow", function()
+    local verdict = Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 50, count = 20 }), state)
+
+    assert.are.equal("yellow", verdict)
+  end)
+end)
+
+describe("White armor your class can't wear", function()
+  local function whiteArmor(subClassID, overrides)
+    local item = {
+      id = 8001, quality = 1, isEquippable = true, classID = 4,
+      subClassID = subClassID, itemLevel = 12, isBound = false,
+    }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  local function stateFor(class)
+    return { level = 30, playerClass = class, professionNames = {}, professionSkillLines = {} }
+  end
+
+  it("mail on a rogue is green and says why", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(whiteArmor(3), stateFor("ROGUE"))
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Rogues can't wear mail", reason)
+  end)
+
+  it("plate and leather are checked per class", function()
+    assert.are.equal("Hunters can't wear plate",
+      select(2, Bagwise.Verdict.Evaluate(whiteArmor(4), stateFor("HUNTER"))))
+    assert.are.equal("Mages can't wear leather",
+      select(2, Bagwise.Verdict.Evaluate(whiteArmor(2), stateFor("MAGE"))))
+  end)
+
+  it("shields and class relics follow the same rule", function()
+    assert.are.equal("Rogues can't use shields",
+      select(2, Bagwise.Verdict.Evaluate(whiteArmor(6), stateFor("ROGUE"))))
+    assert.are.equal("Priests can't use totems",
+      select(2, Bagwise.Verdict.Evaluate(whiteArmor(9), stateFor("PRIEST"))))
+  end)
+
+  it("armor the class learns later is green until that level", function()
+    local early = Bagwise.Verdict.Evaluate(whiteArmor(4), stateFor("WARRIOR"))
+    local _, reason = Bagwise.Verdict.Evaluate(whiteArmor(4), stateFor("WARRIOR"))
+
+    assert.are.equal("green", early)
+    assert.are.equal("Warriors can't wear plate until 40", reason)
+    local _, shamanReason = Bagwise.Verdict.Evaluate(whiteArmor(3), stateFor("SHAMAN"))
+    assert.are.equal("Shamans can't wear mail until 40", shamanReason)
+  end)
+
+  it("goes silent once the class can wear it", function()
+    local atForty = { level = 40, playerClass = "WARRIOR", professionNames = {}, professionSkillLines = {} }
+
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(4), atForty)))
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(1), stateFor("MAGE"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(3), stateFor("WARRIOR"))))
+  end)
+
+  it("stays silent for classes it doesn't know", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(3), stateFor("SOMETHINGNEW"))))
+  end)
+
+  it("takes priority over the outgeared-white wording", function()
+    local item = whiteArmor(3, { equippedInSlots = { { quality = 2, itemLevel = 20 } } })
+
+    local _, reason = Bagwise.Verdict.Evaluate(item, stateFor("ROGUE"))
+
+    assert.are.equal("Rogues can't wear mail", reason)
+  end)
+
+  it("only applies to white armor", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(3, { quality = 2 }), stateFor("ROGUE"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(whiteArmor(3, { classID = 2 }), stateFor("ROGUE"))))
+  end)
+end)
+
+describe("Verdict.SilenceAllButCheapest", function()
+  local function entry(key, bag, slot, value)
+    return { key = key, bag = bag, slot = slot, value = value }
+  end
+
+  it("keeps only the cheapest entry green", function()
+    local silenced = Bagwise.Verdict.SilenceAllButCheapest({
+      entry("0:1", 0, 1, 50), entry("0:2", 0, 2, 5), entry("1:1", 1, 1, 20),
+    }, 1)
+
+    assert.is_nil(silenced["0:2"])
+    assert.is_truthy(silenced["0:1"])
+    assert.is_truthy(silenced["1:1"])
+  end)
+
+  it("breaks ties by bag and slot so the choice is stable", function()
+    local silenced = Bagwise.Verdict.SilenceAllButCheapest({
+      entry("2:3", 2, 3, 10), entry("1:9", 1, 9, 10), entry("1:2", 1, 2, 10),
+    }, 1)
+
+    assert.is_nil(silenced["1:2"])
+    assert.is_truthy(silenced["1:9"])
+    assert.is_truthy(silenced["2:3"])
+  end)
+
+  it("silences nothing when there are no more entries than allowed", function()
+    local silenced = Bagwise.Verdict.SilenceAllButCheapest({ entry("0:1", 0, 1, 5) }, 1)
+
+    assert.is_nil(next(silenced))
+  end)
+
+  it("lets more through when the limit is raised", function()
+    local silenced = Bagwise.Verdict.SilenceAllButCheapest({
+      entry("0:1", 0, 1, 1), entry("0:2", 0, 2, 2), entry("0:3", 0, 3, 3),
+    }, 2)
+
+    assert.is_nil(silenced["0:1"])
+    assert.is_nil(silenced["0:2"])
+    assert.is_truthy(silenced["0:3"])
+  end)
+
+  it("gray verdicts carry the tag the scanner uses to find them", function()
+    local item = { id = 1, quality = 0, classID = 15, sellPrice = 5, count = 1 }
+    local _, _, _, tag = Bagwise.Verdict.Evaluate(item, { level = 30 })
+
+    assert.are.equal(Bagwise.Verdict.POOR_QUALITY_TAG, tag)
+  end)
+end)
+
+describe("Reason wording", function()
+  local state = { level = 30, playerClass = "ROGUE", professionNames = {}, professionSkillLines = {} }
+
+  it("unwearable white armor keeps its reason short, with no price", function()
+    local item = {
+      id = 9001, quality = 1, isEquippable = true, classID = 4, subClassID = 3,
+      itemLevel = 10, sellPrice = 120, count = 1,
+    }
+
+    local _, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("Rogues can't wear mail", reason)
+  end)
+
+  it("white gear that sells is tagged for vendoring, one that does not sell is not", function()
+    local item = {
+      id = 9001, quality = 1, isEquippable = true, classID = 4, subClassID = 3,
+      itemLevel = 10, sellPrice = 120, count = 1,
+    }
+    local _, _, _, tag = Bagwise.Verdict.Evaluate(item, state)
+    assert.are.equal(Bagwise.Verdict.VENDOR_TAG, tag)
+
+    item.sellPrice = 0
+    local verdict, _, _, noTag = Bagwise.Verdict.Evaluate(item, state)
+    assert.are.equal("green", verdict)
+    assert.is_nil(noTag)
+  end)
+
+  it("the gray that keeps its dot says it is the cheapest", function()
+    assert.are.equal("Cheapest gray, sells for 5c", Bagwise.Verdict.PoorQualityReason(5, true))
+    assert.are.equal("Cheapest gray, no vendor value", Bagwise.Verdict.PoorQualityReason(0, true))
+    assert.are.equal("Poor quality, sells for 5c", Bagwise.Verdict.PoorQualityReason(5, false))
+  end)
+end)

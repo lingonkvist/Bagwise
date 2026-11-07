@@ -14,18 +14,21 @@ local PROF_MIN_LEVEL        = 3
 local PROF_MAX_LEVEL        = 4
 
 local VERDICT_COLORS        = {
-  green  = { r = 0.4, g = 0.9, b = 0.4 },
-  yellow = { r = 1.0, g = 0.9, b = 0.3 },
+  green  = { r = 0.33, g = 0.87, b = 0.49 },
+  yellow = { r = 0.97, g = 0.82, b = 0.16 },
 }
 
 -- Detail text under a verdict header uses the same blue as every other
 -- Bagwise detail row, so all of it reads as one family.
 local DETAIL_COLOR          = INFO_COLOR
 
--- The tooltip header carries the same dot as the bag slot. The dot texture is
--- white and tinted here through the texture escape (0-255 per channel).
-local DOT_TEXTURE           = "Interface\\AddOns\\Bagwise\\textures\\dot"
-local DOT_TEXTURE_SIZE      = 64
+-- The tooltip header carries the same dot as the bag slot (colour is baked
+-- into each texture).
+local DOT_TEXTURES          = {
+  green  = "Interface\\AddOns\\Bagwise\\textures\\dot_green",
+  yellow = "Interface\\AddOns\\Bagwise\\textures\\dot_yellow",
+}
+local DOT_ESCAPE_SIZE       = 14
 
 local PROFESSION_ICONS      = {
   ["Alchemy"] = 136240,
@@ -261,25 +264,26 @@ local BAG_HEADINGS = {
   green  = "Safe to delete",
   yellow = "Worth a glance",
 }
+-- A green on something a vendor will buy says so, since selling beats
+-- destroying when there is a vendor around.
+local BAG_HEADINGS_VENDOR = {
+  green  = "Safe to vendor",
+  yellow = "Worth a glance",
+}
 local LOOT_HEADINGS = {
   green  = "Not needed",
   yellow = "Worth a glance",
 }
 
-local function dotEscape(color)
-  return "|T" .. DOT_TEXTURE .. ":12:12:0:0:"
-      .. DOT_TEXTURE_SIZE .. ":" .. DOT_TEXTURE_SIZE .. ":0:"
-      .. DOT_TEXTURE_SIZE .. ":0:" .. DOT_TEXTURE_SIZE .. ":"
-      .. math.floor(color.r * 255 + 0.5) .. ":"
-      .. math.floor(color.g * 255 + 0.5) .. ":"
-      .. math.floor(color.b * 255 + 0.5) .. "|t"
+local function dotEscape(verdict)
+  return "|T" .. DOT_TEXTURES[verdict] .. ":" .. DOT_ESCAPE_SIZE .. ":" .. DOT_ESCAPE_SIZE .. "|t"
 end
 
 local function renderVerdict(tooltip, verdict, reason, headings)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
-  tooltip:AddLine(dotEscape(color) .. " " .. headings[verdict],
+  tooltip:AddLine(dotEscape(verdict) .. " " .. headings[verdict],
     color.r, color.g, color.b)
 
   -- Break long reasons at the last comma before the wrap threshold so
@@ -323,6 +327,9 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     end
     result = Bagwise.Scanner.GetResult(bag, slot)
     headings = BAG_HEADINGS
+    if result and result.tag == Bagwise.Verdict.VENDOR_TAG then
+      headings = BAG_HEADINGS_VENDOR
+    end
   end
   local verdict = result and result.verdict
   local reason = result and result.reason

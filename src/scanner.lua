@@ -205,10 +205,11 @@ end
 -- @param isBound       boolean  Soulbound right now (false for loot)
 -- @param questInfo     table|nil  C_Container quest info for the slot
 -- @param state         table    Player state from getPlayerState()
+-- @param count         number|nil  Stack size (nil counts as 1)
 -- @return table|nil  nil when the client hasn't cached the item yet
-local function buildItem(itemID, isBound, questInfo, state)
+local function buildItem(itemID, isBound, questInfo, state, count)
   local name, _, quality, itemLevel, reqLevel, _, _, _,
-  equipSlot, _, _, classID, _, bindType = getItemInfo(itemID)
+  equipSlot, _, sellPrice, classID, subClassID, bindType = getItemInfo(itemID)
 
   -- Item not cached by the client yet, skip for now
   if not name then return nil end
@@ -257,6 +258,9 @@ local function buildItem(itemID, isBound, questInfo, state)
     isEquippable = isEquippable,
     classID = classID,
     bindType = bindType,
+    sellPrice = sellPrice,
+    subClassID = subClassID,
+    count = count,
     startsQuestID = startsQuestID,
     startsQuestCompleted = startsQuestCompleted,
     startsQuestName = startsQuestName,
@@ -279,7 +283,8 @@ local function gatherItem(bag, slot, state)
   if not containerInfo then return nil end
 
   return buildItem(containerInfo.itemID, containerInfo.isBound,
-    C_Container.GetContainerItemQuestInfo(bag, slot), state)
+    C_Container.GetContainerItemQuestInfo(bag, slot), state,
+    containerInfo.stackCount)
 end
 
 --- Build a short string key from the player's profession set.
@@ -320,16 +325,20 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.allQuestObjectivesCompleted)
       .. ":" .. tostring(item.isKept)
       .. ":" .. tostring(item.isFlagged)
+      .. ":" .. tostring(item.count)
       .. ":" .. equippedKey(item)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
-  local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
-  local result = { verdict = verdict, reason = reason, detail = detail }
+  local verdict, reason, detail, tag = Bagwise.Verdict.Evaluate(item, state)
+  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag }
   verdictCache[cacheKey] = result
   return result
 end
+
+-- How many gray items may show a green dot at once (the cheapest ones).
+local MAX_POOR_QUALITY_DOTS = 1
 
 --- Scan all bag slots, evaluate verdicts, store results.
 function Bagwise.Scanner.ScanAll()
@@ -338,6 +347,7 @@ function Bagwise.Scanner.ScanAll()
 
   -- Clear slot results, we're rebuilding from scratch
   slotResults = {}
+  local poorQuality = {}
 
   for bag = 0, Bagwise.Bags.LastScanned() do
     local numSlots = C_Container.GetContainerNumSlots(bag)
@@ -347,9 +357,30 @@ function Bagwise.Scanner.ScanAll()
 
       if item then
         slotResults[key] = evaluateCached(item, state, profKey)
+        if slotResults[key].tag == Bagwise.Verdict.POOR_QUALITY_TAG then
+          poorQuality[#poorQuality + 1] = {
+            key = key, bag = bag, slot = slot,
+            value = (item.sellPrice or 0) * (item.count or 1),
+          }
+        end
       else
         slotResults[key] = nil
       end
+    end
+  end
+
+  -- Only the cheapest gray(s) keep their dot. The cached result is shared
+  -- between slots, so silence them with a fresh table instead of editing it.
+  local silenced = Bagwise.Verdict.SilenceAllButCheapest(poorQuality, MAX_POOR_QUALITY_DOTS)
+  for _, entry in ipairs(poorQuality) do
+    if silenced[entry.key] then
+      slotResults[entry.key] = {}
+    elseif next(silenced) then
+      slotResults[entry.key] = {
+        verdict = "green",
+        reason = Bagwise.Verdict.PoorQualityReason(entry.value, true),
+        tag = Bagwise.Verdict.POOR_QUALITY_TAG,
+      }
     end
   end
 end

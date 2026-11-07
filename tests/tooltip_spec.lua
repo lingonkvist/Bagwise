@@ -23,6 +23,7 @@ _G.C_QuestLog = {
 
 _G.Bagwise = nil
 dofile("src/bags.lua")
+dofile("src/verdict.lua")
 dofile("src/tooltip.lua")
 
 -- buttonBagID is optional. When given, the owner button reports its own bag
@@ -85,8 +86,8 @@ describe("tooltip basic output", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Well below your level", tt.lines[2].text)
-    assert.are.equal(0.4, tt.lines[1].r)
-    assert.are.equal(0.9, tt.lines[1].g)
+    assert.are.equal(0.33, tt.lines[1].r)
+    assert.are.equal(0.87, tt.lines[1].g)
   end)
 
   it("yellow level verdict: single line", function()
@@ -104,8 +105,8 @@ describe("tooltip basic output", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Below your level", tt.lines[2].text)
-    assert.are.equal(1.0, tt.lines[1].r)
-    assert.are.equal(0.9, tt.lines[1].g)
+    assert.are.equal(0.97, tt.lines[1].r)
+    assert.are.equal(0.82, tt.lines[1].g)
   end)
 
   it("header: dot and verdict in words in the verdict color, detail in info blue", function()
@@ -122,12 +123,30 @@ describe("tooltip basic output", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
-    assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-dot.-:255:230:77|t Worth a glance$"))
-    assert.are.equal(1.0, tt.lines[1].r)
-    assert.are.equal(0.9, tt.lines[1].g)
+    assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-dot_yellow:14:14|t Worth a glance$"))
+    assert.are.equal(0.97, tt.lines[1].r)
+    assert.are.equal(0.82, tt.lines[1].g)
     assert.are.equal("Below your level", tt.lines[2].text)
     assert.are.equal(0.5, tt.lines[2].r)
     assert.are.equal(1.0, tt.lines[2].b)
+  end)
+
+  it("says Safe to vendor for a green tagged as sellable", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = "Shamans can't wear mail until 40",
+                 tag = Bagwise.Verdict.VENDOR_TAG }
+      end,
+    }
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:127:...|h[Mail Belt]|h|r",
+      "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.is_truthy(tt.lines[1].text:find("dot_green:14:14|t Safe to vendor$"))
+    assert.are.equal("Shamans can't wear mail until 40", tt.lines[2].text)
   end)
 
   it("never adds a blank spacer line", function()
@@ -517,7 +536,7 @@ describe("tooltip merged verdict lines", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Rogue only (vendor)", tt.lines[2].text)
-    assert.are.equal(0.4, tt.lines[1].r)
+    assert.are.equal(0.33, tt.lines[1].r)
   end)
 
   it("yellow class reagent: single line", function()
@@ -697,9 +716,9 @@ describe("tooltip quest completed two-line format", function()
 
     assert.are.equal(3, #tt.lines)
     assert.are.equal("Quest completed", tt.lines[2].text)
-    assert.are.equal(0.4, tt.lines[1].r)
-    assert.are.equal(0.9, tt.lines[1].g)
-    assert.are.equal(0.4, tt.lines[1].b)
+    assert.are.equal(0.33, tt.lines[1].r)
+    assert.are.equal(0.87, tt.lines[1].g)
+    assert.are.equal(0.49, tt.lines[1].b)
     assert.are.equal("[34] Bad Medicine", tt.lines[3].text)
     assert.are.equal(0.5, tt.lines[3].r)
     assert.are.equal(0.8, tt.lines[3].g)
