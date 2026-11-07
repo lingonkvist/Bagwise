@@ -8,6 +8,7 @@
 
 src\bags.lua
 src\verdict.lua
+src\makeroom.lua
 src\scanner.lua
 src\overlay.lua
 src\tooltip.lua

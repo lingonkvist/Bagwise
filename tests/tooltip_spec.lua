@@ -149,6 +149,27 @@ describe("tooltip basic output", function()
     assert.are.equal("Shamans can't wear mail until 40", tt.lines[2].text)
   end)
 
+  it("shows the dot header, reason and delete line for a slot picked to make room", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "yellow", reason = "Cheapest junk, sells for 5c",
+                 detail = "Delete to make room for your loot" }
+      end,
+    }
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:127:...|h[Junk]|h|r",
+      "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(3, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
+    assert.are.equal("Cheapest junk, sells for 5c", tt.lines[2].text)
+    assert.are.equal("Delete to make room for your loot", tt.lines[3].text)
+    assert.are.equal(0.5, tt.lines[3].r)
+  end)
+
   it("never adds a blank spacer line", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {

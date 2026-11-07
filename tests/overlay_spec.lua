@@ -13,6 +13,20 @@ local function makeDotTexture()
   function dot:SetVertexColor(r, g, b) self.color = { r, g, b } end
   function dot:Show() self.shown = true end
   function dot:Hide() self.shown = false end
+  function dot:CreateAnimationGroup()
+    local group = { playing = false }
+    function group:SetLooping() end
+    function group:CreateAnimation()
+      return { SetOrder = function() end, SetDuration = function() end,
+               SetSmoothing = function() end, SetScaleFrom = function() end,
+               SetScaleTo = function() end }
+    end
+    function group:IsPlaying() return self.playing end
+    function group:Play() self.playing = true end
+    function group:Stop() self.playing = false end
+    dot.group = group
+    return group
+  end
   return dot
 end
 
@@ -62,6 +76,30 @@ describe("Ellesmere Bags adapter", function()
     assert.are.equal(1, #second.dots)
     assert.is_truthy(second.dots[1].shown)
     assert.is_truthy(second.dots[1].texture:find("dot_yellow$"))
+    _G.EllesmereUI = nil
+  end)
+
+  it("pulses a dot marked to delete and stops when it is no longer marked", function()
+    local button = makeButton(0, 3)
+    installEllesmere({ button })
+    installScanner({ ["0:3"] = { verdict = "yellow", pulse = true } })
+
+    Bagwise.Overlay.UpdateAll()
+    assert.is_truthy(button.dots[1].group.playing)
+
+    installScanner({ ["0:3"] = { verdict = "yellow" } })
+    Bagwise.Overlay.UpdateAll()
+    assert.are.equal(false, button.dots[1].group.playing)
+    _G.EllesmereUI = nil
+  end)
+
+  it("hides a quiet verdict's dot", function()
+    local button = makeButton(0, 3)
+    installEllesmere({ button })
+    installScanner({ ["0:3"] = { verdict = "green", quiet = true } })
+
+    Bagwise.Overlay.UpdateAll()
+    assert.are.equal(false, button.dots[1].shown)
     _G.EllesmereUI = nil
   end)
 

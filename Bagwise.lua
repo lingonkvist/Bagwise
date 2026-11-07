@@ -15,6 +15,19 @@ local function invalidateAndRescan()
   rescanAll()
 end
 
+-- Loot window: read what is in it, work out what is worth a slot, repaint.
+local function onLootChanged()
+  Bagwise.Scanner.RefreshLoot()
+  rescanAll()
+  Bagwise.Overlay.UpdateLoot()
+end
+
+local function onLootClosed()
+  Bagwise.Scanner.ClearLoot()
+  rescanAll()
+  Bagwise.Overlay.UpdateLoot()
+end
+
 local function onAddonLoaded(self, addonName)
   if addonName ~= "Bagwise" then return end
 
@@ -36,6 +49,9 @@ local function onPlayerLogin(self)
   self:RegisterEvent("QUEST_TURNED_IN")
   self:RegisterEvent("SKILL_LINES_CHANGED")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+  self:RegisterEvent("LOOT_OPENED")
+  self:RegisterEvent("LOOT_SLOT_CLEARED")
+  self:RegisterEvent("LOOT_CLOSED")
 
   -- Hook bag frame Show so dots appear when bags open.
   -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
@@ -62,6 +78,9 @@ local EVENT_HANDLERS = {
   QUEST_TURNED_IN        = invalidateAndRescan,
   SKILL_LINES_CHANGED    = invalidateAndRescan,
   PLAYER_EQUIPMENT_CHANGED = invalidateAndRescan,
+  LOOT_OPENED            = onLootChanged,
+  LOOT_SLOT_CLEARED      = onLootChanged,
+  LOOT_CLOSED            = onLootClosed,
 }
 
 frame:SetScript("OnEvent", function(self, event, ...)

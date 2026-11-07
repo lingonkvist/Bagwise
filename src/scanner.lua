@@ -340,6 +340,11 @@ end
 -- How many gray items may show a green dot at once (the cheapest ones).
 local MAX_POOR_QUALITY_DOTS = 1
 
+-- The loot window's contents and what to do about them. Set by RefreshLoot
+-- when the window opens and as items are taken; cleared when it closes.
+local lootPieces = {}
+local lootPlan = { take = {}, deletes = {}, active = false }
+
 --- Scan all bag slots, evaluate verdicts, store results.
 function Bagwise.Scanner.ScanAll()
   local state = getPlayerState()
@@ -348,6 +353,10 @@ function Bagwise.Scanner.ScanAll()
   -- Clear slot results, we're rebuilding from scratch
   slotResults = {}
   local poorQuality = {}
+  local junkEntries = {}
+  local junkCandidates = {}
+  local freeSlots = 0
+  local regularBags = NUM_BAG_SLOTS or 4
 
   for bag = 0, Bagwise.Bags.LastScanned() do
     local numSlots = C_Container.GetContainerNumSlots(bag)
@@ -355,8 +364,14 @@ function Bagwise.Scanner.ScanAll()
       local key = bag .. ":" .. slot
       local item = gatherItem(bag, slot, state)
 
+      if not item and bag <= regularBags then freeSlots = freeSlots + 1 end
+
       if item then
         slotResults[key] = evaluateCached(item, state, profKey)
+        junkCandidates[#junkCandidates + 1] = {
+          key = key, bag = bag, slot = slot, item = item,
+          value = Bagwise.MakeRoom.ValueOf(item.sellPrice, item.count),
+        }
         if slotResults[key].tag == Bagwise.Verdict.POOR_QUALITY_TAG then
           poorQuality[#poorQuality + 1] = {
             key = key, bag = bag, slot = slot,
@@ -383,6 +398,78 @@ function Bagwise.Scanner.ScanAll()
       }
     end
   end
+
+  -- Making room for loot runs last, on the final results.
+  lootPlan = { take = {}, deletes = {}, active = false }
+  if #lootPieces == 0 then return end
+
+  for _, candidate in ipairs(junkCandidates) do
+    if Bagwise.MakeRoom.IsJunkCandidate(candidate.item, slotResults[candidate.key]) then
+      junkEntries[#junkEntries + 1] = candidate
+    end
+  end
+
+  local pieces = {}
+  for i, piece in ipairs(lootPieces) do pieces[i] = piece end
+  lootPlan = Bagwise.MakeRoom.Plan(pieces, junkEntries, freeSlots)
+
+  if not lootPlan.active then return end
+
+  -- Quiet every other dot, then mark the slots to delete. Fresh tables: the
+  -- cached results are shared between slots.
+  for key, result in pairs(slotResults) do
+    slotResults[key] = Bagwise.MakeRoom.QuietResult(result)
+  end
+  for _, entry in ipairs(lootPlan.deletes) do
+    slotResults[entry.key] = Bagwise.MakeRoom.MarkedResult(
+      Bagwise.MakeRoom.RestoreResult(slotResults[entry.key]), entry.value)
+  end
+end
+
+-- Does the loot window piece count as must-take? Quest items, rares and
+-- anything with no vendor price can't be compared with junk by price.
+local function isPriorityLoot(info)
+  if info.quality and info.quality >= 3 then return true end
+  if info.classID == 12 or (info.sellPrice or 0) == 0 then return true end
+  local data = Bagwise.Data or {}
+  return (data.QuestItems and data.QuestItems[info.itemID])
+      or (data.ReagentProfessions and data.ReagentProfessions[info.itemID])
+      or false
+end
+
+--- Read the open loot window and rescan with it in mind.
+function Bagwise.Scanner.RefreshLoot()
+  lootPieces = {}
+  local count = GetNumLootItems and GetNumLootItems() or 0
+  for slot = 1, count do
+    local link = GetLootSlotLink and GetLootSlotLink(slot)
+    if link then
+      local _, _, quantity = GetLootSlotInfo(slot)
+      local itemID = tonumber(link:match("item:(%d+)"))
+      local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = GetItemInfo(link)
+      if itemID then
+        local info = { itemID = itemID, quality = quality, sellPrice = sellPrice, classID = classID }
+        lootPieces[#lootPieces + 1] = {
+          slot = slot,
+          itemID = itemID,
+          value = (sellPrice or 0) * (quantity or 1),
+          priority = isPriorityLoot(info) and true or false,
+        }
+      end
+    end
+  end
+end
+
+function Bagwise.Scanner.ClearLoot()
+  lootPieces = {}
+  lootPlan = { take = {}, deletes = {}, active = false }
+end
+
+--- What the make-room plan says about a loot slot: "take", "leave", or nil when
+-- there is nothing to decide (bags have room, or no loot window).
+function Bagwise.Scanner.LootDecision(slot)
+  if not lootPlan.active then return nil end
+  return lootPlan.take[slot] and "take" or "leave"
 end
 
 --- Get the verdict for a specific bag slot.

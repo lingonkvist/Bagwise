@@ -107,6 +107,16 @@ local function isLootOwner(owner)
   return false
 end
 
+-- The loot row's slot: Mainline rows know it, classic loot buttons keep .slot.
+local function lootSlotOf(owner)
+  if not owner then return nil end
+  if owner.GetSlotIndex then return owner:GetSlotIndex() end
+  return owner.slot
+end
+
+local LOOT_TAKE_LINE = "Worth a slot, more than your junk"
+local LOOT_LEAVE_REASON = "Worth less than your junk"
+
 local function bagSlotOf(tooltip)
   local owner = tooltip:GetOwner()
   if not (owner and owner.GetParent and owner.GetID) then return nil end
@@ -333,6 +343,13 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   end
   local verdict = result and result.verdict
   local reason = result and result.reason
+  local lootSlot = isLootOwner(tooltip:GetOwner()) and lootSlotOf(tooltip:GetOwner())
+  local lootDecision = lootSlot and Bagwise.Scanner.LootDecision
+      and Bagwise.Scanner.LootDecision(lootSlot)
+  -- Full bags: loot worth less than the junk you would delete is a skip.
+  if lootDecision == "leave" and not verdict then
+    verdict, reason = "green", LOOT_LEAVE_REASON
+  end
 
   local profEntries = Bagwise.Data.ReagentProfessions
       and Bagwise.Data.ReagentProfessions[itemID]
@@ -357,6 +374,10 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     elseif questIDs and not isVendorReagent then
       renderQuestDetails(tooltip, questIDs)
     end
+  end
+
+  if lootDecision == "take" then
+    tooltip:AddLine(LOOT_TAKE_LINE, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
   end
 
   tooltip:Show()

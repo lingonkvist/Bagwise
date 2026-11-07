@@ -26,12 +26,58 @@ local function makeDot(parent)
   return dot
 end
 
+-- A slow pulse (about one beat a second, well under any flash threshold) on
+-- the dots to delete while making room for loot. Nothing else moves.
+local PULSE_SECONDS = 0.5
+local PULSE_SCALE = 1.35
+local pulseByDot = setmetatable({}, { __mode = "k" })
+
+local function makePulse(dot)
+  if not dot.CreateAnimationGroup then return nil end
+  local group = dot:CreateAnimationGroup()
+  group:SetLooping("REPEAT")
+
+  local function addScale(order, factor)
+    local scale = group:CreateAnimation("Scale")
+    scale:SetOrder(order)
+    scale:SetDuration(PULSE_SECONDS)
+    scale:SetSmoothing(order == 1 and "OUT" or "IN")
+    -- Mainline takes a target scale, older clients a multiplier.
+    if scale.SetScaleTo then
+      scale:SetScaleFrom(order == 1 and 1 or PULSE_SCALE, order == 1 and 1 or PULSE_SCALE)
+      scale:SetScaleTo(factor, factor)
+    elseif scale.SetScale then
+      scale:SetScale(order == 1 and PULSE_SCALE or 1 / PULSE_SCALE,
+        order == 1 and PULSE_SCALE or 1 / PULSE_SCALE)
+    end
+  end
+  addScale(1, PULSE_SCALE)
+  addScale(2, 1)
+  return group
+end
+
+local function setPulse(dot, on)
+  local group = pulseByDot[dot]
+  if on then
+    if not group then
+      group = makePulse(dot)
+      pulseByDot[dot] = group or false
+    end
+    if group and not group:IsPlaying() then group:Play() end
+  elseif group and group:IsPlaying() then
+    group:Stop()
+  end
+end
+
 local function applyDot(dot, result)
-  if result and result.verdict then
+  -- quiet: a verdict held back while a make-room plan shows only the slots to delete.
+  if result and result.verdict and not result.quiet then
     dot:SetTexture(TEXTURES[result.verdict])
     dot:Show()
+    setPulse(dot, result.pulse)
     return true
   else
+    setPulse(dot, false)
     dot:Hide()
     return false
   end
@@ -212,6 +258,47 @@ end
 local function hookEllesmereUpdates()
   if EUI_Bags and EUI_Bags.RefreshInventory then
     hooksecurefunc(EUI_Bags, "RefreshInventory", paintEllesmere)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Loot window: with full bags, a green dot on loot that is worth less than
+-- your junk (skip it, same meaning as everywhere). Loot worth a slot stays
+-- silent: nothing to warn about.
+-- ---------------------------------------------------------------------------
+local lootDotsByRow = setmetatable({}, { __mode = "k" })
+
+local function paintLootRow(row, slot)
+  local decision = slot and Bagwise.Scanner.LootDecision(slot)
+  local dot = lootDotsByRow[row]
+  if decision ~= "leave" then
+    if dot then dot:Hide() end
+    return
+  end
+  if not dot then
+    dot = makeDot(row)
+    dot:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    lootDotsByRow[row] = dot
+  end
+  applyDot(dot, { verdict = "green" })
+end
+
+--- Repaint the loot window rows. Rows are recycled, so each one is decided
+-- from scratch. Works with the Mainline scroll list and classic loot buttons.
+function Bagwise.Overlay.UpdateLoot()
+  if not LootFrame then return end
+
+  if LootFrame.ScrollBox and LootFrame.ScrollBox.ForEachFrame then
+    LootFrame.ScrollBox:ForEachFrame(function(row)
+      local slot = row.GetSlotIndex and row:GetSlotIndex() or row.slot
+      paintLootRow(row, slot)
+    end)
+    return
+  end
+
+  for index = 1, (LOOTFRAME_NUMBUTTONS or 4) do
+    local row = _G["LootButton" .. index]
+    if row then paintLootRow(row, row.slot) end
   end
 end
 
