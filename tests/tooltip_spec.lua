@@ -22,6 +22,7 @@ _G.C_QuestLog = {
 }
 
 _G.Bagwise = nil
+dofile("src/bags.lua")
 dofile("src/tooltip.lua")
 
 -- buttonBagID is optional. When given, the owner button reports its own bag
@@ -741,5 +742,158 @@ describe("tooltip vendor reagent quest row suppression", function()
 
     assert.are.equal(0, #tt.lines)
     Bagwise.Data.VendorReagents = nil
+  end)
+end)
+
+
+describe("tooltip reagent bag (Forever)", function()
+  it("resolves items in bag 5 when the client has a reagent bag slot", function()
+    local lookups = {}
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function(bag, slot)
+        lookups[#lookups + 1] = { bag = bag, slot = slot }
+        return { verdict = "green", reason = "Test reason" }
+      end,
+    }
+
+    _G.NUM_REAGENTBAG_SLOTS = 1
+    local tt = makeTooltip(
+      "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
+      "ContainerFrameCombinedBags", 0, 3, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    _G.NUM_REAGENTBAG_SLOTS = nil
+
+    assert.are.equal(1, #lookups)
+    assert.are.equal(5, lookups[1].bag)
+    assert.are.equal(3, lookups[1].slot)
+  end)
+end)
+
+describe("tooltip in the loot window", function()
+  local lootFrame
+
+  -- A tooltip whose owner sits `depth` levels below LootFrame.
+  local function makeLootTooltip(itemLink, depth)
+    local tt = makeTooltip(itemLink, "x", 0, 1)
+    local parent = lootFrame
+    for _ = 1, depth do
+      local up = parent
+      parent = { GetParent = function() return up end, GetID = function() return 0 end }
+    end
+    local owner = {
+      GetParent = function() return parent end,
+      GetID = function() return 1 end,
+    }
+    tt.GetOwner = function() return owner end
+    return tt
+  end
+
+  local function installScanner(result)
+    local calls = { bagLookups = 0, evaluated = {} }
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        calls.bagLookups = calls.bagLookups + 1
+        return { verdict = "yellow", reason = "From a bag" }
+      end,
+      EvaluateItem = function(itemID)
+        calls.evaluated[#calls.evaluated + 1] = itemID
+        return result
+      end,
+    }
+    return calls
+  end
+
+  local function setup()
+    lootFrame = {}
+    _G.LootFrame = lootFrame
+  end
+
+  local function teardown()
+    _G.LootFrame = nil
+  end
+
+  it("shows the verdict with loot wording: green means not needed", function()
+    setup()
+    local calls = installScanner({ verdict = "green", reason = "Vendor reagent (Alchemy)" })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Not needed$"))
+    assert.are.equal("Vendor reagent (Alchemy)", tt.lines[2].text)
+    assert.are.equal(2320, calls.evaluated[1])
+  end)
+
+  it("keeps the yellow heading as is", function()
+    setup()
+    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
+  end)
+
+  it("finds the loot frame several levels up", function()
+    setup()
+    local calls = installScanner({ verdict = "green", reason = "Quest completed" })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 3)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(1, #calls.evaluated)
+  end)
+
+  it("never mistakes a loot row for a bag slot holding the same item", function()
+    setup()
+    local calls = installScanner({ verdict = "green", reason = "Quest completed" })
+    _G.C_Container.GetContainerItemInfo = function() return { itemID = 2320 } end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(0, calls.bagLookups)
+  end)
+
+  it("shows profession info for loot with no verdict", function()
+    setup()
+    installScanner({})
+    Bagwise.Data.ReagentProfessions = { [765] = { { "Alchemy", 9, 1, 50 } } }
+
+    local tt = makeLootTooltip("|cff...|Hitem:765:...|h[Silverleaf]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Alchemy %(1%-50%)"))
+  end)
+
+  it("shows nothing extra when the game has not loaded the item yet", function()
+    setup()
+    installScanner(nil)
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(0, #tt.lines)
+  end)
+
+  it("does not treat tooltips outside the loot window as loot", function()
+    setup()
+    local calls = installScanner({ verdict = "green", reason = "x" })
+    local tt = makeTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", nil)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(0, #calls.evaluated)
+    assert.are.equal(0, #tt.lines)
   end)
 end)

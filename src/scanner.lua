@@ -163,17 +163,13 @@ local EQUIP_SLOTS = {
   INVTYPE_TABARD         = true,
 }
 
---- Gather item data from the WoW API for one bag slot.
--- @param bag   number  Bag index (0-4)
--- @param slot  number  Slot index (1-N)
--- @param state table   Player state from getPlayerState()
--- @return table|nil  Item table matching what Verdict.Evaluate expects, or nil
-local function gatherItem(bag, slot, state)
-  local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
-  if not containerInfo then return nil end
-
-  local itemID = containerInfo.itemID
-
+--- Build the item table Verdict.Evaluate expects.
+-- @param itemID        number
+-- @param isBound       boolean  Soulbound right now (false for loot)
+-- @param questInfo     table|nil  C_Container quest info for the slot
+-- @param state         table    Player state from getPlayerState()
+-- @return table|nil  nil when the client hasn't cached the item yet
+local function buildItem(itemID, isBound, questInfo, state)
   local name, _, quality, itemLevel, reqLevel, _, _, _,
   equipSlot, _, _, classID, _, bindType = getItemInfo(itemID)
 
@@ -183,7 +179,6 @@ local function gatherItem(bag, slot, state)
   local isEquippable = equipSlot and EQUIP_SLOTS[equipSlot] or false
 
   -- Quest data: does this item start a quest? Is that quest done?
-  local questInfo = C_Container.GetContainerItemQuestInfo(bag, slot)
   local startsQuestID = questInfo and questInfo.questID or nil
   local startsQuestCompleted = false
   local startsQuestName = nil
@@ -221,7 +216,7 @@ local function gatherItem(bag, slot, state)
     quality = quality,
     itemLevel = itemLevel,
     reqLevel = reqLevel,
-    isBound = containerInfo.isBound,
+    isBound = isBound,
     isEquippable = isEquippable,
     classID = classID,
     bindType = bindType,
@@ -233,6 +228,19 @@ local function gatherItem(bag, slot, state)
     isKept = Bagwise.Overrides.IsKept(itemID),
     isFlagged = Bagwise.Overrides.IsFlagged(itemID),
   }
+end
+
+--- Gather item data from the WoW API for one bag slot.
+-- @param bag   number  Bag index
+-- @param slot  number  Slot index (1-N)
+-- @param state table   Player state from getPlayerState()
+-- @return table|nil  Item table matching what Verdict.Evaluate expects, or nil
+local function gatherItem(bag, slot, state)
+  local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
+  if not containerInfo then return nil end
+
+  return buildItem(containerInfo.itemID, containerInfo.isBound,
+    C_Container.GetContainerItemQuestInfo(bag, slot), state)
 end
 
 --- Build a short string key from the player's profession set.
@@ -250,6 +258,29 @@ local function professionCacheKey(state)
   return table.concat(ids, ",")
 end
 
+--- Evaluate one item through the verdict cache.
+-- Cache key includes bound state because the same itemID can be both
+-- soulbound and not (a BoE you equipped plus another you bought). Verdicts
+-- depend on isBound. Profession key is included because vendor reagent
+-- verdicts depend on which professions the player currently has.
+local function evaluateCached(item, state, profKey)
+  local cacheKey = item.id
+      .. ":" .. tostring(item.isBound)
+      .. ":" .. tostring(item.classID)
+      .. ":" .. tostring(item.startsQuestCompleted)
+      .. ":" .. tostring(item.allQuestObjectivesCompleted)
+      .. ":" .. tostring(item.isKept)
+      .. ":" .. tostring(item.isFlagged)
+      .. ":" .. profKey
+  local cached = verdictCache[cacheKey]
+  if cached then return cached end
+
+  local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
+  local result = { verdict = verdict, reason = reason, detail = detail }
+  verdictCache[cacheKey] = result
+  return result
+end
+
 --- Scan all bag slots, evaluate verdicts, store results.
 function Bagwise.Scanner.ScanAll()
   local state = getPlayerState()
@@ -258,35 +289,14 @@ function Bagwise.Scanner.ScanAll()
   -- Clear slot results, we're rebuilding from scratch
   slotResults = {}
 
-  for bag = 0, 4 do
+  for bag = 0, Bagwise.Bags.LastScanned() do
     local numSlots = C_Container.GetContainerNumSlots(bag)
     for slot = 1, numSlots do
       local key = bag .. ":" .. slot
       local item = gatherItem(bag, slot, state)
 
       if item then
-        -- Cache key includes bound state because the same itemID
-        -- can be both soulbound and not (e.g. a BoE you equipped
-        -- plus another you bought). Verdicts depend on isBound.
-        -- Profession key included because vendor reagent verdicts
-        -- depend on which professions the player currently has.
-        local cacheKey = item.id
-            .. ":" .. tostring(item.isBound)
-            .. ":" .. tostring(item.classID)
-            .. ":" .. tostring(item.startsQuestCompleted)
-            .. ":" .. tostring(item.allQuestObjectivesCompleted)
-            .. ":" .. tostring(item.isKept)
-            .. ":" .. tostring(item.isFlagged)
-            .. ":" .. profKey
-        local cached = verdictCache[cacheKey]
-        if cached then
-          slotResults[key] = cached
-        else
-          local verdict, reason, detail = Bagwise.Verdict.Evaluate(item, state)
-          local result = { verdict = verdict, reason = reason, detail = detail }
-          verdictCache[cacheKey] = result
-          slotResults[key] = result
-        end
+        slotResults[key] = evaluateCached(item, state, profKey)
       else
         slotResults[key] = nil
       end
@@ -368,7 +378,7 @@ function Bagwise.Scanner.CollectInventory()
     uncached = 0,
   }
 
-  for bag = 0, 4 do
+  for bag = 0, Bagwise.Bags.LastScanned() do
     for slot = 1, C_Container.GetContainerNumSlots(bag) do
       local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
       if containerInfo then
@@ -408,4 +418,42 @@ function Bagwise.Scanner.CollectInventory()
   end
 
   return snapshot
+end
+
+--- Verdict for an item that is not in a bag yet (the loot window).
+-- Not soulbound and not a quest starter: nothing has been picked up.
+-- @param itemID number
+-- @return table|nil  { verdict, reason, detail }, or nil until the client has the item
+function Bagwise.Scanner.EvaluateItem(itemID)
+  local state = getPlayerState()
+  local item = buildItem(itemID, false, nil, state)
+  if not item then return nil end
+  return evaluateCached(item, state, professionCacheKey(state))
+end
+
+--- Everything the verdict rules see for one item, for /bagwise why.
+-- @return table|nil  { item, result, faction, quests = { {id,name,faction,done} } }
+function Bagwise.Scanner.Explain(itemID)
+  local state = getPlayerState()
+  local item = buildItem(itemID, false, nil, state)
+  if not item then return nil end
+
+  local quests = {}
+  for _, questID in ipairs(Bagwise.Data.QuestItems and Bagwise.Data.QuestItems[itemID] or {}) do
+    local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
+    quests[#quests + 1] = {
+      id = questID,
+      name = info and info[3],
+      faction = info and info[4],
+      done = C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false,
+    }
+  end
+
+  return {
+    item = item,
+    result = evaluateCached(item, state, professionCacheKey(state)),
+    faction = state.faction,
+    quests = quests,
+    recipeProfessions = professionNamesFor(itemID),
+  }
 end

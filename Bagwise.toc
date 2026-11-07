@@ -6,6 +6,7 @@
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator
 
+src\bags.lua
 src\verdict.lua
 src\scanner.lua
 src\overlay.lua

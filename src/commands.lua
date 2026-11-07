@@ -91,6 +91,7 @@ local COMMAND_HANDLERS = {
     print("  /bagwise list           - Show your kept and flagged items")
     print("  /bagwise status         - Show addon status")
     print("  /bagwise dump           - Copyable list of everything in your bags")
+    print("  /bagwise why [item]     - Show why an item does or doesn't get a dot")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
   end,
@@ -98,6 +99,7 @@ local COMMAND_HANDLERS = {
     say("v" .. Bagwise.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))
     local bagUIs = Bagwise.Overlay.DetectedBagAddons()
     print("  Bag UIs painted: " .. (#bagUIs > 0 and table.concat(bagUIs, ", ") or "none found"))
+    print("  Bags scanned: 0-" .. Bagwise.Bags.LastScanned())
     local counts = Bagwise.Scanner.Counts()
     print("  Scanned items: " .. counts.items .. " (" .. counts.green .. " green, "
       .. counts.yellow .. " yellow)")
@@ -110,6 +112,36 @@ local COMMAND_HANDLERS = {
       .. size(Bagwise.Data.ReagentProfessions) .. " recipe reagents")
     print("  Your lists: " .. size(BagwiseDB.keepList) .. " kept, "
       .. size(BagwiseDB.flagList) .. " flagged")
+  end,
+  why = function(argument)
+    local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
+    if not itemID then
+      say("Usage: /bagwise why [item]")
+      return
+    end
+    local explained = Bagwise.Scanner.Explain(itemID)
+    if not explained then
+      say("item " .. itemID .. " is not loaded by the game yet. Try again in a moment.")
+      return
+    end
+    local item, result = explained.item, explained.result
+    say(item.name .. " (item " .. itemID .. ")")
+    print("  class " .. tostring(item.classID) .. ", quality " .. tostring(item.quality)
+      .. ", your faction " .. tostring(explained.faction))
+    print("  verdict: " .. (result.verdict or "none") .. (result.reason and (" - " .. result.reason) or ""))
+    if #explained.quests == 0 then
+      print("  quests: none use this item")
+    else
+      print("  quests that use this item:")
+      for _, quest in ipairs(explained.quests) do
+        print("    " .. quest.id .. " " .. tostring(quest.name)
+          .. " [" .. (quest.faction or "both") .. "] "
+          .. (quest.done and "done" or "not done"))
+      end
+    end
+    print("  recipes: " .. (#explained.recipeProfessions > 0
+      and table.concat(explained.recipeProfessions, ", ") or "none"))
+    print("  Judged as if looted: soulbound and quest-starter checks need the real bag slot.")
   end,
   dump = function()
     local snapshot = Bagwise.Scanner.CollectInventory()

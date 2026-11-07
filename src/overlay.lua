@@ -11,7 +11,6 @@ local COLORS = {
 }
 
 local DOT_SIZE = 12
-local LAST_SCANNED_BAG = 4 -- keep in step with Scanner.ScanAll
 
 -- ---------------------------------------------------------------------------
 -- Shared helpers
@@ -52,7 +51,7 @@ end
 -- Item buttons are recycled, so every paint decides the dot from scratch.
 local function paintButton(button, bagID, slotID)
   local result = nil
-  if bagID and bagID >= 0 and bagID <= LAST_SCANNED_BAG then
+  if bagID and bagID >= 0 and bagID <= Bagwise.Bags.LastScanned() then
     result = Bagwise.Scanner.GetResult(bagID, slotID)
   end
   -- Never create a dot just to hide it; a recycled button may still hold one.

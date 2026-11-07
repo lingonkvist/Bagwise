@@ -89,8 +89,20 @@ local function widestRangesFirst(entries)
   return copy
 end
 
--- Bags 0-4 are the ones Scanner.ScanAll covers. Keep in step with it.
-local LAST_SCANNED_BAG = 4
+-- Loot window rows live somewhere under LootFrame (named buttons on Classic
+-- Era, list elements on Forever), so walk up from the tooltip's owner.
+local LOOT_ANCESTOR_LIMIT = 6
+
+local function isLootOwner(owner)
+  if not (LootFrame and owner) then return false end
+  local frame = owner
+  for _ = 1, LOOT_ANCESTOR_LIMIT do
+    if frame == LootFrame then return true end
+    frame = frame.GetParent and frame:GetParent() or nil
+    if not frame then return false end
+  end
+  return false
+end
 
 local function bagSlotOf(tooltip)
   local owner = tooltip:GetOwner()
@@ -104,7 +116,7 @@ local function bagSlotOf(tooltip)
   -- says nothing about which bag an item is in.
   if owner.GetBagID then
     local bagID = owner:GetBagID()
-    if bagID and bagID >= 0 and bagID <= LAST_SCANNED_BAG then
+    if bagID and bagID >= 0 and bagID <= Bagwise.Bags.LastScanned() then
       return bagID, slotID
     end
     return nil
@@ -243,8 +255,14 @@ end
 local VERDICT_LINE_WRAP = 45
 
 -- The header names the verdict in words, so it never depends on color alone.
-local VERDICT_HEADINGS = {
+-- In a bag green means you can delete it; in the loot window the item is not
+-- yours yet, so green says you don't need it.
+local BAG_HEADINGS = {
   green  = "Safe to delete",
+  yellow = "Worth a glance",
+}
+local LOOT_HEADINGS = {
+  green  = "Not needed",
   yellow = "Worth a glance",
 }
 
@@ -257,11 +275,11 @@ local function dotEscape(color)
       .. math.floor(color.b * 255 + 0.5) .. "|t"
 end
 
-local function renderVerdict(tooltip, verdict, reason)
+local function renderVerdict(tooltip, verdict, reason, headings)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
-  tooltip:AddLine(dotEscape(color) .. " " .. VERDICT_HEADINGS[verdict],
+  tooltip:AddLine(dotEscape(color) .. " " .. headings[verdict],
     color.r, color.g, color.b)
 
   -- Break long reasons at the last comma before the wrap threshold so
@@ -291,13 +309,21 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local itemID = tonumber(link:match("item:(%d+)"))
   if not itemID then return end
 
-  local bag, slot = bagSlotOf(tooltip)
-  if not bag then
-    tooltip:Show()
-    return
+  local result, headings
+  if isLootOwner(tooltip:GetOwner()) then
+    -- Checked before the bag lookup: a loot row's ID could otherwise match a
+    -- backpack slot holding the same item.
+    result = Bagwise.Scanner.EvaluateItem(itemID)
+    headings = LOOT_HEADINGS
+  else
+    local bag, slot = bagSlotOf(tooltip)
+    if not bag then
+      tooltip:Show()
+      return
+    end
+    result = Bagwise.Scanner.GetResult(bag, slot)
+    headings = BAG_HEADINGS
   end
-
-  local result = Bagwise.Scanner.GetResult(bag, slot)
   local verdict = result and result.verdict
   local reason = result and result.reason
 
@@ -308,7 +334,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       and Bagwise.Data.QuestItems[itemID]
 
   if verdict then
-    renderVerdict(tooltip, verdict, reason)
+    renderVerdict(tooltip, verdict, reason, headings)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)

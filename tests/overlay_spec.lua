@@ -2,6 +2,7 @@
 -- Run with: python3 -I tests/run_tests.py (from the Bagwise/ root)
 
 _G.Bagwise = nil
+dofile("src/bags.lua")
 dofile("src/overlay.lua")
 
 local function makeDotTexture()
@@ -110,5 +111,27 @@ describe("Ellesmere Bags adapter", function()
     installScanner({})
     Bagwise.Overlay.UpdateAll()
     _G.EllesmereUI = nil
+  end)
+end)
+
+
+describe("Reagent bag (Forever)", function()
+  it("paints dots in bag 5 only when the client has a reagent bag slot", function()
+    local button = makeButton(5, 2)
+    installEllesmere({ button })
+    installScanner({ ["5:2"] = { verdict = "green" } })
+
+    _G.NUM_REAGENTBAG_SLOTS = nil
+    Bagwise.Overlay.UpdateAll()
+    local paintedWithout = #button.dots
+
+    _G.NUM_REAGENTBAG_SLOTS = 1
+    Bagwise.Overlay.UpdateAll()
+    _G.NUM_REAGENTBAG_SLOTS = nil
+    _G.EllesmereUI = nil
+
+    assert.are.equal(0, paintedWithout)
+    assert.are.equal(1, #button.dots)
+    assert.is_truthy(button.dots[1].shown)
   end)
 end)
