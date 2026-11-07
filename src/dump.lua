@@ -11,6 +11,7 @@ local COLUMNS = {
   "class", "subclass", "equipSlot", "bind", "bound", "sellCopper",
   "verdict", "reason", "kept", "flagged",
   "recipeProfs", "quests", "startsQuest", "vendorReagent", "classReagent",
+  "wornQualityIlvl",
 }
 
 local function cell(value)
@@ -35,6 +36,14 @@ local function startsQuestCell(row)
   return row.startsQuestID .. (row.startsQuestDone and ":done" or ":open")
 end
 
+local function wornCell(worn)
+  local parts = {}
+  for _, slot in ipairs(worn or {}) do
+    parts[#parts + 1] = slot.quality .. "/" .. slot.itemLevel
+  end
+  return table.concat(parts, ",")
+end
+
 local function rowCells(row)
   return {
     cell(row.bag), cell(row.slot), cell(row.id), cell(row.name),
@@ -46,6 +55,7 @@ local function rowCells(row)
     cell(table.concat(row.recipeProfessions or {}, ",")),
     questCell(row.quests), startsQuestCell(row),
     cell(row.isVendorReagent), cell(row.isClassReagent),
+    wornCell(row.equippedInSlots),
   }
 end
 

@@ -35,6 +35,7 @@ local function onPlayerLogin(self)
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
   self:RegisterEvent("QUEST_TURNED_IN")
   self:RegisterEvent("SKILL_LINES_CHANGED")
+  self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 
   -- Hook bag frame Show so dots appear when bags open.
   -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
@@ -60,6 +61,7 @@ local EVENT_HANDLERS = {
   PLAYER_LEVEL_UP        = invalidateAndRescan,
   QUEST_TURNED_IN        = invalidateAndRescan,
   SKILL_LINES_CHANGED    = invalidateAndRescan,
+  PLAYER_EQUIPMENT_CHANGED = invalidateAndRescan,
 }
 
 frame:SetScript("OnEvent", function(self, event, ...)

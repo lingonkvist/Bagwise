@@ -163,6 +163,43 @@ local EQUIP_SLOTS = {
   INVTYPE_TABARD         = true,
 }
 
+-- equipSlot -> the character inventory slots an item of that type can occupy.
+-- Only armor slots: shirts and tabards are cosmetic, and weapons are left to
+-- later rules. Rings and trinkets have two slots; the item must beat both.
+local INVENTORY_SLOTS = {
+  INVTYPE_HEAD     = { 1 },
+  INVTYPE_NECK     = { 2 },
+  INVTYPE_SHOULDER = { 3 },
+  INVTYPE_CHEST    = { 5 },
+  INVTYPE_ROBE     = { 5 },
+  INVTYPE_WAIST    = { 6 },
+  INVTYPE_LEGS     = { 7 },
+  INVTYPE_FEET     = { 8 },
+  INVTYPE_WRIST    = { 9 },
+  INVTYPE_HAND     = { 10 },
+  INVTYPE_FINGER   = { 11, 12 },
+  INVTYPE_TRINKET  = { 13, 14 },
+  INVTYPE_CLOAK    = { 15 },
+}
+
+--- What the player wears in every slot this item could go in.
+-- @return table|nil  { {quality, itemLevel}, ... }, or nil when a slot is
+--   empty, the item has no comparable slot, or something isn't loaded yet
+local function equippedInSlotsFor(equipSlot)
+  local slots = INVENTORY_SLOTS[equipSlot]
+  if not slots then return nil end
+
+  local worn = {}
+  for _, inventorySlot in ipairs(slots) do
+    local link = GetInventoryItemLink("player", inventorySlot)
+    if not link then return nil end
+    local _, _, quality, itemLevel = getItemInfo(link)
+    if not (quality and itemLevel) then return nil end
+    worn[#worn + 1] = { quality = quality, itemLevel = itemLevel }
+  end
+  return worn
+end
+
 --- Build the item table Verdict.Evaluate expects.
 -- @param itemID        number
 -- @param isBound       boolean  Soulbound right now (false for loot)
@@ -225,6 +262,8 @@ local function buildItem(itemID, isBound, questInfo, state)
     startsQuestName = startsQuestName,
     questItemQuestIDs = questItemQuestIDs,
     allQuestObjectivesCompleted = allQuestObjectivesCompleted,
+    equippedInSlots = (quality == 1 and isEquippable)
+        and equippedInSlotsFor(equipSlot) or nil,
     isKept = Bagwise.Overrides.IsKept(itemID),
     isFlagged = Bagwise.Overrides.IsFlagged(itemID),
   }
@@ -258,6 +297,16 @@ local function professionCacheKey(state)
   return table.concat(ids, ",")
 end
 
+--- Part of the cache key for the gear the item is compared against.
+local function equippedKey(item)
+  if not item.equippedInSlots then return "-" end
+  local parts = {}
+  for _, worn in ipairs(item.equippedInSlots) do
+    parts[#parts + 1] = worn.quality .. "/" .. worn.itemLevel
+  end
+  return table.concat(parts, ",")
+end
+
 --- Evaluate one item through the verdict cache.
 -- Cache key includes bound state because the same itemID can be both
 -- soulbound and not (a BoE you equipped plus another you bought). Verdicts
@@ -271,6 +320,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.allQuestObjectivesCompleted)
       .. ":" .. tostring(item.isKept)
       .. ":" .. tostring(item.isFlagged)
+      .. ":" .. equippedKey(item)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
@@ -408,6 +458,7 @@ function Bagwise.Scanner.CollectInventory()
               and Bagwise.Data.VendorReagents[itemID] ~= nil or false,
           isClassReagent = Bagwise.Data.ClassReagents
               and Bagwise.Data.ClassReagents[itemID] ~= nil or false,
+          equippedInSlots = (quality == 1) and equippedInSlotsFor(equipSlot) or nil,
           isKept = Bagwise.Overrides.IsKept(itemID),
           isFlagged = Bagwise.Overrides.IsFlagged(itemID),
           verdict = result and result.verdict,

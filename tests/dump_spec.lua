@@ -39,6 +39,7 @@ describe("Dump.Format", function()
         reason = "Vendor reagent", recipeProfessions = { "Tailoring", "First Aid" },
         quests = { { id = 100, done = true }, { id = 101, done = false, faction = "H" } },
         isVendorReagent = false, isClassReagent = false,
+        equippedInSlots = { { quality = 2, itemLevel = 20 } },
       },
     }), {})
 
@@ -54,6 +55,7 @@ describe("Dump.Format", function()
     assert.are.equal("green", row[16])
     assert.are.equal("Tailoring,First Aid", row[20])
     assert.are.equal("100:done,101:open:H", row[21])
+    assert.are.equal("2/20", row[25])
   end)
 
   it("leaves missing values empty and writes booleans as 1 and 0", function()

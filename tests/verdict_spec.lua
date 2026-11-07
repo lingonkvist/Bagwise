@@ -884,3 +884,80 @@ describe("Verdict.QuestsForFaction", function()
     assert.are.equal(0, #kept)
   end)
 end)
+
+describe("Outgeared white armor", function()
+  local state = { level = 30, professionNames = {}, professionSkillLines = {} }
+
+  local function whiteArmor(overrides)
+    local item = {
+      id = 1001, quality = 1, isEquippable = true, classID = 4,
+      itemLevel = 12, isBound = false,
+      equippedInSlots = { { quality = 2, itemLevel = 20 } },
+    }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  it("is green when every slot holds a better-than-white item of equal or higher level", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(whiteArmor(), state)
+
+    assert.are.equal("green", verdict)
+    assert.are.equal("Worse than your equipped gear", reason)
+  end)
+
+  it("is silent when the equipped item is also white", function()
+    local item = whiteArmor({ equippedInSlots = { { quality = 1, itemLevel = 30 } } })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("is silent when the equipped item has a lower item level", function()
+    local item = whiteArmor({ equippedInSlots = { { quality = 2, itemLevel = 8 } } })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("is silent when the slot is empty or unknown", function()
+    local unknown = whiteArmor()
+    unknown.equippedInSlots = nil
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(unknown, state))
+    assert.is_nil(Bagwise.Verdict.Evaluate(whiteArmor({ equippedInSlots = {} }), state))
+  end)
+
+  it("needs both ring or trinket slots to be better", function()
+    local oneWeak = whiteArmor({
+      equippedInSlots = { { quality = 2, itemLevel = 20 }, { quality = 1, itemLevel = 5 } },
+    })
+    local bothBetter = whiteArmor({
+      equippedInSlots = { { quality = 2, itemLevel = 20 }, { quality = 3, itemLevel = 25 } },
+    })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(oneWeak, state))
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(bothBetter, state)))
+  end)
+
+  it("leaves green and better items alone", function()
+    local green = whiteArmor({ quality = 2 })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(green, state))
+  end)
+
+  it("leaves weapons alone", function()
+    local weapon = whiteArmor({ classID = 2 })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(weapon, state))
+  end)
+
+  it("needs an item level to compare", function()
+    local noLevel = whiteArmor({ itemLevel = 0 })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(noLevel, state))
+  end)
+
+  it("never overrides a kept item", function()
+    local kept = whiteArmor({ isKept = true })
+
+    assert.is_nil(Bagwise.Verdict.Evaluate(kept, state))
+  end)
+end)

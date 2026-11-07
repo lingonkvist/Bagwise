@@ -196,8 +196,37 @@ local function evaluateNoRecipeUse(item, state)
   return "green", "Not used for any quest or recipe"
 end
 
+local COMMON_QUALITY = 1
+local UNCOMMON_QUALITY = 2
+local ARMOR_CLASS_ID = 4
+
+-- A white piece of armor you have already out-geared. Every slot it could go
+-- in must hold something better than white and at least as high in item
+-- level, so the white can never be the upgrade. An empty slot, or an item the
+-- game hasn't loaded yet, means no verdict (the scanner leaves
+-- equippedInSlots nil then). Weapons are left out: which weapon you want
+-- depends on proficiencies and class, not just level.
+local function evaluateOutgearedWhite(item)
+  if item.quality ~= COMMON_QUALITY then return nil end
+  if not item.isEquippable or item.classID ~= ARMOR_CLASS_ID then return nil end
+  if not item.itemLevel or item.itemLevel <= 0 then return nil end
+
+  local equipped = item.equippedInSlots
+  if not equipped or #equipped == 0 then return nil end
+
+  for i = 1, #equipped do
+    local worn = equipped[i]
+    if worn.quality < UNCOMMON_QUALITY or worn.itemLevel < item.itemLevel then
+      return nil
+    end
+  end
+
+  return "green", "Worse than your equipped gear"
+end
+
 local RULES = {
   evaluateLevelGap,
+  evaluateOutgearedWhite,
   evaluateCompletedQuestStarter,
   evaluateQuestObjective,
   evaluateVendorReagent,
