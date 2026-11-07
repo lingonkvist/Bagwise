@@ -297,3 +297,104 @@ end
 function Bagwise.Scanner.ClearCache()
   verdictCache = {}
 end
+
+--- Count scanned slots by verdict (for /bagwise status).
+-- @return table { items = n, green = n, yellow = n }
+function Bagwise.Scanner.Counts()
+  local counts = { items = 0, green = 0, yellow = 0 }
+  for _, result in pairs(slotResults) do
+    counts.items = counts.items + 1
+    if result.verdict == "green" then counts.green = counts.green + 1 end
+    if result.verdict == "yellow" then counts.yellow = counts.yellow + 1 end
+  end
+  return counts
+end
+
+local function sortedProfessionNames(state)
+  local names = {}
+  for name in pairs(state.professionNames) do names[#names + 1] = name end
+  table.sort(names)
+  return names
+end
+
+local function questProgressOf(questIDs)
+  local progress = {}
+  for _, questID in ipairs(questIDs or {}) do
+    progress[#progress + 1] = {
+      id = questID,
+      done = C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false,
+    }
+  end
+  return progress
+end
+
+local function professionNamesFor(itemID)
+  local entries = Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[itemID]
+  local names = {}
+  for _, entry in ipairs(entries or {}) do names[#names + 1] = entry[1] end
+  return names
+end
+
+--- Snapshot of everything in bags 0-4 plus the player, for /bagwise dump.
+-- Raw facts only; Bagwise.Dump turns it into text. Rescans first so the
+-- verdict columns match what the bags show right now.
+-- @return table { player = {...}, rows = { ... }, uncached = n }
+function Bagwise.Scanner.CollectInventory()
+  Bagwise.Scanner.ScanAll()
+  local state = getPlayerState()
+  local factionGroup = UnitFactionGroup and UnitFactionGroup("player") or nil
+
+  local snapshot = {
+    player = {
+      class = state.playerClass,
+      race = state.race,
+      faction = factionGroup,
+      level = state.level,
+      professions = sortedProfessionNames(state),
+    },
+    rows = {},
+    uncached = 0,
+  }
+
+  for bag = 0, 4 do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) do
+      local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
+      if containerInfo then
+        local itemID = containerInfo.itemID
+        local name, _, quality, itemLevel, reqLevel, _, subClassName, maxStack,
+        equipSlot, _, sellPrice, classID, subClassID, bindType = getItemInfo(itemID)
+        if not name then snapshot.uncached = snapshot.uncached + 1 end
+
+        local questInfo = C_Container.GetContainerItemQuestInfo(bag, slot)
+        local startsQuestID = questInfo and questInfo.questID or nil
+        local result = Bagwise.Scanner.GetResult(bag, slot)
+
+        snapshot.rows[#snapshot.rows + 1] = {
+          bag = bag, slot = slot, id = itemID, name = name,
+          count = containerInfo.stackCount, maxStack = maxStack,
+          quality = quality, itemLevel = itemLevel, reqLevel = reqLevel,
+          classID = classID, subClassID = subClassID, equipSlot = equipSlot,
+          bindType = bindType, isBound = containerInfo.isBound,
+          sellPrice = sellPrice,
+          startsQuestID = startsQuestID,
+          startsQuestDone = startsQuestID
+              and C_QuestLog.IsQuestFlaggedCompleted(startsQuestID) or nil,
+          quests = questProgressOf(Bagwise.Data.QuestItems
+              and Bagwise.Data.QuestItems[itemID]),
+          recipeProfessions = professionNamesFor(itemID),
+          isVendorReagent = Bagwise.Data.VendorReagents
+              and Bagwise.Data.VendorReagents[itemID] ~= nil or false,
+          isClassReagent = Bagwise.Data.ClassReagents
+              and Bagwise.Data.ClassReagents[itemID] ~= nil or false,
+          isKept = Bagwise.Overrides.IsKept(itemID),
+          isFlagged = Bagwise.Overrides.IsFlagged(itemID),
+          verdict = result and result.verdict,
+          reason = result and result.reason,
+        }
+      end
+    end
+  end
+
+  return snapshot
+end

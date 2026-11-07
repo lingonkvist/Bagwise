@@ -107,7 +107,7 @@ describe("tooltip basic output", function()
     assert.are.equal(0.9, tt.lines[1].g)
   end)
 
-  it("header: dot and verdict in words in the verdict color, detail in plain text", function()
+  it("header: dot and verdict in words in the verdict color, detail in info blue", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {
       GetResult = function()
@@ -125,8 +125,8 @@ describe("tooltip basic output", function()
     assert.are.equal(1.0, tt.lines[1].r)
     assert.are.equal(0.9, tt.lines[1].g)
     assert.are.equal("Below your level", tt.lines[2].text)
-    assert.are.equal(0.85, tt.lines[2].r)
-    assert.are.equal(0.85, tt.lines[2].b)
+    assert.are.equal(0.5, tt.lines[2].r)
+    assert.are.equal(1.0, tt.lines[2].b)
   end)
 
   it("never adds a blank spacer line", function()

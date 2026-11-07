@@ -34,6 +34,20 @@ function Bagwise.Commands.ParseItemID(argument, lookupLink)
   return nil
 end
 
+local getAddOnMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+
+--- The version from the TOC, so it lives in one place.
+function Bagwise.Commands.Version()
+  local version = getAddOnMetadata and getAddOnMetadata("Bagwise", "Version")
+  return version or "unknown"
+end
+
+local function gameBuild()
+  if not GetBuildInfo then return nil end
+  local version, build = GetBuildInfo()
+  return version .. " (" .. tostring(build) .. ")"
+end
+
 local function itemNameOf(itemID)
   local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local name = getInfo and getInfo(itemID)
@@ -76,11 +90,33 @@ local COMMAND_HANDLERS = {
     print("  /bagwise reset [item]   - Return this item to the normal rules")
     print("  /bagwise list           - Show your kept and flagged items")
     print("  /bagwise status         - Show addon status")
+    print("  /bagwise dump           - Copyable list of everything in your bags")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
   end,
   status = function()
-    say("v0.3.0 running.")
+    say("v" .. Bagwise.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))
+    local bagUIs = Bagwise.Overlay.DetectedBagAddons()
+    print("  Bag UIs painted: " .. (#bagUIs > 0 and table.concat(bagUIs, ", ") or "none found"))
+    local counts = Bagwise.Scanner.Counts()
+    print("  Scanned items: " .. counts.items .. " (" .. counts.green .. " green, "
+      .. counts.yellow .. " yellow)")
+    local function size(tbl)
+      local n = 0
+      for _ in pairs(tbl or {}) do n = n + 1 end
+      return n
+    end
+    print("  Data: " .. size(Bagwise.Data.QuestItems) .. " quest items, "
+      .. size(Bagwise.Data.ReagentProfessions) .. " recipe reagents")
+    print("  Your lists: " .. size(BagwiseDB.keepList) .. " kept, "
+      .. size(BagwiseDB.flagList) .. " flagged")
+  end,
+  dump = function()
+    local snapshot = Bagwise.Scanner.CollectInventory()
+    local text = Bagwise.Dump.Format(snapshot,
+      { version = Bagwise.Commands.Version(), build = gameBuild() })
+    Bagwise.Dump.Show(text)
+    say(#snapshot.rows .. " items listed. Ctrl+C in the window to copy.")
   end,
   keep = overrideCommand("/bagwise keep [item]",
     Bagwise.Overrides.AddKeep, "%s will never get a dot."),

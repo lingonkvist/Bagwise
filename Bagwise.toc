@@ -12,6 +12,7 @@ src\overlay.lua
 src\tooltip.lua
 src\menu.lua
 src\overrides.lua
+src\dump.lua
 src\commands.lua
 data\quests.lua
 data\recipes.lua

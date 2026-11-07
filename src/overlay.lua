@@ -226,6 +226,19 @@ function Bagwise.Overlay.BagWindows()
   return windows
 end
 
+--- Which bag UIs Bagwise can currently paint (for /bagwise status).
+-- @return table  list of names
+function Bagwise.Overlay.DetectedBagAddons()
+  local found = {}
+  if ContainerFrameCombinedBags then found[#found + 1] = "Blizzard combined bags" end
+  if ContainerFrame1 then found[#found + 1] = "Blizzard separate bags" end
+  if Baganator and Baganator.API and Baganator.API.RegisterCornerWidget then
+    found[#found + 1] = "Baganator"
+  end
+  if ellesmereSlotPool() then found[#found + 1] = "EllesmereUI Bags" end
+  return found
+end
+
 function Bagwise.Overlay.Init()
   if not initBaganator() then
     -- If Baganator isn't loaded yet, wait for its ADDON_LOADED event.
