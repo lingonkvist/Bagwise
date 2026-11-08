@@ -5,6 +5,7 @@
 ## Version: 0.4.2
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator
+## X-Curse-Project-ID: 1784913
 
 src\bags.lua
 src\safety.lua
