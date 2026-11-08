@@ -111,6 +111,31 @@ describe("Scanner: make room", function()
   end)
 end)
 
+describe("Scanner: robustness", function()
+  it("scans a quest-starting item on a client with no quest title function", function()
+    setUp({ [0] = { { id = 300 }, { id = 400 } } }, {})
+    _G.C_QuestLog = { IsQuestFlaggedCompleted = function() return false end }
+    _G.C_Container.GetContainerItemQuestInfo = function(bag, slot)
+      if slot == 1 then return { questID = 77 } end
+    end
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.LastError())
+    assert.is_truthy(Bagwise.Scanner.GetResult(0, 2))
+  end)
+
+  it("one item that raises an error does not take the other dots with it", function()
+    setUp({ [0] = { { id = 300 }, { id = 400 } } }, {})
+    local real = _G.C_Container.GetContainerItemInfo
+    _G.C_Container.GetContainerItemInfo = function(bag, slot)
+      if slot == 1 then error("boom") end
+      return real(bag, slot)
+    end
+    Bagwise.Scanner.ScanAll()
+    assert.is_truthy(Bagwise.Scanner.LastError():find("boom", 1, true))
+    assert.is_truthy(Bagwise.Scanner.GetResult(0, 2))
+  end)
+end)
+
 describe("Scanner: looted slots", function()
   it("leaves a just-looted slot out of the loot list", function()
     setUp({ [0] = { { id = 100, count = 20 }, { id = 300 } } }, { [0] = 0 },

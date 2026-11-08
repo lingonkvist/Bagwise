@@ -229,6 +229,16 @@ end
 -- @param state         table    Player state from getPlayerState()
 -- @param count         number|nil  Stack size (nil counts as 1)
 -- @return table|nil  nil when the client hasn't cached the item yet
+-- Classic Era calls it GetQuestInfo, newer clients GetTitleForQuestID, and a
+-- client may have neither. A missing name must never stop a scan.
+local function questTitle(questID)
+  local lookup = C_QuestLog and (C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo)
+  if not lookup then return nil end
+  local ok, title = pcall(lookup, questID)
+  if ok and type(title) == "string" then return title end
+  return nil
+end
+
 local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   local name, _, quality, itemLevel, reqLevel, _, _, maxStack,
   equipSlot, _, sellPrice, classID, subClassID, bindType = getItemInfo(itemID)
@@ -245,7 +255,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
 
   if startsQuestID then
     startsQuestCompleted = C_QuestLog.IsQuestFlaggedCompleted(startsQuestID)
-    startsQuestName = C_QuestLog.GetQuestInfo(startsQuestID)
+    startsQuestName = questTitle(startsQuestID)
   end
 
   -- Quest-objective data: does this item appear in the QuestItems table?
@@ -422,6 +432,13 @@ local lootPieces = {}
 local lootPlan = { take = {}, deletes = {}, active = false }
 local lastFreeSlots, lastJunkCount = 0, 0
 
+local lastScanError = nil
+
+--- The last error a bag slot raised while scanning, or nil.
+function Bagwise.Scanner.LastError()
+  return lastScanError
+end
+
 --- Scan all bag slots, evaluate verdicts, store results.
 local function scanAllSlots()
   local state = getPlayerState()
@@ -429,6 +446,7 @@ local function scanAllSlots()
 
   -- Clear slot results, we're rebuilding from scratch
   slotResults = {}
+  lastScanError = nil
   local poorQuality = {}
   local junkEntries = {}
   local junkCandidates = {}
@@ -442,7 +460,12 @@ local function scanAllSlots()
     local numSlots = C_Container.GetContainerNumSlots(bag)
     for slot = 1, numSlots do
       local key = bag .. ":" .. slot
-      local item = gatherItem(bag, slot, state)
+      -- One item that fails must not take every other dot with it.
+      local gathered, item = pcall(gatherItem, bag, slot, state)
+      if not gathered then
+        lastScanError = "bag " .. bag .. " slot " .. slot .. ": " .. tostring(item)
+        item = nil
+      end
 
       if item then
         local maxStack = item.maxStack or 1

@@ -101,6 +101,7 @@ local function reportDetails()
     return counts.green .. " green, " .. counts.yellow .. " yellow, " .. counts.items .. " items"
   end)
   add("professions", function() return Bagwise.Scanner.ProfessionSummary() end)
+  add("lastScanError", function() return Bagwise.Scanner.LastError() or "none" end)
   add("makeRoom", function()
     local plan = Bagwise.Scanner.MakeRoomSummary()
     return "lootItems " .. plan.lootItems .. ", freeSlots " .. plan.freeSlots
