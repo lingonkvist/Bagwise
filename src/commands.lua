@@ -100,6 +100,7 @@ local function reportDetails()
     local counts = Bagwise.Scanner.Counts()
     return counts.green .. " green, " .. counts.yellow .. " yellow, " .. counts.items .. " items"
   end)
+  add("professions", function() return Bagwise.Scanner.ProfessionSummary() end)
   add("makeRoom", function()
     local plan = Bagwise.Scanner.MakeRoomSummary()
     return "lootItems " .. plan.lootItems .. ", freeSlots " .. plan.freeSlots

@@ -167,6 +167,20 @@ describe("Scanner: recipes", function()
     assert.are.equal("Bank it, needs Alchemy 225", result.reason)
   end)
 
+  it("finds secondary professions the modern API leaves out", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    -- GetProfessions knows cooking, but not first aid, which the Skills tab has.
+    _G.GetProfessions = function() return nil, nil, nil, nil, 1 end
+    _G.GetProfessionInfo = function() return "Cooking", 0, 40, 75, 0, 0, 185 end
+    giveSkills({ { "Cooking", 40 }, { "First Aid", 120 } })
+    giveTooltip("Requires Cooking (200)")
+    Bagwise.Scanner.ScanAll()
+    local summary = Bagwise.Scanner.ProfessionSummary()
+    assert.is_truthy(summary:find("Cooking 40", 1, true))
+    assert.is_truthy(summary:find("First Aid 120", 1, true))
+    _G.GetProfessions = nil
+  end)
+
   it("stays quiet when the skill is within reach", function()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
     giveSkills({ { "Alchemy", 100 } })

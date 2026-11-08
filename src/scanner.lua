@@ -56,28 +56,30 @@ local PROFESSION_NAME_TO_SKILL_LINE = {
 local function gatherProfessionSkillLines()
   local skillLines = {}
   local ranks = {} -- [skillLineID] = current skill rank, when the client says
+  local sources = {}
 
-  -- Path A: Modern profession API
-  local prof1, prof2, _, fishing, cooking
+  -- Path A: Modern profession API. Take every index it returns instead of
+  -- trusting a fixed order: clients differ on where fishing, cooking and first
+  -- aid sit, and some leave first aid out.
+  local foundByModernApi = false
   if GetProfessions and GetProfessionInfo then
-    prof1, prof2, _, fishing, cooking = GetProfessions()
-  end
-  if prof1 or prof2 or fishing or cooking then
-    local slots = { prof1, prof2, fishing, cooking }
-    for _, index in ipairs(slots) do
+    local packed = { GetProfessions() }
+    for position = 1, 8 do
+      local index = packed[position]
       if index then
-        local name, texture, rank, maxRank, numSpells, spellOffset, skillLine =
-            GetProfessionInfo(index)
+        local _, _, rank, _, _, _, skillLine = GetProfessionInfo(index)
         if skillLine then
           skillLines[skillLine] = true
           ranks[skillLine] = rank
+          foundByModernApi = true
         end
       end
     end
-    return skillLines, true, ranks
   end
+  if foundByModernApi then sources[#sources + 1] = "GetProfessions" end
 
-  -- Path B: Fallback for Classic Era OR Forever
+  -- Path B: the Skills tab, always read as well. It lists the secondary skills
+  -- (cooking, first aid, fishing) too, so it fills in whatever path A missed.
   local getNum = GetNumSkillLines or (C_SkillInfo and C_SkillInfo.GetNumSkillLines)
   local getInfo = GetSkillLineInfo or (C_SkillInfo and C_SkillInfo.GetSkillLineInfo)
 
@@ -96,13 +98,14 @@ local function gatherProfessionSkillLines()
         local id = PROFESSION_NAME_TO_SKILL_LINE[name]
         if id then
           skillLines[id] = true
-          ranks[id] = rank
+          if ranks[id] == nil then ranks[id] = rank end
+          if not sources.skills then sources.skills = true; sources[#sources + 1] = "Skills tab" end
         end
       end
     end
   end
 
-  return skillLines, complete, ranks
+  return skillLines, complete or foundByModernApi, ranks, table.concat(sources, " + ")
 end
 
 --- Gather player state once per scan.
@@ -113,7 +116,7 @@ local function getPlayerState()
   local level = UnitLevel("player")
   local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
 
-  local skillLines, professionsKnown, ranksByID = gatherProfessionSkillLines()
+  local skillLines, professionsKnown, ranksByID, professionSource = gatherProfessionSkillLines()
 
   -- Build reverse lookup: English profession name -> true.
   -- Used by verdict rules that match against ReagentProfessions data
@@ -140,6 +143,7 @@ local function getPlayerState()
     professionNames = professionNames,
     professionRanks = professionRanks,
     professionsKnown = professionsKnown,
+    professionSource = professionSource,
   }
 end
 
@@ -539,6 +543,19 @@ function Bagwise.Scanner.ScanAll()
   end
   lastSignature = signature
   resultsChanged = changed
+end
+
+--- What Bagwise thinks your professions are, for /bagwise report.
+function Bagwise.Scanner.ProfessionSummary()
+  local state = getPlayerState()
+  local parts = {}
+  for name in pairs(state.professionNames or {}) do
+    parts[#parts + 1] = name .. " " .. tostring(state.professionRanks and state.professionRanks[name] or "?")
+  end
+  table.sort(parts)
+  local list = #parts > 0 and table.concat(parts, ", ") or "none"
+  return list .. " (read from " .. ((state.professionSource or "") ~= "" and state.professionSource or "nowhere")
+    .. (state.professionsKnown == false and ", incomplete" or "") .. ")"
 end
 
 --- Did the last scan change anything that is drawn?
