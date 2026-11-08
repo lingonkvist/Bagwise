@@ -41,6 +41,7 @@ QUEST_NAME = 1
 STARTED_BY = 2        # table: {creatureStart, objectStart, itemStart}
 ITEM_START = 3        # sub-index within startedBy
 QUEST_LEVEL = 5       # int: quest level (not reqLevel)
+REQUIRED_RACES = 6    # int: race bitmask, 0 or nil = any race
 
 OBJECTIVES = 10       # table: {creature, object, item, reputation, ...}
 ITEM_OBJECTIVE = 3    # sub-index within objectives
@@ -279,18 +280,43 @@ def extract_item_objectives(obj_field: str) -> list[int]:
 # Extraction
 # ---------------------------------------------------------------------------
 
+# Race bits. Forever adds one new Alliance race (bit 32) and one new Horde
+# race (bit 33) on top of the Classic eight, so a faction-wide quest carries
+# 4294967373 (Alliance) or 8589934770 (Horde) instead of Classic's 77 / 178.
+ALLIANCE_RACES = 0x1 | 0x4 | 0x8 | 0x40 | (1 << 32)
+HORDE_RACES = 0x2 | 0x10 | 0x20 | 0x80 | (1 << 33)
+
+
+def faction_of(required_races: int | None) -> str | None:
+    """'A' or 'H' when only that faction's races can take the quest, else None.
+
+    A quest limited to a few races of one faction (say Undead only) still
+    counts for that faction. Anything open to both factions, or to a mix,
+    is None.
+    """
+    if not required_races:
+        return None
+    if required_races & ~ALLIANCE_RACES == 0:
+        return 'A'
+    if required_races & ~HORDE_RACES == 0:
+        return 'H'
+    return None
+
+
 # Raw QuestieDB file:    [123] = {...},
 # Merged Forever export: quest[123]={...}
 QUEST_LINE_RE = re.compile(r'^(?:quest)?\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
-    __slots__ = ('name', 'level', 'zone')
+    __slots__ = ('name', 'level', 'zone', 'faction')
 
-    def __init__(self, name: str | None, level: int | None, zone: str | None):
+    def __init__(self, name: str | None, level: int | None, zone: str | None,
+                 faction: str | None = None):
         self.name = name
         self.level = level
         self.zone = zone
+        self.faction = faction
 
 
 def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, QuestMeta]]:
@@ -333,7 +359,11 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
             if zone_id is not None and zone_id > 0:
                 zone = AREA_ID_TO_ZONE.get(zone_id)
 
-        quest_meta[quest_id] = QuestMeta(name, level, zone)
+        faction = None
+        if len(fields) >= REQUIRED_RACES:
+            faction = faction_of(parse_int(fields[REQUIRED_RACES - 1]))
+
+        quest_meta[quest_id] = QuestMeta(name, level, zone, faction)
 
     return quests, quest_meta
 
@@ -397,7 +427,8 @@ def format_lua(item_quests: dict[int, set[int]],
         -- Questie data is licensed under GPL-3.0.  See COPYING and source/ATTRIBUTION.md.
         --
         -- QuestItems: item ID -> {{questID, ...}}
-        -- QuestInfo:  quest ID -> {{level, "zoneName"}} for tooltip display
+        -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction}} for tooltips and
+        --             faction filtering (faction is "A", "H" or omitted for both)
         --
         -- {len(item_quests)} items across {quest_count} quests.
 
@@ -439,7 +470,8 @@ def format_lua(item_quests: dict[int, set[int]],
         escaped_name = meta.name.replace('\\', '\\\\').replace('"', '\\"') if meta.name else None
         name_str = f'"{escaped_name}"' if escaped_name else "nil"
         name_comment = f" -- {meta.name}" if meta.name else ""
-        lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str} }},{name_comment}")
+        faction_str = f', "{meta.faction}"' if meta.faction else ""
+        lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str}{faction_str} }},{name_comment}")
         info_count += 1
 
     lines.append(FOOTER)

@@ -7,6 +7,7 @@ dofile("data/vendor_reagents.lua")
 dofile("data/reagent_professions.lua")
 dofile("data/class_reagents.lua")
 dofile("data/quest_items.lua")
+dofile("src/safety.lua")
 dofile("src/verdict.lua")
 
 describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
@@ -911,12 +912,6 @@ describe("Outgeared white armor", function()
     assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
   end)
 
-  it("is silent when the equipped item has a lower item level", function()
-    local item = whiteArmor({ equippedInSlots = { { quality = 2, itemLevel = 8 } } })
-
-    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
-  end)
-
   it("is silent when the slot is empty or unknown", function()
     local unknown = whiteArmor()
     unknown.equippedInSlots = nil
@@ -947,12 +942,6 @@ describe("Outgeared white armor", function()
     local weapon = whiteArmor({ classID = 2 })
 
     assert.is_nil(Bagwise.Verdict.Evaluate(weapon, state))
-  end)
-
-  it("needs an item level to compare", function()
-    local noLevel = whiteArmor({ itemLevel = 0 })
-
-    assert.is_nil(Bagwise.Verdict.Evaluate(noLevel, state))
   end)
 
   it("never overrides a kept item", function()
@@ -1227,5 +1216,139 @@ describe("Reason wording", function()
     assert.are.equal("Cheapest gray, sells for 5c", Bagwise.Verdict.PoorQualityReason(5, true))
     assert.are.equal("Cheapest gray, no vendor value", Bagwise.Verdict.PoorQualityReason(0, true))
     assert.are.equal("Poor quality, sells for 5c", Bagwise.Verdict.PoorQualityReason(5, false))
+  end)
+end)
+
+describe("Level gap and item level", function()
+  local state = { level = 18, professions = {}, class = "WARRIOR" }
+  local function gear(reqLevel, itemLevel)
+    return { id = 990100, isBound = true, isEquippable = true, quality = 2, classID = 4,
+             reqLevel = reqLevel, itemLevel = itemLevel, count = 1 }
+  end
+
+  it("does not call gear low level when its item level is above the player's level", function()
+    local verdict = Bagwise.Verdict.Evaluate(gear(8, 24), state)
+    assert.is_nil(verdict)
+  end)
+
+  it("still flags gear whose requirement and item level are both well below", function()
+    local verdict = Bagwise.Verdict.Evaluate(gear(5, 9), state)
+    assert.are.equal("yellow", verdict)
+  end)
+end)
+
+describe("Reagents are never made safe by a finished quest", function()
+  local state = { level = 30, professions = {}, class = "DRUID" }
+
+  it("leaves an Alchemy herb that finished quests also use without a verdict", function()
+    Bagwise.Data.ReagentProfessions = { [2449] = { { "Alchemy", 9, 20, 175 } } }
+    local verdict = Bagwise.Verdict.Evaluate({
+      id = 2449, classID = 7, quality = 1, count = 1,
+      questItemQuestIDs = { 6123, 6128 }, allQuestObjectivesCompleted = true,
+    }, state)
+    assert.is_nil(verdict)
+    Bagwise.Data.ReagentProfessions = {}
+  end)
+
+  it("still marks a plain quest item green once its quests are done", function()
+    Bagwise.Data.ReagentProfessions = {}
+    local verdict = Bagwise.Verdict.Evaluate({
+      id = 990200, classID = 12, quality = 1, count = 1,
+      questItemQuestIDs = { 1 }, allQuestObjectivesCompleted = true,
+    }, state)
+    assert.are.equal("green", verdict)
+  end)
+end)
+
+describe("Level gap: rare gear and vendor wording", function()
+  local state = { level = 40, professions = {}, class = "WARRIOR" }
+  local function gear(quality)
+    return { id = 990400, isBound = true, isEquippable = true, quality = quality, classID = 4,
+             reqLevel = 10, itemLevel = 12, sellPrice = 300, count = 1 }
+  end
+
+  it("is green and tagged for vendoring when ordinary gear is far below", function()
+    local verdict, _, _, tag = Bagwise.Verdict.Evaluate(gear(2), state)
+    assert.are.equal("green", verdict)
+    assert.are.equal(Bagwise.Verdict.VENDOR_TAG, tag)
+  end)
+
+  it("is only yellow for rare and better gear, however far below", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(gear(3), state)))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(gear(4), state)))
+  end)
+end)
+
+
+describe("A yellow hint does not hide a later green", function()
+  it("white boots below your level are green when blue boots outclass them", function()
+    local item = { id = 33900, isBound = true, isEquippable = true, classID = 4,
+      quality = 1, reqLevel = 8, itemLevel = 10,
+      equippedInSlots = { { quality = 3, itemLevel = 20 } } }
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, { class = "Warrior", race = "Tauren", level = 20 })
+    assert.are.equal("green", verdict)
+    assert.are.equal("Worse than your equipped gear", reason)
+  end)
+
+  it("stays yellow when nothing else is certain", function()
+    local item = { id = 33901, isBound = true, isEquippable = true, classID = 4,
+      quality = 1, reqLevel = 8, itemLevel = 10 }
+    local verdict = Bagwise.Verdict.Evaluate(item, { class = "Warrior", race = "Tauren", level = 20 })
+    assert.are.equal("yellow", verdict)
+  end)
+end)
+
+describe("White armor against any green or better you wear", function()
+  local state = { class = "Warrior", race = "Tauren", level = 20 }
+  local function white(overrides)
+    local item = { id = 33950, isBound = false, isEquippable = true, classID = 4,
+      quality = 1, reqLevel = 10, itemLevel = 25,
+      equippedInSlots = { { quality = 2, itemLevel = 8 } } }
+    for k, v in pairs(overrides or {}) do item[k] = v end
+    return item
+  end
+
+  it("is green even when the white has the higher item level", function()
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(white(), state)))
+  end)
+
+  it("is not green against a white or grey you wear", function()
+    local item = white({ equippedInSlots = { { quality = 1, itemLevel = 30 } } })
+    assert.is_nil((Bagwise.Verdict.Evaluate(item, state)))
+  end)
+
+  it("is not green when you cannot wear it yet", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(white({ reqLevel = 25 }), state)))
+  end)
+end)
+
+describe("Vendor reagents when the professions could not be read", function()
+  local VENDOR_ID
+  for id in pairs(Bagwise.Data.VendorReagents) do VENDOR_ID = id; break end
+
+  it("stays silent instead of calling a profession you may have unneeded", function()
+    local item = { id = VENDOR_ID, classID = 7, quality = 1, count = 1, sellPrice = 5 }
+    local base = { class = "Warrior", playerClass = "WARRIOR", level = 20,
+      professionNames = {}, professionSkillLines = {} }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, base)))
+
+    base.professionsKnown = false
+    assert.is_nil((Bagwise.Verdict.Evaluate(item, base)))
+  end)
+end)
+
+describe("Ordinary items that a finished quest also asked for", function()
+  local state = { class = "Rogue", playerClass = "ROGUE", level = 30 }
+
+  it("get no verdict, so a tool or mat the quest used is left alone", function()
+    local tools = { id = 990401, classID = 15, quality = 1, sellPrice = 5, count = 1,
+      questItemQuestIDs = { 1 }, allQuestObjectivesCompleted = true }
+    assert.is_nil((Bagwise.Verdict.Evaluate(tools, state)))
+  end)
+
+  it("still go green when the game's own quest item is finished with", function()
+    local scroll = { id = 990402, classID = 12, quality = 1, sellPrice = 0, count = 1,
+      questItemQuestIDs = { 1 }, allQuestObjectivesCompleted = true }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(scroll, state)))
   end)
 end)

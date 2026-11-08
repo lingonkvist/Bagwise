@@ -92,6 +92,8 @@ local COMMAND_HANDLERS = {
     print("  /bagwise status         - Show addon status")
     print("  /bagwise dump           - Copyable list of everything in your bags")
     print("  /bagwise why [item]     - Show why an item does or doesn't get a dot")
+    print("  /bagwise loot           - Explain what the make-room plan sees (loot window open)")
+    print("  /bagwise glow           - Test the delete glow on your first item")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
   end,
@@ -110,6 +112,7 @@ local COMMAND_HANDLERS = {
     end
     print("  Data: " .. size(Bagwise.Data.QuestItems) .. " quest items, "
       .. size(Bagwise.Data.ReagentProfessions) .. " recipe reagents")
+    print("  Safety checks: " .. table.concat(Bagwise.Safety.Names(), ", "))
     print("  Your lists: " .. size(BagwiseDB.keepList) .. " kept, "
       .. size(BagwiseDB.flagList) .. " flagged")
   end,
@@ -129,6 +132,17 @@ local COMMAND_HANDLERS = {
     print("  class " .. tostring(item.classID) .. ", quality " .. tostring(item.quality)
       .. ", your faction " .. tostring(explained.faction))
     print("  verdict: " .. (result.verdict or "none") .. (result.reason and (" - " .. result.reason) or ""))
+    -- A green that Safety dropped is the most useful thing to see here.
+    for _, entry in ipairs(explained.trace or {}) do
+      if entry.blockedBy then
+        print("  not used: rule " .. entry.rule .. " said " .. entry.verdict
+          .. " (" .. tostring(entry.reason) .. "), but the item is protected: "
+          .. entry.blockedBy)
+      end
+    end
+    if #(explained.protections or {}) > 0 then
+      print("  protected as: " .. table.concat(explained.protections, ", "))
+    end
     if #explained.quests == 0 then
       print("  quests: none use this item")
     else
@@ -141,13 +155,58 @@ local COMMAND_HANDLERS = {
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0
       and table.concat(explained.recipeProfessions, ", ") or "none"))
-    print("  Judged as if looted: soulbound and quest-starter checks need the real bag slot.")
+    if explained.fromBag then
+      print("  Judged as the stack in your bags (opens for loot: "
+        .. tostring(item.hasLoot) .. ").")
+    else
+      print("  Judged as if looted: you carry none, so soulbound, openable and quest-starter checks are skipped.")
+    end
+    if explained.professionsKnown == false then
+      print("  Your professions could not be fully read (Skills tab collapsed or not loaded), so profession-based greens are held back.")
+    end
+  end,
+  loot = function()
+    local plan = Bagwise.Scanner.MakeRoomSummary()
+    say("make-room plan")
+    print("  Loot items in the window: " .. plan.lootItems
+      .. (plan.lootItems == 0 and " (open a loot window first)" or ""))
+    print("  Free bag slots: " .. plan.freeSlots)
+    print("  Junk candidates in your bags: " .. plan.junkCandidates)
+    print("  Plan active: " .. (plan.active and "yes" or "no")
+      .. ", take " .. plan.takes .. ", delete " .. plan.deletes)
+    if plan.lootItems > 0 and not plan.active then
+      print("  Not active because everything fits in your free slots.")
+    end
+  end,
+  glow = function()
+    local key = Bagwise.Scanner.ForceTestGlow()
+    if not key then
+      say("Your bags are empty, nothing to glow.")
+      return
+    end
+    Bagwise.Overlay.UpdateAll()
+    say("Test glow on bag:slot " .. key .. " until your bags next change.")
+    print("  Seen it: the glow draws fine, so the make-room plan is not starting. Open a loot window and run /bagwise loot.")
+    print("  Not seen: the glow itself cannot draw on your bag UI. Tell me which bag addon you use.")
   end,
   dump = function()
-    local snapshot = Bagwise.Scanner.CollectInventory()
-    local text = Bagwise.Dump.Format(snapshot,
+    -- Each step is guarded so a failure says where it broke instead of nothing.
+    local ok, snapshot = pcall(Bagwise.Scanner.CollectInventory)
+    if not ok then
+      say("dump failed while reading your bags: " .. tostring(snapshot))
+      return
+    end
+    local formatted, text = pcall(Bagwise.Dump.Format, snapshot,
       { version = Bagwise.Commands.Version(), build = gameBuild() })
-    Bagwise.Dump.Show(text)
+    if not formatted then
+      say("dump failed while formatting: " .. tostring(text))
+      return
+    end
+    local shown, err = pcall(Bagwise.Dump.Show, text)
+    if not shown then
+      say("dump failed while opening the window: " .. tostring(err))
+      return
+    end
     say(#snapshot.rows .. " items listed. Ctrl+C in the window to copy.")
   end,
   keep = overrideCommand("/bagwise keep [item]",
@@ -184,13 +243,21 @@ local COMMAND_HANDLERS = {
   end,
 }
 
+--- Split what was typed after /bagwise into a command word and its argument.
+-- The command is the leading letters only, so an item shift-clicked straight
+-- after the word ("why|cnIQ1:|Hitem:...") still splits where the link starts.
+-- The argument keeps its original case (item names).
+-- @return string, string  lower-case command ("" if none), argument
+function Bagwise.Commands.SplitInput(msg)
+  local text = (msg or ""):match("^%s*(.-)%s*$")
+  local word, argument = text:match("^(%a*)%s*(.-)$")
+  return word:lower(), argument
+end
+
 function Bagwise.Commands.Init()
   SLASH_BAGWISE1 = "/bagwise"
   SlashCmdList["BAGWISE"] = function(msg)
-    local text = strtrim and strtrim(msg or "") or (msg or ""):match("^%s*(.-)%s*$")
-    -- Split on the first space; keep the argument's original case (item names).
-    local word, argument = text:match("^(%S*)%s*(.-)$")
-    local cmd = word:lower()
+    local cmd, argument = Bagwise.Commands.SplitInput(msg)
     if cmd == "" then cmd = "help" end
     local handler = COMMAND_HANDLERS[cmd]
     if handler then

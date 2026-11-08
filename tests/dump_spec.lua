@@ -15,7 +15,7 @@ end
 
 local function split(line)
   local cells = {}
-  for value in (line .. "|"):gmatch("(.-)|") do cells[#cells + 1] = value end
+  for value in (line .. ";"):gmatch("(.-);") do cells[#cells + 1] = value end
   return cells
 end
 
@@ -26,7 +26,7 @@ describe("Dump.Format", function()
     assert.is_truthy(text:find("# bagwise=0.3.0 wow=1.15.6 (1)", 1, true))
     assert.is_truthy(text:find("# class=MAGE race=Human faction=Alliance level=42", 1, true))
     assert.is_truthy(text:find("# professions=Alchemy,Tailoring", 1, true))
-    assert.is_truthy(text:find("# columns: bag|slot|id|name", 1, true))
+    assert.is_truthy(text:find("# columns: bag;slot;id;name", 1, true))
     assert.is_truthy(text:find("# 0 items", 1, true))
   end)
 
@@ -62,19 +62,19 @@ describe("Dump.Format", function()
     local text = Bagwise.Dump.Format(snapshotWith({
       { bag = 1, slot = 1, id = 9, isBound = true, isKept = false },
     }), {})
-    local row = split(text:match("\n(1|1|9[^\n]*)"))
+    local row = split(text:match("\n(1;1;9[^\n]*)"))
 
     assert.are.equal("", row[4])
     assert.are.equal("1", row[14])
     assert.are.equal("0", row[18])
   end)
 
-  it("keeps a pipe in an item name from breaking the columns", function()
+  it("keeps a pipe or semicolon in an item name from breaking the columns", function()
     local text = Bagwise.Dump.Format(snapshotWith({
-      { bag = 0, slot = 1, id = 5, name = "Odd|Name" },
+      { bag = 0, slot = 1, id = 5, name = "Odd|Name;X" },
     }), {})
 
-    assert.is_truthy(text:find("Odd/Name", 1, true))
+    assert.is_truthy(text:find("Odd/Name/X", 1, true))
   end)
 
   it("says how many items were not cached yet", function()

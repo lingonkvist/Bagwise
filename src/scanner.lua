@@ -57,7 +57,10 @@ local function gatherProfessionSkillLines()
   local skillLines = {}
 
   -- Path A: Modern profession API
-  local prof1, prof2, _, fishing, cooking = GetProfessions()
+  local prof1, prof2, _, fishing, cooking
+  if GetProfessions and GetProfessionInfo then
+    prof1, prof2, _, fishing, cooking = GetProfessions()
+  end
   if prof1 or prof2 or fishing or cooking then
     local slots = { prof1, prof2, fishing, cooking }
     for _, index in ipairs(slots) do
@@ -69,16 +72,24 @@ local function gatherProfessionSkillLines()
         end
       end
     end
-    return skillLines
+    return skillLines, true
   end
 
   -- Path B: Fallback for Classic Era OR Forever
   local getNum = GetNumSkillLines or (C_SkillInfo and C_SkillInfo.GetNumSkillLines)
   local getInfo = GetSkillLineInfo or (C_SkillInfo and C_SkillInfo.GetSkillLineInfo)
 
+  -- Whether the list is complete matters as much as what is in it: a
+  -- profession we cannot see looks exactly like one the player does not have,
+  -- and "you have no use for this" is a green. The Skills tab hides what sits
+  -- under a collapsed header, and is empty until the client has loaded it.
+  local complete = false
   if getNum and getInfo then
-    for i = 1, getNum() do
-      local name, isHeader = getInfo(i)
+    local lines = getNum()
+    complete = lines > 0
+    for i = 1, lines do
+      local name, isHeader, isExpanded = getInfo(i)
+      if isHeader and isExpanded == false then complete = false end
       if not isHeader and name then
         local id = PROFESSION_NAME_TO_SKILL_LINE[name]
         if id then
@@ -88,7 +99,7 @@ local function gatherProfessionSkillLines()
     end
   end
 
-  return skillLines
+  return skillLines, complete
 end
 
 --- Gather player state once per scan.
@@ -99,7 +110,7 @@ local function getPlayerState()
   local level = UnitLevel("player")
   local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
 
-  local skillLines = gatherProfessionSkillLines()
+  local skillLines, professionsKnown = gatherProfessionSkillLines()
 
   -- Build reverse lookup: English profession name -> true.
   -- Used by verdict rules that match against ReagentProfessions data
@@ -122,6 +133,7 @@ local function getPlayerState()
     level = level,
     professionSkillLines = skillLines,
     professionNames = professionNames,
+    professionsKnown = professionsKnown,
   }
 end
 
@@ -207,8 +219,8 @@ end
 -- @param state         table    Player state from getPlayerState()
 -- @param count         number|nil  Stack size (nil counts as 1)
 -- @return table|nil  nil when the client hasn't cached the item yet
-local function buildItem(itemID, isBound, questInfo, state, count)
-  local name, _, quality, itemLevel, reqLevel, _, _, _,
+local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
+  local name, _, quality, itemLevel, reqLevel, _, _, maxStack,
   equipSlot, _, sellPrice, classID, subClassID, bindType = getItemInfo(itemID)
 
   -- Item not cached by the client yet, skip for now
@@ -261,6 +273,8 @@ local function buildItem(itemID, isBound, questInfo, state, count)
     sellPrice = sellPrice,
     subClassID = subClassID,
     count = count,
+    maxStack = maxStack,
+    hasLoot = hasLoot and true or false, -- right-click opens it (clams, lockboxes, bags of loot)
     startsQuestID = startsQuestID,
     startsQuestCompleted = startsQuestCompleted,
     startsQuestName = startsQuestName,
@@ -284,7 +298,7 @@ local function gatherItem(bag, slot, state)
 
   return buildItem(containerInfo.itemID, containerInfo.isBound,
     C_Container.GetContainerItemQuestInfo(bag, slot), state,
-    containerInfo.stackCount)
+    containerInfo.stackCount, containerInfo.hasLoot)
 end
 
 --- Build a short string key from the player's profession set.
@@ -299,7 +313,9 @@ local function professionCacheKey(state)
     end
     table.sort(ids)
   end
-  return table.concat(ids, ",")
+  local key = table.concat(ids, ",")
+  if state.professionsKnown == false then key = key .. "?" end
+  return key
 end
 
 --- Part of the cache key for the gear the item is compared against.
@@ -326,6 +342,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.isKept)
       .. ":" .. tostring(item.isFlagged)
       .. ":" .. tostring(item.count)
+      .. ":" .. tostring(item.hasLoot)
       .. ":" .. equippedKey(item)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
@@ -340,13 +357,22 @@ end
 -- How many gray items may show a green dot at once (the cheapest ones).
 local MAX_POOR_QUALITY_DOTS = 1
 
+--- Free slots in a regular bag. Quivers, ammo pouches and profession bags only
+-- take their own kind of item, so their empty slots are not room for loot.
+local function generalFreeSlots(bag)
+  local free, bagType = C_Container.GetContainerNumFreeSlots(bag)
+  if bagType and bagType ~= 0 then return 0 end
+  return free or 0
+end
+
 -- The loot window's contents and what to do about them. Set by RefreshLoot
 -- when the window opens and as items are taken; cleared when it closes.
 local lootPieces = {}
 local lootPlan = { take = {}, deletes = {}, active = false }
+local lastFreeSlots, lastJunkCount = 0, 0
 
 --- Scan all bag slots, evaluate verdicts, store results.
-function Bagwise.Scanner.ScanAll()
+local function scanAllSlots()
   local state = getPlayerState()
   local profKey = professionCacheKey(state)
 
@@ -356,17 +382,22 @@ function Bagwise.Scanner.ScanAll()
   local junkEntries = {}
   local junkCandidates = {}
   local freeSlots = 0
+  local stackRoom = {} -- itemID -> how many more fit in the stacks you carry
   local regularBags = NUM_BAG_SLOTS or 4
 
   for bag = 0, Bagwise.Bags.LastScanned() do
+    if bag <= regularBags then freeSlots = freeSlots + generalFreeSlots(bag) end
+
     local numSlots = C_Container.GetContainerNumSlots(bag)
     for slot = 1, numSlots do
       local key = bag .. ":" .. slot
       local item = gatherItem(bag, slot, state)
 
-      if not item and bag <= regularBags then freeSlots = freeSlots + 1 end
-
       if item then
+        local maxStack = item.maxStack or 1
+        if maxStack > 1 and (item.count or 1) < maxStack then
+          stackRoom[item.id] = (stackRoom[item.id] or 0) + maxStack - (item.count or 1)
+        end
         slotResults[key] = evaluateCached(item, state, profKey)
         junkCandidates[#junkCandidates + 1] = {
           key = key, bag = bag, slot = slot, item = item,
@@ -401,6 +432,7 @@ function Bagwise.Scanner.ScanAll()
 
   -- Making room for loot runs last, on the final results.
   lootPlan = { take = {}, deletes = {}, active = false }
+  lastFreeSlots, lastJunkCount = freeSlots, 0
   if #lootPieces == 0 then return end
 
   for _, candidate in ipairs(junkCandidates) do
@@ -409,8 +441,19 @@ function Bagwise.Scanner.ScanAll()
     end
   end
 
+  lastJunkCount = #junkEntries
+  -- Loot that fits into a stack you already carry needs no free slot.
   local pieces = {}
-  for i, piece in ipairs(lootPieces) do pieces[i] = piece end
+  for i, piece in ipairs(lootPieces) do
+    local copy = {}
+    for k, v in pairs(piece) do copy[k] = v end
+    local room = stackRoom[piece.itemID] or 0
+    if room >= piece.quantity then
+      copy.stacks = true
+      stackRoom[piece.itemID] = room - piece.quantity
+    end
+    pieces[i] = copy
+  end
   lootPlan = Bagwise.MakeRoom.Plan(pieces, junkEntries, freeSlots)
 
   if not lootPlan.active then return end
@@ -424,6 +467,36 @@ function Bagwise.Scanner.ScanAll()
     slotResults[entry.key] = Bagwise.MakeRoom.MarkedResult(
       Bagwise.MakeRoom.RestoreResult(slotResults[entry.key]), entry.value)
   end
+end
+
+-- Bag addons only need telling when something Bagwise would draw changed, so
+-- remember a one-line summary per slot and compare it on the next scan.
+local lastSignature = {}
+local resultsChanged = false
+
+local function signatureOf(result)
+  if not result or not result.verdict then return "" end
+  return result.verdict .. (result.glow and "g" or "") .. (result.quiet and "q" or "")
+end
+
+function Bagwise.Scanner.ScanAll()
+  scanAllSlots()
+  local signature, changed = {}, false
+  for key, result in pairs(slotResults) do
+    local sig = signatureOf(result)
+    signature[key] = sig
+    if sig ~= (lastSignature[key] or "") then changed = true end
+  end
+  for key, sig in pairs(lastSignature) do
+    if sig ~= "" and (signature[key] or "") ~= sig then changed = true end
+  end
+  lastSignature = signature
+  resultsChanged = changed
+end
+
+--- Did the last scan change anything that is drawn?
+function Bagwise.Scanner.ResultsChanged()
+  return resultsChanged
 end
 
 -- Does the loot window piece count as must-take? Quest items, rares and
@@ -446,18 +519,33 @@ function Bagwise.Scanner.RefreshLoot()
     if link then
       local _, _, quantity = GetLootSlotInfo(slot)
       local itemID = tonumber(link:match("item:(%d+)"))
-      local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = GetItemInfo(link)
+      local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = getItemInfo(link)
       if itemID then
         local info = { itemID = itemID, quality = quality, sellPrice = sellPrice, classID = classID }
         lootPieces[#lootPieces + 1] = {
           slot = slot,
           itemID = itemID,
+          quantity = quantity or 1,
           value = (sellPrice or 0) * (quantity or 1),
           priority = isPriorityLoot(info) and true or false,
         }
       end
     end
   end
+end
+
+--- What the make-room plan saw on the last scan (for /bagwise loot).
+function Bagwise.Scanner.MakeRoomSummary()
+  local takes = 0
+  for _ in pairs(lootPlan.take) do takes = takes + 1 end
+  return {
+    lootItems = #lootPieces,
+    freeSlots = lastFreeSlots,
+    junkCandidates = lastJunkCount,
+    active = lootPlan.active,
+    takes = takes,
+    deletes = #lootPlan.deletes,
+  }
 end
 
 function Bagwise.Scanner.ClearLoot()
@@ -476,6 +564,22 @@ end
 -- @param bag   number  Bag index (0-4)
 -- @param slot  number  Slot index (1-N)
 -- @return table|nil  { verdict = "green"/"yellow"/nil, reason = "..." }
+--- Mark the first occupied slot as "delete me" without any loot window, so the
+-- glow can be checked on its own. The next real scan puts things back.
+-- @return string|nil  "bag:slot" that was marked
+function Bagwise.Scanner.ForceTestGlow()
+  for bag = 0, Bagwise.Bags.LastScanned() do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) do
+      local key = bag .. ":" .. slot
+      if C_Container.GetContainerItemInfo(bag, slot) then
+        slotResults[key] = Bagwise.MakeRoom.MarkedResult(slotResults[key], 0)
+        return key
+      end
+    end
+  end
+  return nil
+end
+
 function Bagwise.Scanner.GetResult(bag, slot)
   return slotResults[bag .. ":" .. slot]
 end
@@ -579,6 +683,7 @@ function Bagwise.Scanner.CollectInventory()
           equippedInSlots = (quality == 1) and equippedInSlotsFor(equipSlot) or nil,
           isKept = Bagwise.Overrides.IsKept(itemID),
           isFlagged = Bagwise.Overrides.IsFlagged(itemID),
+          lootable = containerInfo.hasLoot and true or false,
           verdict = result and result.verdict,
           reason = result and result.reason,
         }
@@ -593,9 +698,9 @@ end
 -- Not soulbound and not a quest starter: nothing has been picked up.
 -- @param itemID number
 -- @return table|nil  { verdict, reason, detail }, or nil until the client has the item
-function Bagwise.Scanner.EvaluateItem(itemID)
+function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot)
   local state = getPlayerState()
-  local item = buildItem(itemID, false, nil, state)
+  local item = buildItem(itemID, false, nil, state, nil, opensForLoot)
   if not item then return nil end
   return evaluateCached(item, state, professionCacheKey(state))
 end
@@ -604,7 +709,23 @@ end
 -- @return table|nil  { item, result, faction, quests = { {id,name,faction,done} } }
 function Bagwise.Scanner.Explain(itemID)
   local state = getPlayerState()
-  local item = buildItem(itemID, false, nil, state)
+
+  -- Judge the item as it sits in your bags when you carry one: soulbound,
+  -- stack size, openable and quest-starter state all come from the real slot.
+  local fromBag = false
+  local item
+  for bag = 0, Bagwise.Bags.LastScanned() do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) do
+      local info = C_Container.GetContainerItemInfo(bag, slot)
+      if info and info.itemID == itemID then
+        item = gatherItem(bag, slot, state)
+        fromBag = item ~= nil
+        break
+      end
+    end
+    if item then break end
+  end
+  item = item or buildItem(itemID, false, nil, state)
   if not item then return nil end
 
   local quests = {}
@@ -620,7 +741,11 @@ function Bagwise.Scanner.Explain(itemID)
 
   return {
     item = item,
+    fromBag = fromBag,
+    professionsKnown = state.professionsKnown,
     result = evaluateCached(item, state, professionCacheKey(state)),
+    trace = Bagwise.Verdict.Trace(item, state),
+    protections = Bagwise.Safety.Protections(item),
     faction = state.faction,
     quests = quests,
     recipeProfessions = professionNamesFor(itemID),

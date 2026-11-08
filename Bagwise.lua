@@ -10,6 +10,24 @@ local function rescanAll()
   Bagwise.Overlay.UpdateAll()
 end
 
+-- Bursts of events (item info arriving for a whole bag, several bag updates
+-- in a row) become a single rescan a moment later.
+local RESCAN_DELAY_SECONDS = 0.15
+local rescanPending = false
+
+local function rescanSoon()
+  if not (C_Timer and C_Timer.After) then
+    rescanAll()
+    return
+  end
+  if rescanPending then return end
+  rescanPending = true
+  C_Timer.After(RESCAN_DELAY_SECONDS, function()
+    rescanPending = false
+    rescanAll()
+  end)
+end
+
 local function invalidateAndRescan()
   Bagwise.Scanner.ClearCache()
   rescanAll()
@@ -31,13 +49,12 @@ end
 local function onAddonLoaded(self, addonName)
   if addonName ~= "Bagwise" then return end
 
-  if not BagwiseDB then
-    BagwiseDB = {
-      keepList = {},
-      flagList = {},
-      version  = 1,
-    }
-  end
+  -- Fill in anything missing, so a saved file from an older version (or one
+  -- edited by hand) never leaves a nil list for the rest of the addon to trip on.
+  BagwiseDB = BagwiseDB or {}
+  BagwiseDB.keepList = BagwiseDB.keepList or {}
+  BagwiseDB.flagList = BagwiseDB.flagList or {}
+  BagwiseDB.version = BagwiseDB.version or 1
 
   self:UnregisterEvent("ADDON_LOADED")
 end
@@ -72,8 +89,8 @@ end
 local EVENT_HANDLERS = {
   ADDON_LOADED           = onAddonLoaded,
   PLAYER_LOGIN           = onPlayerLogin,
-  BAG_UPDATE_DELAYED     = rescanAll,
-  GET_ITEM_INFO_RECEIVED = rescanAll,
+  BAG_UPDATE_DELAYED     = rescanSoon,
+  GET_ITEM_INFO_RECEIVED = rescanSoon,
   PLAYER_LEVEL_UP        = invalidateAndRescan,
   QUEST_TURNED_IN        = invalidateAndRescan,
   SKILL_LINES_CHANGED    = invalidateAndRescan,

@@ -8,6 +8,7 @@ dofile("src/overlay.lua")
 local function makeDotTexture()
   local dot = { shown = false }
   function dot:SetSize() end
+  function dot:SetBlendMode() end
   function dot:SetTexture(path) self.texture = path end
   function dot:SetPoint() end
   function dot:SetVertexColor(r, g, b) self.color = { r, g, b } end
@@ -19,7 +20,8 @@ local function makeDotTexture()
     function group:CreateAnimation()
       return { SetOrder = function() end, SetDuration = function() end,
                SetSmoothing = function() end, SetScaleFrom = function() end,
-               SetScaleTo = function() end }
+               SetScaleTo = function() end,
+               SetFromAlpha = function() end, SetToAlpha = function() end }
     end
     function group:IsPlaying() return self.playing end
     function group:Play() self.playing = true end
@@ -79,17 +81,20 @@ describe("Ellesmere Bags adapter", function()
     _G.EllesmereUI = nil
   end)
 
-  it("pulses a dot marked to delete and stops when it is no longer marked", function()
+  it("glows a slot marked to delete and stops when it is no longer marked", function()
     local button = makeButton(0, 3)
     installEllesmere({ button })
-    installScanner({ ["0:3"] = { verdict = "yellow", pulse = true } })
+    installScanner({ ["0:3"] = { verdict = "yellow", glow = true } })
 
     Bagwise.Overlay.UpdateAll()
-    assert.is_truthy(button.dots[1].group.playing)
+    local glow = button.dots[#button.dots]
+    assert.is_truthy(glow.shown)
+    assert.is_truthy(glow.group.playing)
 
     installScanner({ ["0:3"] = { verdict = "yellow" } })
     Bagwise.Overlay.UpdateAll()
-    assert.are.equal(false, button.dots[1].group.playing)
+    assert.are.equal(false, glow.shown)
+    assert.are.equal(false, glow.group.playing)
     _G.EllesmereUI = nil
   end)
 

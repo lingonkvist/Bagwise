@@ -1,0 +1,19 @@
+# Bagwise inventory dump
+# bagwise=0.4.1 wow=1.60.1 (70862)
+# class=DRUID race=Tauren faction=Horde level=18
+# professions=Alchemy,Herbalism
+# columns: bag;slot;id;name;count;maxStack;quality;ilvl;reqLvl;class;subclass;equipSlot;bind;bound;sellCopper;verdict;reason;kept;flagged;recipeProfs;quests;startsQuest;vendorReagent;classReagent;wornQualityIlvl
+0;1;271214;Rotmender's Treads;1;1;3;24;19;4;1;INVTYPE_FEET;1;1;831;;;0;0;;;;0;0;
+0;2;279874;The Stitcher;1;1;2;24;1;2;4;INVTYPE_WEAPONMAINHAND;1;1;2366;;;0;0;;;;0;0;
+0;3;15444;Staff of Orgrimmar;1;1;3;18;0;2;10;INVTYPE_2HWEAPON;1;1;1614;;;0;0;;;;0;0;
+0;4;15866;Veildust Medicine Bag;1;1;2;15;0;4;0;INVTYPE_HOLDABLE;1;1;562;;;0;0;;;;0;0;
+0;5;1179;Ice Cold Milk;1;20;1;15;5;0;5;INVTYPE_NON_EQUIP_IGNORE;0;0;6;;;0;0;Cooking;6962:open:H,7025:open:A;;1;0;
+0;6;1179;Ice Cold Milk;20;20;1;15;5;0;5;INVTYPE_NON_EQUIP_IGNORE;0;0;6;;;0;0;Cooking;6962:open:H,7025:open:A;;1;0;
+0;7;3385;Lesser Mana Potion;1;5;1;24;14;0;1;INVTYPE_NON_EQUIP_IGNORE;0;0;30;;;0;0;Leatherworking;94213:open:H;;0;0;
+0;8;6948;Hearthstone;1;1;1;1;0;15;0;INVTYPE_NON_EQUIP_IGNORE;1;1;0;;;0;0;;;;0;0;
+0;9;5075;Blood Shard;1;10;1;1;0;12;0;INVTYPE_NON_EQUIP_IGNORE;0;0;25;;;0;0;;889:open:H,5042:open:H,5043:open:H,5044:open:H,5045:open:H,5046:open:H,5052:open:H;;0;0;
+0;10;12708;Crossroads' Supply Crates;1;1;1;1;0;12;0;INVTYPE_NON_EQUIP_IGNORE;4;1;0;;;0;0;;5041:open:H;;0;0;
+0;11;5063;Kreenig Snarlsnout's Tusk;1;1;1;1;0;12;0;INVTYPE_NON_EQUIP_IGNORE;4;1;0;;;0;0;;872:open:H;;0;0;
+0;12;5062;Raptor Head;8;20;1;1;0;12;0;INVTYPE_NON_EQUIP_IGNORE;4;1;0;;;0;0;;869:open:H;;0;0;
+0;13;5165;Sunscale Feather;4;20;1;1;0;12;0;INVTYPE_NON_EQUIP_IGNORE;0;0;0;;;0;0;;905:open:H;;0;0;
+# 13 items

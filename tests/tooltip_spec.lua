@@ -23,6 +23,7 @@ _G.C_QuestLog = {
 
 _G.Bagwise = nil
 dofile("src/bags.lua")
+dofile("src/safety.lua")
 dofile("src/verdict.lua")
 dofile("src/tooltip.lua")
 

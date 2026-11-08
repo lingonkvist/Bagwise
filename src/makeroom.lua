@@ -9,40 +9,18 @@
 Bagwise = Bagwise or {}
 Bagwise.MakeRoom = {}
 
+local JUNK_CLASS_ID = 15    -- Miscellaneous
+local JUNK_SUBCLASS_ID = 0  -- Junk
+
 local POOR_QUALITY = 0
 local COMMON_QUALITY = 1
 
--- Never offered as junk: used up, holds things, crafts, or matters to a quest.
+-- Never offered as junk on top of what Safety protects: used up, or crafting
+-- materials. (Safety lets the verdict rules call unused trade goods green, but
+-- here a mat is never picked just because its stack is cheap.)
 local NEVER_JUNK_CLASSES = {
-  [0] = true,  -- consumables
-  [1] = true,  -- containers
-  [3] = true,  -- gems
-  [5] = true,  -- reagents
-  [6] = true,  -- projectiles
-  [7] = true,  -- trade goods
-  [9] = true,  -- recipes
-  [12] = true, -- quest items
-  [13] = true, -- keys
-}
-
--- Specific items that are not otherwise recognisable: hearthstone, soul
--- shard, spell reagents and profession tools.
-local NEVER_JUNK_ITEMS = {
-  [6948] = true,  -- Hearthstone
-  [6265] = true,  -- Soul Shard
-  [17030] = true, -- Ankh
-  [17031] = true, -- Rune of Teleportation
-  [17032] = true, -- Rune of Portals
-  [17033] = true, -- Symbol of Divinity
-  [21177] = true, -- Symbol of Kings
-  [17056] = true, -- Light Feather
-  [17020] = true, -- Arcane Powder
-  [2901] = true,  -- Mining Pick
-  [5956] = true,  -- Blacksmith Hammer
-  [7005] = true,  -- Skinning Knife
-  [6219] = true,  -- Arclight Spanner
-  [6256] = true,  -- Fishing Pole
-  [4471] = true,  -- Flint and Tinder
+  [0] = true, -- consumables
+  [7] = true, -- trade goods
 }
 
 --- Could this bag item be suggested for deletion?
@@ -55,21 +33,17 @@ local NEVER_JUNK_ITEMS = {
 function Bagwise.MakeRoom.IsJunkCandidate(item, existing)
   if item.isKept or item.isFlagged then return false end
   if (item.sellPrice or 0) <= 0 then return false end
-  if item.questItemQuestIDs then return false end
-  if NEVER_JUNK_CLASSES[item.classID] or NEVER_JUNK_ITEMS[item.id] then
-    return false
-  end
-  local data = Bagwise.Data or {}
-  if data.ReagentProfessions and data.ReagentProfessions[item.id] then return false end
-  if data.VendorReagents and data.VendorReagents[item.id] then return false end
-  if data.QuestItems and data.QuestItems[item.id] then return false end
+  if NEVER_JUNK_CLASSES[item.classID] then return false end
+  if Bagwise.Safety.IsProtected(item) then return false end
 
   if item.quality == POOR_QUALITY then return true end
   if item.quality ~= COMMON_QUALITY then return false end
   if item.isEquippable then
     return existing ~= nil and existing.verdict == "green"
   end
-  return true
+  -- A plain white that is not gear is only offered when the game files it as
+  -- Junk. Other whites (companion pets, tokens, odds and ends) can matter.
+  return item.classID == JUNK_CLASS_ID and item.subClassID == JUNK_SUBCLASS_ID
 end
 
 --- What the stack sells for, in copper.
@@ -78,19 +52,29 @@ function Bagwise.MakeRoom.ValueOf(sellPrice, count)
 end
 
 --- Decide what to take and what to delete.
--- @param loot table  list of { slot, value, priority } (priority = always take:
---                    quest items, rares, things with no vendor price)
+-- @param loot table  list of { slot, value, priority, stacks } (priority = always
+--                    take: quest items, rares, things with no vendor price;
+--                    stacks = joins a stack you already carry, needs no slot)
 -- @param junk table  list of { key, bag, slot, value } (bag junk candidates)
 -- @param freeSlots number free regular bag slots
 -- @return table { take = {[lootSlot]=true}, deletes = {junk entries in order},
 --                 active = boolean }
 function Bagwise.MakeRoom.Plan(loot, junk, freeSlots)
   local plan = { take = {}, deletes = {}, active = false }
-  if #loot <= freeSlots then return plan end
+
+  -- Loot that joins an existing stack never needs a free slot.
+  local needsSlot = {}
+  for i = 1, #loot do
+    if not loot[i].stacks then needsSlot[#needsSlot + 1] = loot[i] end
+  end
+  if #needsSlot <= freeSlots then return plan end
   plan.active = true
+  for i = 1, #loot do
+    if loot[i].stacks then plan.take[loot[i].slot] = true end
+  end
 
   local lootSorted = {}
-  for i = 1, #loot do lootSorted[i] = loot[i] end
+  for i = 1, #needsSlot do lootSorted[i] = needsSlot[i] end
   table.sort(lootSorted, function(a, b)
     if (a.priority and true or false) ~= (b.priority and true or false) then
       return a.priority and true or false
@@ -141,7 +125,7 @@ function Bagwise.MakeRoom.MarkedResult(existing, value)
     result.reason = "Cheapest junk, sells for " .. Bagwise.Verdict.FormatMoney(value)
   end
   result.detail = "Delete to make room for your loot"
-  result.pulse = true -- the overlay makes the dot pulse
+  result.glow = true -- the overlay draws a green border glow
   return result
 end
 

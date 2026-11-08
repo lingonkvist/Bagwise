@@ -26,47 +26,63 @@ local function makeDot(parent)
   return dot
 end
 
--- A slow pulse (about one beat a second, well under any flash threshold) on
--- the dots to delete while making room for loot. Nothing else moves.
-local PULSE_SECONDS = 0.5
-local PULSE_SCALE = 1.35
-local pulseByDot = setmetatable({}, { __mode = "k" })
+-- Border glow for the slots to delete while making room for loot: a soft green
+-- ring around the slot that breathes slowly (about 1.4 seconds a cycle, far
+-- below any flash threshold). Nothing else moves.
+-- Blizzard's own action-button border: it ships with every client, so it
+-- cannot go missing the way an addon file can. It is a light glow with the
+-- colour left to us, so it is tinted green and added onto the slot.
+local GLOW_TEXTURE = "Interface\\Buttons\\UI-ActionButton-Border"
+local GLOW_COLOR = { 0.33, 0.87, 0.49 }
+local GLOW_SCALE = 1.72 -- frame size as a multiple of the slot, matches the texture
+local GLOW_LOW_ALPHA = 0.5
+local GLOW_SECONDS = 0.7
+local glowByButton = setmetatable({}, { __mode = "k" })
 
-local function makePulse(dot)
-  if not dot.CreateAnimationGroup then return nil end
-  local group = dot:CreateAnimationGroup()
-  group:SetLooping("REPEAT")
-
-  local function addScale(order, factor)
-    local scale = group:CreateAnimation("Scale")
-    scale:SetOrder(order)
-    scale:SetDuration(PULSE_SECONDS)
-    scale:SetSmoothing(order == 1 and "OUT" or "IN")
-    -- Mainline takes a target scale, older clients a multiplier.
-    if scale.SetScaleTo then
-      scale:SetScaleFrom(order == 1 and 1 or PULSE_SCALE, order == 1 and 1 or PULSE_SCALE)
-      scale:SetScaleTo(factor, factor)
-    elseif scale.SetScale then
-      scale:SetScale(order == 1 and PULSE_SCALE or 1 / PULSE_SCALE,
-        order == 1 and PULSE_SCALE or 1 / PULSE_SCALE)
-    end
+local function addBreathing(texture)
+  if not texture.CreateAnimationGroup then return nil end
+  local group = texture:CreateAnimationGroup()
+  group:SetLooping("BOUNCE")
+  local fade = group:CreateAnimation("Alpha")
+  fade:SetDuration(GLOW_SECONDS)
+  fade:SetSmoothing("IN_OUT")
+  -- Mainline takes from/to alpha, older clients a change amount.
+  if fade.SetFromAlpha then
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(GLOW_LOW_ALPHA)
+  elseif fade.SetChange then
+    fade:SetChange(GLOW_LOW_ALPHA - 1)
   end
-  addScale(1, PULSE_SCALE)
-  addScale(2, 1)
   return group
 end
 
-local function setPulse(dot, on)
-  local group = pulseByDot[dot]
-  if on then
-    if not group then
-      group = makePulse(dot)
-      pulseByDot[dot] = group or false
+local function makeGlow(button)
+  local texture = button:CreateTexture(nil, "OVERLAY")
+  texture:SetTexture(GLOW_TEXTURE)
+  texture:SetBlendMode("ADD")
+  texture:SetVertexColor(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
+  texture:SetPoint("CENTER", button, "CENTER", 0, 0)
+  local size = (button.GetWidth and button:GetWidth() or 37) * GLOW_SCALE
+  texture:SetSize(size, size)
+  return { texture = texture, group = addBreathing(texture) }
+end
+
+--- Show or hide the delete glow on an item button.
+local function applyGlow(button, on)
+  local glow = glowByButton[button]
+  if not on then
+    if glow then
+      if glow.group then glow.group:Stop() end
+      glow.texture:Hide()
     end
-    if group and not group:IsPlaying() then group:Play() end
-  elseif group and group:IsPlaying() then
-    group:Stop()
+    return
   end
+  if not glow then
+    glow = makeGlow(button)
+    glowByButton[button] = glow
+  end
+  glow.texture:Show()
+  if glow.group and not glow.group:IsPlaying() then glow.group:Play() end
 end
 
 local function applyDot(dot, result)
@@ -74,10 +90,8 @@ local function applyDot(dot, result)
   if result and result.verdict and not result.quiet then
     dot:SetTexture(TEXTURES[result.verdict])
     dot:Show()
-    setPulse(dot, result.pulse)
     return true
   else
-    setPulse(dot, false)
     dot:Hide()
     return false
   end
@@ -106,6 +120,7 @@ local function paintButton(button, bagID, slotID)
   if result or dotsByButton[button] then
     applyDot(getButtonDot(button), result)
   end
+  applyGlow(button, result and result.glow and not result.quiet)
 end
 
 -- Blizzard's item template reads the bag from the button's parent frame.
@@ -204,6 +219,10 @@ local function initBaganator()
     if not bagID or not slotID then return false end
 
     local result = Bagwise.Scanner.GetResult(bagID, slotID)
+    local button = dot.GetParent and dot:GetParent()
+    if button and button.CreateTexture then
+      applyGlow(button, result and result.glow and not result.quiet)
+    end
     return applyDot(dot, result)
   end
 
@@ -347,5 +366,11 @@ end
 function Bagwise.Overlay.UpdateAll()
   updateBlizzard()
   paintEllesmere()
-  -- Baganator handles its own updates natively.
+  -- Baganator only repaints a button when it refreshes it, so ask it to when
+  -- our results changed (a dot moved to another slot). Not on every scan: a
+  -- refresh resets Baganator's own borders and highlights.
+  if Bagwise.Scanner.ResultsChanged and Bagwise.Scanner.ResultsChanged()
+      and Baganator and Baganator.API and Baganator.API.RequestItemButtonsRefresh then
+    pcall(Baganator.API.RequestItemButtonsRefresh)
+  end
 end

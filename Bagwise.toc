@@ -2,11 +2,12 @@
 ## Title: Bagwise
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist
-## Version: 0.3.0
+## Version: 0.4.2
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator
 
 src\bags.lua
+src\safety.lua
 src\verdict.lua
 src\makeroom.lua
 src\scanner.lua

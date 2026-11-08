@@ -56,3 +56,23 @@ describe("Overrides lists", function()
     assert.are.equal(false, Bagwise.Overrides.IsKept(200))
   end)
 end)
+
+describe("Commands.SplitInput", function()
+  it("splits a command from its argument at the first space", function()
+    local cmd, argument = Bagwise.Commands.SplitInput("  keep Linen Cloth ")
+    assert.are.equal("keep", cmd)
+    assert.are.equal("Linen Cloth", argument)
+  end)
+
+  it("splits where a shift-clicked link starts when there is no space", function()
+    local link = "|cnIQ1:|Hitem:5060::::::::24:1488::::::|h[Thieves' Tools]|h|r"
+    local cmd, argument = Bagwise.Commands.SplitInput("why" .. link)
+    assert.are.equal("why", cmd)
+    assert.are.equal(5060, Bagwise.Commands.ParseItemID(argument))
+  end)
+
+  it("treats an empty message as no command", function()
+    assert.are.equal("", (Bagwise.Commands.SplitInput("")))
+    assert.are.equal("", (Bagwise.Commands.SplitInput(nil)))
+  end)
+end)

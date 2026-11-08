@@ -6,6 +6,17 @@ Bagwise.Verdict = {}
 
 local LEVEL_GAP_YELLOW = 10
 local LEVEL_GAP_GREEN = 20
+local RARE_QUALITY = 3
+
+-- Marks a green the player can sell instead of destroy (the tooltip says
+-- "Safe to vendor"). Only set when the item actually has a vendor price.
+Bagwise.Verdict.VENDOR_TAG = "vendor"
+local VENDOR_TAG = Bagwise.Verdict.VENDOR_TAG
+
+local function vendorTagFor(item)
+  if (item.sellPrice or 0) > 0 then return VENDOR_TAG end
+  return nil
+end
 
 local function needsAnyOf(lookupTable, keys)
   for i = 1, #keys do
@@ -25,6 +36,12 @@ end
 local function evaluateLevelGap(item, state)
   if not (item.isBound and item.isEquippable) then return nil end
 
+  -- A low required level does not make gear outdated by itself: plenty of
+  -- items with a modest requirement have an item level a character at this
+  -- level still wears. If its item level is at or above the player's level,
+  -- it is not "low level".
+  if item.itemLevel and item.itemLevel >= state.level then return nil end
+
   local compareLevel, isItemLevel
   if item.reqLevel and item.reqLevel > 0 then
     compareLevel = item.reqLevel
@@ -38,11 +55,21 @@ local function evaluateLevelGap(item, state)
   local gap = state.level - compareLevel
   if gap < LEVEL_GAP_YELLOW then return nil end
 
+  -- Rare and better gear can sell well or be disenchanted, so it is a hint
+  -- at most, never a "safe".
+  local canBeGreen = (item.quality or 0) < RARE_QUALITY
+
+  if gap >= LEVEL_GAP_GREEN and canBeGreen then
+    if isItemLevel then
+      return "green", "Very low item level (" .. compareLevel .. ")", nil, vendorTagFor(item)
+    end
+    return "green", "Very low level gear", nil, vendorTagFor(item)
+  end
   if gap >= LEVEL_GAP_GREEN then
     if isItemLevel then
-      return "green", "Very low item level (" .. compareLevel .. ")"
+      return "yellow", "Very low item level (" .. compareLevel .. ")"
     end
-    return "green", "Very low level gear"
+    return "yellow", "Very low level gear"
   end
 
   if isItemLevel then
@@ -99,9 +126,17 @@ local function questLabel(questID, runtimeName)
   return name
 end
 
+-- Only the game's own quest items are certain to be finished with. Anything
+-- else a quest happens to ask for (tools, mats, gear) may have other uses.
+local QUEST_CLASS_ID = 12
+local function isOrdinaryItem(item)
+  return item.classID ~= nil and item.classID ~= QUEST_CLASS_ID
+end
+
 local function evaluateCompletedQuestStarter(item)
   if not (item.startsQuestID and item.startsQuestCompleted) then return nil end
   local label = questLabel(item.startsQuestID, item.startsQuestName)
+  if isOrdinaryItem(item) then return nil end
   return "green", "Quest completed", label
 end
 
@@ -109,6 +144,10 @@ local function evaluateVendorReagent(item, state)
   local vendorData = Bagwise.Data.VendorReagents
       and Bagwise.Data.VendorReagents[item.id]
   if not vendorData then return nil end
+
+  -- "You have no use for this" needs the full list of your professions. When
+  -- the scanner could not read it all, say nothing.
+  if state.professionsKnown == false then return nil end
 
   if vendorData.excludeClasses
       and state.playerClass
@@ -154,6 +193,7 @@ end
 local function evaluateQuestObjective(item)
   if not item.questItemQuestIDs then return nil end
   if not item.allQuestObjectivesCompleted then return nil end
+  if isOrdinaryItem(item) then return nil end
   local count = #item.questItemQuestIDs
   if count > 1 then
     return "green", "All " .. count .. " quests completed"
@@ -174,15 +214,6 @@ local POOR_QUALITY = 0
 -- Marks a verdict as "gray item" so the scanner can thin them out.
 Bagwise.Verdict.POOR_QUALITY_TAG = "poorQuality"
 local POOR_QUALITY_TAG = Bagwise.Verdict.POOR_QUALITY_TAG
--- Marks a green the player can sell instead of destroy (the tooltip says
--- "Safe to vendor"). Only set when the item actually has a vendor price.
-Bagwise.Verdict.VENDOR_TAG = "vendor"
-local VENDOR_TAG = Bagwise.Verdict.VENDOR_TAG
-
-local function vendorTagFor(item)
-  if (item.sellPrice or 0) > 0 then return VENDOR_TAG end
-  return nil
-end
 
 local function valueThreshold(state)
   return WORTH_KEEPING_BASE_COPPER + WORTH_KEEPING_PER_LEVEL * (state.level or 1)
@@ -367,35 +398,59 @@ end
 -- game hasn't loaded yet, means no verdict (the scanner leaves
 -- equippedInSlots nil then). Weapons are left out: which weapon you want
 -- depends on proficiencies and class, not just level.
-local function evaluateOutgearedWhite(item)
+local function evaluateOutgearedWhite(item, state)
   if item.quality ~= COMMON_QUALITY then return nil end
   if not item.isEquippable or item.classID ~= ARMOR_CLASS_ID then return nil end
-  if not item.itemLevel or item.itemLevel <= 0 then return nil end
 
   local equipped = item.equippedInSlots
   if not equipped or #equipped == 0 then return nil end
 
+  -- A white has no stats, only armor, so any green or better in the same slot
+  -- beats it whatever the item levels. The exception is gear you cannot wear
+  -- yet: that is something to grow into, not something you have outgrown.
+  if item.reqLevel and state and state.level and item.reqLevel > state.level then
+    return nil
+  end
+
   for i = 1, #equipped do
-    local worn = equipped[i]
-    if worn.quality < UNCOMMON_QUALITY or worn.itemLevel < item.itemLevel then
-      return nil
-    end
+    if equipped[i].quality < UNCOMMON_QUALITY then return nil end
   end
 
   return "green", "Worse than your equipped gear", nil, vendorTagFor(item)
 end
 
+-- Every rule, in priority order (first one with a verdict wins). A rule only
+-- proposes; Safety can drop a green. `overrides` names the protections a rule
+-- is allowed to override, and each one is a decision, not a convenience:
+--   quest rules may override "quest_item": finishing the quests lifts it
+--   the reagent rules decide by profession or class themselves
+-- Anything not listed is protected from that rule.
 local RULES = {
-  evaluateUnwearableWhite,
-  evaluateLevelGap,
-  evaluateOutgearedWhite,
-  evaluateCompletedQuestStarter,
-  evaluateQuestObjective,
-  evaluateVendorReagent,
-  evaluateClassReagent,
-  evaluatePoorQuality,
-  evaluateNoRecipeUse,
+  { name = "unwearable_white",   evaluate = evaluateUnwearableWhite },
+  { name = "level_gap",          evaluate = evaluateLevelGap },
+  { name = "outgeared_white",    evaluate = evaluateOutgearedWhite },
+  { name = "quest_starter_done", evaluate = evaluateCompletedQuestStarter,
+    overrides = { quest_item = true } },
+  { name = "quest_objective_done", evaluate = evaluateQuestObjective,
+    overrides = { quest_item = true } },
+  { name = "vendor_reagent",     evaluate = evaluateVendorReagent,
+    overrides = { vendor_reagent = true, recipe_reagent = true } },
+  { name = "class_reagent",      evaluate = evaluateClassReagent,
+    overrides = { spell_reagent = true, recipe_reagent = true } },
+  { name = "poor_quality",       evaluate = evaluatePoorQuality },
+  { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse },
 }
+
+--- Run one rule and apply the safety check to a green.
+-- @return verdict, reason, detail, tag, blockedBy
+local function runRule(rule, item, state)
+  local verdict, reason, detail, tag = rule.evaluate(item, state)
+  if verdict == "green" then
+    local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
+    if blocker then return verdict, reason, detail, tag, blocker end
+  end
+  return verdict, reason, detail, tag, nil
+end
 
 local CONSUMABLE_CLASS_ID = 0
 
@@ -411,9 +466,39 @@ function Bagwise.Verdict.Evaluate(item, state)
   if item.isFlagged then return "yellow", "Flagged by you", nil end
   if item.classID == CONSUMABLE_CLASS_ID then return nil, nil, nil end
 
+  -- A blocked green is dropped and the next rule gets its turn. A yellow is
+  -- only a hint, so it waits: a later rule's green (already vetted by Safety)
+  -- beats it. Otherwise the first yellow stands.
+  local hint
   for i = 1, #RULES do
-    local verdict, reason, detail, tag = RULES[i](item, state)
-    if verdict then return verdict, reason, detail, tag end
+    local verdict, reason, detail, tag, blockedBy = runRule(RULES[i], item, state)
+    if verdict == "green" and not blockedBy then return verdict, reason, detail, tag end
+    if verdict == "yellow" and not hint then
+      hint = { verdict, reason, detail, tag }
+    end
   end
+  if hint then return hint[1], hint[2], hint[3], hint[4] end
   return nil, nil, nil
+end
+
+--- Every rule that had something to say about an item, including greens that
+-- Safety dropped. For /bagwise why and for tests.
+-- @return table list of { rule, verdict, reason, blockedBy }
+function Bagwise.Verdict.Trace(item, state)
+  local trace = {}
+  for i = 1, #RULES do
+    local verdict, reason, _, _, blockedBy = runRule(RULES[i], item, state)
+    if verdict then
+      trace[#trace + 1] = { rule = RULES[i].name, verdict = verdict,
+                            reason = reason, blockedBy = blockedBy }
+    end
+  end
+  return trace
+end
+
+--- Names of the rules, in priority order.
+function Bagwise.Verdict.RuleNames()
+  local names = {}
+  for i = 1, #RULES do names[i] = RULES[i].name end
+  return names
 end

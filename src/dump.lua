@@ -11,15 +11,20 @@ local COLUMNS = {
   "class", "subclass", "equipSlot", "bind", "bound", "sellCopper",
   "verdict", "reason", "kept", "flagged",
   "recipeProfs", "quests", "startsQuest", "vendorReagent", "classReagent",
-  "wornQualityIlvl",
+  "wornQualityIlvl", "lootable",
 }
+
+-- The column separator. Not a pipe: the game treats "|" as the start of an
+-- escape code, and a pipe-heavy text in an edit box shows up blank.
+local SEPARATOR = ";"
 
 local function cell(value)
   if value == nil then return "" end
   if value == true then return "1" end
   if value == false then return "0" end
-  -- The separator can't appear inside a cell.
-  return (tostring(value):gsub("|", "/"))
+  -- The separator can't appear inside a cell, and a stray pipe would be read
+  -- as an escape code by the edit box.
+  return (tostring(value):gsub("[;|]", "/"))
 end
 
 local function questCell(quests)
@@ -55,7 +60,7 @@ local function rowCells(row)
     cell(table.concat(row.recipeProfessions or {}, ",")),
     questCell(row.quests), startsQuestCell(row),
     cell(row.isVendorReagent), cell(row.isClassReagent),
-    wornCell(row.equippedInSlots),
+    wornCell(row.equippedInSlots), cell(row.lootable),
   }
 end
 
@@ -73,11 +78,11 @@ function Bagwise.Dump.Format(snapshot, context)
     "# class=" .. cell(player.class) .. " race=" .. cell(player.race)
         .. " faction=" .. cell(player.faction) .. " level=" .. cell(player.level),
     "# professions=" .. table.concat(player.professions or {}, ","),
-    "# columns: " .. table.concat(COLUMNS, "|"),
+    "# columns: " .. table.concat(COLUMNS, SEPARATOR),
   }
 
   for _, row in ipairs(snapshot.rows) do
-    lines[#lines + 1] = table.concat(rowCells(row), "|")
+    lines[#lines + 1] = table.concat(rowCells(row), SEPARATOR)
   end
 
   lines[#lines + 1] = "# " .. #snapshot.rows .. " items"
@@ -123,6 +128,11 @@ local function buildFrame()
   editBox:SetMultiLine(true)
   editBox:SetFontObject(ChatFontNormal)
   editBox:SetWidth(580)
+  -- A multiline edit box inside a scroll frame needs a starting height or it
+  -- can stay invisible, and a cap on length would cut a big inventory short.
+  editBox:SetHeight(400)
+  if editBox.SetMaxLetters then editBox:SetMaxLetters(0) end
+  if editBox.SetMaxBytes then editBox:SetMaxBytes(0) end
   editBox:SetAutoFocus(false)
   editBox:SetScript("OnEscapePressed", function() frame:Hide() end)
   scroll:SetScrollChild(editBox)
@@ -134,7 +144,8 @@ end
 --- Show text in a selectable window.
 function Bagwise.Dump.Show(text)
   if not frame then buildFrame() end
-  editBox:SetText(text)
+  -- Belt and braces: show any remaining pipe literally.
+  editBox:SetText((text:gsub("|", "||")))
   frame:Show()
   editBox:SetFocus()
   editBox:HighlightText()

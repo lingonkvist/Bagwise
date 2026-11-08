@@ -1,6 +1,7 @@
 -- Bagwise: make room for loot unit tests
 
 dofile("src/bags.lua")
+dofile("src/safety.lua")
 dofile("src/verdict.lua")
 dofile("src/makeroom.lua")
 
@@ -61,6 +62,20 @@ describe("MakeRoom.Plan", function()
     assert.are.equal("a", plan.deletes[1].key)
   end)
 
+  it("lets loot that joins an existing stack skip the queue for a slot", function()
+    local plan = Bagwise.MakeRoom.Plan(
+      { { slot = 1, value = 5, stacks = true }, { slot = 2, value = 900 } },
+      { junk("0:1", 0, 1, 10) }, 1)
+    assert.are.equal(false, plan.active) -- one free slot is enough for the other piece
+    local full = Bagwise.MakeRoom.Plan(
+      { { slot = 1, value = 5, stacks = true }, { slot = 2, value = 900 } },
+      { junk("0:1", 0, 1, 10) }, 0)
+    assert.are.equal(true, full.active)
+    assert.is_truthy(full.take[1])  -- the stacking piece is always fine to take
+    assert.is_truthy(full.take[2])
+    assert.are.equal(1, #full.deletes)
+  end)
+
   it("takes nothing when there is no junk to delete", function()
     local plan = Bagwise.MakeRoom.Plan({ { slot = 1, value = 999 } }, {}, 0)
     assert.is_nil(plan.take[1])
@@ -70,7 +85,7 @@ end)
 describe("MakeRoom.IsJunkCandidate", function()
   Bagwise.Data = { ReagentProfessions = {}, VendorReagents = {}, QuestItems = {} }
   local function item(overrides)
-    local base = { id = 990001, quality = 0, classID = 15, count = 1, sellPrice = 10 }
+    local base = { id = 990001, quality = 0, classID = 15, subClassID = 0, count = 1, sellPrice = 10 }
     for k, v in pairs(overrides or {}) do base[k] = v end
     return base
   end
@@ -78,6 +93,11 @@ describe("MakeRoom.IsJunkCandidate", function()
   it("accepts grays and plain whites that sell", function()
     assert.are.equal(true, Bagwise.MakeRoom.IsJunkCandidate(item()))
     assert.are.equal(true, Bagwise.MakeRoom.IsJunkCandidate(item({ quality = 1 })))
+  end)
+
+  it("offers a white only when the game files it as Junk", function()
+    assert.are.equal(false, Bagwise.MakeRoom.IsJunkCandidate(item({ quality = 1, subClassID = 2 }))) -- a companion
+    assert.are.equal(false, Bagwise.MakeRoom.IsJunkCandidate(item({ quality = 1, classID = 11 })))
   end)
 
   it("rejects items that cannot be sold", function()

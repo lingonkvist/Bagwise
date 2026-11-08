@@ -117,6 +117,20 @@ end
 local LOOT_TAKE_LINE = "Worth a slot, more than your junk"
 local LOOT_LEAVE_REASON = "Worth less than your junk"
 
+-- The loot window gives no "opens for loot" flag, but the item's own tooltip
+-- says "Right Click to Open". Read it so a clam is not called unneeded.
+local function tooltipSaysOpenable(tooltip)
+  local openable = _G.ITEM_OPENABLE
+  local name = tooltip.GetName and tooltip:GetName()
+  if not (openable and name) then return false end
+  for line = 2, (tooltip.NumLines and tooltip:NumLines() or 0) do
+    local text = _G[name .. "TextLeft" .. line]
+    local content = text and text.GetText and text:GetText()
+    if content and content:find(openable, 1, true) then return true end
+  end
+  return false
+end
+
 local function bagSlotOf(tooltip)
   local owner = tooltip:GetOwner()
   if not (owner and owner.GetParent and owner.GetID) then return nil end
@@ -327,7 +341,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   if isLootOwner(tooltip:GetOwner()) then
     -- Checked before the bag lookup: a loot row's ID could otherwise match a
     -- backpack slot holding the same item.
-    result = Bagwise.Scanner.EvaluateItem(itemID)
+    result = Bagwise.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip))
     headings = LOOT_HEADINGS
   else
     local bag, slot = bagSlotOf(tooltip)
