@@ -3,6 +3,7 @@
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist
 ## Version: 0.4.2
+## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator
 ## X-Curse-Project-ID: 1784913
