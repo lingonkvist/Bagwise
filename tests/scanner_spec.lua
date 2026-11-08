@@ -20,8 +20,6 @@ local ITEMS = {
   [600] = { "Odd Trinket", 0, 1, 0, 1, "", 500, 15, 0 },
   [700] = { "Odd Bauble", 0, 1, 0, 1, "", 800, 15, 0 },
   [800] = { "Recipe: Fancy Elixir", 1, 1, 0, 1, "", 100, 9, 6 },
-  [900] = { "Old Chain Hauberk", 2, 24, 15, 1, "INVTYPE_CHEST", 300, 4, 3 },
-  [901] = { "Better Chain Hauberk", 2, 33, 18, 1, "INVTYPE_CHEST", 600, 4, 3 },
 }
 local bags, freeByBag, loot
 
@@ -110,23 +108,6 @@ describe("Scanner: make room", function()
     assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
     assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow) -- Torn Rag sells for least
     assert.is_nil(Bagwise.Scanner.GetResult(0, 3).glow)
-  end)
-end)
-
-describe("Scanner: duplicate gear", function()
-  it("marks the weaker of two bound pieces yellow and leaves the better one alone", function()
-    setUp({ [0] = { { id = 900, bound = true }, { id = 901, bound = true } } }, {})
-    Bagwise.Scanner.ScanAll()
-    local weaker, better = Bagwise.Scanner.GetResult(0, 1), Bagwise.Scanner.GetResult(0, 2)
-    assert.are.equal("yellow", weaker.verdict)
-    assert.are.equal("Weaker than one in your bags (ilvl 24 vs 33)", weaker.reason)
-    assert.is_nil(better.verdict)
-  end)
-
-  it("leaves unbound gear alone, since it can be sold", function()
-    setUp({ [0] = { { id = 900 }, { id = 901 } } }, {})
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
   end)
 end)
 

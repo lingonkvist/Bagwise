@@ -421,61 +421,6 @@ local function evaluateOutleveledConsumable(item, state)
   return "yellow", "Outleveled, a level " .. reqLevel .. " item"
 end
 
--- Two of the same kind of gear in your bags: the weaker one is likely dead
--- weight. Compares only bound items in the same slot and armour or weapon type,
--- needs a clear item level lead, and respects slots you fill twice.
-local DUPLICATE_ILVL_LEAD = 5
-local TWO_PER_CHARACTER = { INVTYPE_FINGER = true, INVTYPE_TRINKET = true, INVTYPE_WEAPON = true }
-
-local function gearGroup(item)
-  if not (item.isEquippable and item.equipSlot and item.classID and item.subClassID) then return nil end
-  local slot = item.equipSlot == "INVTYPE_ROBE" and "INVTYPE_CHEST" or item.equipSlot
-  return slot .. ":" .. item.classID .. ":" .. item.subClassID, slot
-end
-
---- Which items are outclassed by another in the same bags?
--- @param entries table  list of { key = ..., item = ... } for the items to judge
--- @param state   table  player state (level)
--- @return table  { [key] = reason }
-function Bagwise.Verdict.WeakerDuplicates(entries, state)
-  local groups = {}
-  for i = 1, #entries do
-    local item = entries[i].item
-    local group = gearGroup(item)
-    if group and (item.quality or 0) >= 1 and (item.itemLevel or 0) > 0 then
-      groups[group] = groups[group] or {}
-      table.insert(groups[group], entries[i])
-    end
-  end
-
-  local weaker = {}
-  for group, members in pairs(groups) do
-    local _, slot = gearGroup(members[1].item)
-    local needed = TWO_PER_CHARACTER[slot] and 2 or 1
-    for _, entry in ipairs(members) do
-      local item = entry.item
-      if item.isBound and not item.isKept then
-        local better, bestLevel = 0, 0
-        for _, other in ipairs(members) do
-          local rival = other.item
-          if other ~= entry
-              and (rival.reqLevel or 0) <= (state.level or 1)
-              and (rival.quality or 0) >= (item.quality or 0)
-              and rival.itemLevel >= item.itemLevel + DUPLICATE_ILVL_LEAD then
-            better = better + 1
-            if rival.itemLevel > bestLevel then bestLevel = rival.itemLevel end
-          end
-        end
-        if better >= needed then
-          weaker[entry.key] = "Weaker than one in your bags (ilvl "
-              .. item.itemLevel .. " vs " .. bestLevel .. ")"
-        end
-      end
-    end
-  end
-  return weaker
-end
-
 local COMMON_QUALITY = 1
 local UNCOMMON_QUALITY = 2
 local ARMOR_CLASS_ID = 4
