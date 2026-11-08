@@ -17,6 +17,9 @@ local ITEMS = {
   [300] = { "Torn Rag", 0, 1, 0, 1, "", 2, 15, 0 },
   [400] = { "Fine Rag", 0, 1, 0, 1, "", 9, 15, 0 },
   [500] = { "Shiny Thing", 1, 1, 0, 1, "", 50, 15, 0 },
+  [600] = { "Odd Trinket", 0, 1, 0, 1, "", 500, 15, 0 },
+  [700] = { "Odd Bauble", 0, 1, 0, 1, "", 800, 15, 0 },
+  [800] = { "Recipe: Fancy Elixir", 1, 1, 0, 1, "", 100, 9, 6 },
 }
 local bags, freeByBag, loot
 
@@ -103,6 +106,83 @@ describe("Scanner: make room", function()
     assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
     assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow) -- Torn Rag sells for least
     assert.is_nil(Bagwise.Scanner.GetResult(0, 3).glow)
+  end)
+end)
+
+describe("Scanner: looted slots", function()
+  it("leaves a just-looted slot out of the loot list", function()
+    setUp({ [0] = { { id = 100, count = 20 }, { id = 300 } } }, { [0] = 0 },
+      { { id = 100, qty = 3 }, { id = 500, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot(2)
+    assert.are.equal(1, Bagwise.Scanner.MakeRoomSummary().lootItems)
+  end)
+end)
+
+describe("Scanner: grays worth some silver", function()
+  it("warns yellow on the cheapest gray when even it is worth real money", function()
+    setUp({ [0] = { { id = 600 }, { id = 700 } } }, { [0] = 0 })
+    Bagwise.Scanner.ScanAll()
+    local cheapest, dearer = Bagwise.Scanner.GetResult(0, 1), Bagwise.Scanner.GetResult(0, 2)
+    assert.are.equal("yellow", cheapest.verdict)
+    assert.are.equal("Cheapest gray, but worth 5s", cheapest.reason)
+    assert.is_nil(dearer.verdict)
+  end)
+
+  it("lets a cheap green gray win over a gray worth silver", function()
+    setUp({ [0] = { { id = 600 }, { id = 300 } } }, { [0] = 0 })
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
+    assert.are.equal("green", Bagwise.Scanner.GetResult(0, 2).verdict)
+  end)
+end)
+
+describe("Scanner: recipes", function()
+  local function giveSkills(lines)
+    _G.GetNumSkillLines = function() return #lines + 1 end
+    _G.GetSkillLineInfo = function(i)
+      if i == 1 then return "Professions", true, true end
+      local line = lines[i - 1]
+      return line[1], false, nil, line[2]
+    end
+  end
+  local function giveTooltip(text)
+    _G.ITEM_MIN_SKILL = "Requires %s (%d)"
+    _G.UIParent = {}
+    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.CreateFrame = function()
+      return {
+        SetOwner = function() end, ClearLines = function() end,
+        SetBagItem = function() end, NumLines = function() return 2 end,
+      }
+    end
+  end
+
+  it("reads the skill a recipe needs from its tooltip and banks one that is far off", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    giveSkills({ { "Alchemy", 100 } })
+    giveTooltip("Requires Alchemy (225)")
+    Bagwise.Scanner.ScanAll()
+    local result = Bagwise.Scanner.GetResult(0, 1)
+    assert.are.equal("yellow", result.verdict)
+    assert.are.equal("Bank it, needs Alchemy 225", result.reason)
+  end)
+
+  it("stays quiet when the skill is within reach", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    giveSkills({ { "Alchemy", 100 } })
+    giveTooltip("Requires Alchemy (125)")
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
+  end)
+
+  it("says a recipe is for another profession when you do not have it", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    giveSkills({ { "Mining", 50 } })
+    giveTooltip("Requires Alchemy (125)")
+    Bagwise.Scanner.ScanAll()
+    local result = Bagwise.Scanner.GetResult(0, 1)
+    assert.are.equal("yellow", result.verdict)
+    assert.is_truthy(result.reason:find("You don't have this profession", 1, true))
   end)
 end)
 

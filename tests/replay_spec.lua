@@ -16,10 +16,10 @@ end
 
 describe("Real inventories, as dumped", function()
   for _, name in ipairs(FIXTURES) do
-    it(name .. " gets no dots: nothing in it is safe to delete yet", function()
+    it(name .. " gets no green: nothing in it is safe to delete yet", function()
       local results = Replay.Evaluate(Replay.Load(DIR .. name .. ".txt"))
       for _, result in ipairs(results) do
-        assert.is_nil(result.verdict)
+        assert.is_truthy(result.verdict ~= "green")
       end
     end)
   end

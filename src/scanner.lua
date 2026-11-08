@@ -55,6 +55,7 @@ local PROFESSION_NAME_TO_SKILL_LINE = {
 -- @return table  Set of skillLine IDs the player currently has
 local function gatherProfessionSkillLines()
   local skillLines = {}
+  local ranks = {} -- [skillLineID] = current skill rank, when the client says
 
   -- Path A: Modern profession API
   local prof1, prof2, _, fishing, cooking
@@ -69,10 +70,11 @@ local function gatherProfessionSkillLines()
             GetProfessionInfo(index)
         if skillLine then
           skillLines[skillLine] = true
+          ranks[skillLine] = rank
         end
       end
     end
-    return skillLines, true
+    return skillLines, true, ranks
   end
 
   -- Path B: Fallback for Classic Era OR Forever
@@ -88,18 +90,19 @@ local function gatherProfessionSkillLines()
     local lines = getNum()
     complete = lines > 0
     for i = 1, lines do
-      local name, isHeader, isExpanded = getInfo(i)
+      local name, isHeader, isExpanded, rank = getInfo(i)
       if isHeader and isExpanded == false then complete = false end
       if not isHeader and name then
         local id = PROFESSION_NAME_TO_SKILL_LINE[name]
         if id then
           skillLines[id] = true
+          ranks[id] = rank
         end
       end
     end
   end
 
-  return skillLines, complete
+  return skillLines, complete, ranks
 end
 
 --- Gather player state once per scan.
@@ -110,15 +113,17 @@ local function getPlayerState()
   local level = UnitLevel("player")
   local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
 
-  local skillLines, professionsKnown = gatherProfessionSkillLines()
+  local skillLines, professionsKnown, ranksByID = gatherProfessionSkillLines()
 
   -- Build reverse lookup: English profession name -> true.
   -- Used by verdict rules that match against ReagentProfessions data
   -- (which is keyed by English name, not skillLine ID).
   local professionNames = {}
+  local professionRanks = {}
   for name, id in pairs(PROFESSION_NAME_TO_SKILL_LINE) do
     if skillLines[id] then
       professionNames[name] = true
+      professionRanks[name] = ranksByID and ranksByID[id] or nil
     end
   end
 
@@ -133,6 +138,7 @@ local function getPlayerState()
     level = level,
     professionSkillLines = skillLines,
     professionNames = professionNames,
+    professionRanks = professionRanks,
     professionsKnown = professionsKnown,
   }
 end
@@ -287,6 +293,43 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   }
 end
 
+-- A recipe's tooltip says "Requires Alchemy (150)". The skill needed is in no
+-- item field, so read it from the item's own tooltip. Only recipes ask for it.
+local skillTip
+local skillPattern
+
+local function requiredSkillPattern()
+  if skillPattern ~= nil then return skillPattern or nil end
+  local format = _G.ITEM_MIN_SKILL
+  if not format then skillPattern = false; return nil end
+  local escaped = format:gsub("[%^%$%(%)%.%[%]%*%+%-%?]", "%%%0")
+  escaped = escaped:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)")
+  skillPattern = "^" .. escaped .. "$"
+  return skillPattern
+end
+
+local function readRequiredSkill(bag, slot)
+  local pattern = requiredSkillPattern()
+  if not (pattern and CreateFrame and UIParent) then return nil end
+  if not skillTip then
+    skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+  end
+  skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+  skillTip:ClearLines()
+  skillTip:SetBagItem(bag, slot)
+  for line = 2, skillTip:NumLines() do
+    local text = _G["BagwiseSkillTipTextLeft" .. line]
+    local content = text and text:GetText()
+    if content then
+      local _, number = content:match(pattern)
+      if number then return tonumber(number) end
+    end
+  end
+  return nil
+end
+
+local RECIPE_CLASS_ID = 9
+
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index
 -- @param slot  number  Slot index (1-N)
@@ -296,9 +339,13 @@ local function gatherItem(bag, slot, state)
   local containerInfo = C_Container.GetContainerItemInfo(bag, slot)
   if not containerInfo then return nil end
 
-  return buildItem(containerInfo.itemID, containerInfo.isBound,
+  local item = buildItem(containerInfo.itemID, containerInfo.isBound,
     C_Container.GetContainerItemQuestInfo(bag, slot), state,
     containerInfo.stackCount, containerInfo.hasLoot)
+  if item and item.classID == RECIPE_CLASS_ID then
+    item.requiredSkill = readRequiredSkill(bag, slot)
+  end
+  return item
 end
 
 --- Build a short string key from the player's profession set.
@@ -306,14 +353,12 @@ end
 -- @param state table  Player state from getPlayerState()
 -- @return string      e.g. "164,171" for Blacksmithing+Alchemy
 local function professionCacheKey(state)
-  local ids = {}
-  if state.professionSkillLines then
-    for id in pairs(state.professionSkillLines) do
-      ids[#ids + 1] = id
-    end
-    table.sort(ids)
+  local parts = {}
+  for name in pairs(state.professionNames or {}) do
+    parts[#parts + 1] = name .. "=" .. tostring(state.professionRanks and state.professionRanks[name])
   end
-  local key = table.concat(ids, ",")
+  table.sort(parts)
+  local key = table.concat(parts, ",")
   if state.professionsKnown == false then key = key .. "?" end
   return key
 end
@@ -343,6 +388,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.isFlagged)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
+      .. ":" .. tostring(item.requiredSkill)
       .. ":" .. equippedKey(item)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
@@ -407,6 +453,7 @@ local function scanAllSlots()
           poorQuality[#poorQuality + 1] = {
             key = key, bag = bag, slot = slot,
             value = (item.sellPrice or 0) * (item.count or 1),
+            verdict = slotResults[key].verdict,
           }
         end
       else
@@ -423,8 +470,8 @@ local function scanAllSlots()
       slotResults[entry.key] = {}
     elseif next(silenced) then
       slotResults[entry.key] = {
-        verdict = "green",
-        reason = Bagwise.Verdict.PoorQualityReason(entry.value, true),
+        verdict = entry.verdict,
+        reason = Bagwise.Verdict.PoorQualityReason(entry.value, true, entry.verdict == "yellow"),
         tag = Bagwise.Verdict.POOR_QUALITY_TAG,
       }
     end
@@ -511,12 +558,15 @@ local function isPriorityLoot(info)
 end
 
 --- Read the open loot window and rescan with it in mind.
-function Bagwise.Scanner.RefreshLoot()
+-- @param clearedSlot number|nil  a slot that was just looted, to leave out
+function Bagwise.Scanner.RefreshLoot(clearedSlot)
   lootPieces = {}
   local count = GetNumLootItems and GetNumLootItems() or 0
   for slot = 1, count do
     local link = GetLootSlotLink and GetLootSlotLink(slot)
-    if link then
+    local gone = slot == clearedSlot
+        or (LootSlotHasItem and not LootSlotHasItem(slot))
+    if link and not gone then
       local _, _, quantity = GetLootSlotInfo(slot)
       local itemID = tonumber(link:match("item:(%d+)"))
       local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = getItemInfo(link)

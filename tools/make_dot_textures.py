@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Render the verdict dot textures (textures/dot_green.tga, dot_yellow.tga) and
+"""Render the verdict dot textures (textures/dot_green.tga, dot_yellow.tga),
+the shadowless tooltip pearls (pearl_green.tga, pearl_yellow.tga) and
 the border glow (textures/glow.tga).
 
 Each dot is a lit sphere (soft body shading, a broad glossy sheen and a small
@@ -28,6 +29,11 @@ COLORS = {
     "yellow": (0.97, 0.82, 0.16),
 }
 PEARL_SHEEN = np.array([1.0, 0.96, 0.98])   # faint warm-pink white
+RING_WIDTH = 4.6     # near-black outline, about 1 px on screen at the 13 px dot size
+RING_COLOR = np.array([0.03, 0.02, 0.02])
+BEVEL_WIDTH = 6.0    # soft emboss just inside the ring: bright toward the light, dim away from it
+BEVEL_LIGHT = 0.42
+BEVEL_SHADE = 0.22
 
 
 def normalize(v):
@@ -35,14 +41,14 @@ def normalize(v):
     return v / np.linalg.norm(v)
 
 
-def render(color):
+def render(color, shadow_on=True, center=DISC_CENTER):
     n = SIZE * SUPERSAMPLE
     ys, xs = np.mgrid[0:n, 0:n]
     cx = cy = (n - 1) / 2
     fx = (xs - cx) / SUPERSAMPLE
     fy = (ys - cy) / SUPERSAMPLE
-    x = fx - DISC_CENTER[0]
-    y = fy - DISC_CENTER[1]
+    x = fx - center[0]
+    y = fy - center[1]
     r = np.hypot(x, y)
 
     inside = r <= DISC_RADIUS
@@ -68,8 +74,20 @@ def render(color):
     body = body * (1 - broad[..., None]) + PEARL_SHEEN[None, None, :] * broad[..., None]
     body = body * (1 - hot[..., None]) + np.ones(3)[None, None, :] * hot[..., None]
 
-    # A hair of darkening right at the rim keeps the edge crisp.
-    body *= (1 - 0.22 * np.clip((r - (DISC_RADIUS - 2.2)) / 2.2, 0, 1))[..., None]
+    # Bevel: a narrow band just inside the ring, lit from the same side as the
+    # sphere, so the edge reads as a rounded pearl rather than a flat sticker.
+    inner = DISC_RADIUS - RING_WIDTH
+    band = np.clip((r - (inner - BEVEL_WIDTH)) / BEVEL_WIDTH, 0, 1)
+    band = np.sin(band * np.pi / 2) * np.clip((inner - r) / 1.2 + 1, 0, 1)
+    facing = -(nx * light[0] + ny * light[1]) / np.maximum(np.hypot(light[0], light[1]), 1e-6)
+    lit = np.clip(facing, 0, 1) * band
+    dim = np.clip(-facing, 0, 1) * band
+    body = body * (1 - BEVEL_SHADE * dim[..., None])
+    body = body * (1 - BEVEL_LIGHT * lit[..., None]) + PEARL_SHEEN[None, None, :] * (BEVEL_LIGHT * lit[..., None])
+
+    # The outline: near-black, so the dot stands out on any icon.
+    ring = np.clip((r - inner) / 1.0, 0, 1)
+    body = body * (1 - ring[..., None]) + RING_COLOR[None, None, :] * ring[..., None]
     body = np.clip(body, 0, 1)
 
     # Drop shadow: solid under the disc, then a short fade, offset down and
@@ -77,6 +95,8 @@ def render(color):
     sr = np.hypot(x - SHADOW_OFFSET[0], y - SHADOW_OFFSET[1])
     tail = np.clip(1 - (sr - DISC_RADIUS) / SHADOW_FADE, 0, 1) ** 1.6
     shadow = SHADOW_STRENGTH * np.where(sr <= DISC_RADIUS, 1.0, tail)
+    if not shadow_on:
+        shadow = np.zeros_like(shadow)
 
     shadow_rgb = np.array([0.04, 0.025, 0.015])
     alpha = np.where(inside, 1.0, shadow)
@@ -142,6 +162,11 @@ def main():
     for name, color in COLORS.items():
         path = f"{args.out}/dot_{name}.tga"
         write_tga(path, render(color))
+        print("wrote", path)
+        # The tooltip's inline copy: no shadow and dead centre in its frame, so
+        # it sits level with the text instead of riding high.
+        path = f"{args.out}/pearl_{name}.tga"
+        write_tga(path, render(color, shadow_on=False, center=(0.0, 0.0)))
         print("wrote", path)
     write_tga(f"{args.out}/glow.tga", render_glow())
     print("wrote", f"{args.out}/glow.tga")

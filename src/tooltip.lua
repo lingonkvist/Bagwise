@@ -4,7 +4,7 @@
 Bagwise                     = Bagwise or {}
 Bagwise.Tooltip             = {}
 
-local INFO_COLOR            = { r = 0.5, g = 0.8, b = 1.0 }
+local INFO_COLOR            = { r = 0.40, g = 0.74, b = 1.0 }  -- the blue of "Crafting Reagent" in the item tooltip
 
 -- Profession entry field indices (data/reagent_professions.lua is generated,
 -- so we name the positions here instead of restructuring the dataset).
@@ -22,11 +22,11 @@ local VERDICT_COLORS        = {
 -- Bagwise detail row, so all of it reads as one family.
 local DETAIL_COLOR          = INFO_COLOR
 
--- The tooltip header carries the same dot as the bag slot (colour is baked
--- into each texture).
+-- The tooltip header carries the same pearl as the bag slot, without the
+-- shadow and centred in its frame (colour is baked into each texture).
 local DOT_TEXTURES          = {
-  green  = "Interface\\AddOns\\Bagwise\\textures\\dot_green",
-  yellow = "Interface\\AddOns\\Bagwise\\textures\\dot_yellow",
+  green  = "Interface\\AddOns\\Bagwise\\textures\\pearl_green",
+  yellow = "Interface\\AddOns\\Bagwise\\textures\\pearl_yellow",
 }
 local DOT_ESCAPE_SIZE       = 14
 

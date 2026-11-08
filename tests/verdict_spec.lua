@@ -989,23 +989,24 @@ describe("Gray items by vendor value", function()
     assert.are.equal("Poor quality, no vendor value", reason)
   end)
 
-  it("a gray that sells for real money stays silent", function()
-    local verdict = Bagwise.Verdict.Evaluate(gray({ sellPrice = 500 }), stateAtLevel(30))
+  it("a gray that sells for real money is yellow and says so", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(gray({ sellPrice = 500 }), stateAtLevel(30))
 
-    assert.is_nil(verdict)
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Gray, but worth 5s", reason)
   end)
 
   it("judges the whole stack, not one item", function()
     local verdict = Bagwise.Verdict.Evaluate(gray({ sellPrice = 20, count = 20 }), stateAtLevel(30))
 
-    assert.is_nil(verdict)
+    assert.are.equal("yellow", verdict)
   end)
 
-  it("the bar rises with level: 60c is worth keeping at level 1 but not at level 60", function()
+  it("the bar rises with level: 60c is worth a glance at level 1 but not at level 60", function()
     local early = Bagwise.Verdict.Evaluate(gray({ sellPrice = 60 }), stateAtLevel(1))
     local late = Bagwise.Verdict.Evaluate(gray({ sellPrice = 60 }), stateAtLevel(60))
 
-    assert.is_nil(early)
+    assert.are.equal("yellow", early)
     assert.are.equal("green", late)
   end)
 
@@ -1350,5 +1351,84 @@ describe("Ordinary items that a finished quest also asked for", function()
     local scroll = { id = 990402, classID = 12, quality = 1, sellPrice = 0, count = 1,
       questItemQuestIDs = { 1 }, allQuestObjectivesCompleted = true }
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(scroll, state)))
+  end)
+end)
+
+describe("Recipes and reagents you cannot use yet", function()
+  local function state(professions, extra)
+    local names, ranks = {}, {}
+    for name, rank in pairs(professions) do names[name] = true; ranks[name] = rank end
+    local s = { level = 30, professionNames = names, professionRanks = ranks,
+                professionSkillLines = {}, professionsKnown = true }
+    for key, value in pairs(extra or {}) do s[key] = value end
+    return s
+  end
+  local function recipe(overrides)
+    local item = { id = 9001, classID = 9, subClassID = 6, quality = 1, isBound = false }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local MITHRIL_BAR = { id = 3860, classID = 7, quality = 1, sellPrice = 400, count = 1 }
+  -- Earlier specs swap the real table out, so give these tests their own.
+  Bagwise.Data.ReagentProfessions = {
+    [3860] = { { "Alchemy", 1, 240, 240 }, { "Blacksmithing", 54, 200, 260 },
+               { "Engineering", 37, 1, 320 } },
+  }
+
+  it("recipe for a profession you do not have is yellow and says whose it is", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(recipe(), state({ Mining = 50 }))
+
+    assert.are.equal("yellow", verdict)
+    assert.is_truthy(reason:find("You don't have this profession", 1, true))
+  end)
+
+  it("recipe far above your skill says to bank it", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 200 }), state({ Alchemy = 100 }))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Bank it, needs Alchemy 200", reason)
+  end)
+
+  it("recipe you will be able to learn soon stays silent", function()
+    local verdict = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 140 }), state({ Alchemy = 100 }))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("recipe with an unknown skill requirement stays silent", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe(), state({ Alchemy = 100 }))))
+  end)
+
+  it("says nothing about recipes while the profession list is incomplete", function()
+    local verdict = Bagwise.Verdict.Evaluate(recipe(), state({}, { professionsKnown = false }))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("recipes are never green, whatever else is true", function()
+    local verdict = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 300 }), state({ Alchemy = 1 }))
+
+    assert.is_truthy(verdict ~= "green")
+  end)
+
+  it("reagent your profession will not use for a long while says to bank it", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 100 }))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Bank it, used from Blacksmithing 200", reason)
+  end)
+
+  it("reagent within reach stays silent", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 160 }))))
+  end)
+
+  it("reagent another of your professions already uses stays silent", function()
+    local verdict = Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 100, Engineering = 100 }))
+
+    assert.is_nil(verdict)
+  end)
+
+  it("reagent for professions you do not have is not a bank-it case", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Mining = 50 }))))
   end)
 end)

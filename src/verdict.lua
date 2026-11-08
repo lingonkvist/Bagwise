@@ -211,6 +211,17 @@ local TRADE_GOODS_CLASS_ID = 7
 local WORTH_KEEPING_BASE_COPPER = 25
 local WORTH_KEEPING_PER_LEVEL = 5
 local POOR_QUALITY = 0
+
+-- Where a gray stops being plainly safe to delete and starts being worth some
+-- silver, in copper, by player level. A little higher than the general
+-- threshold above: 50c at level 2, about 1s75c at 20, 4s55c at 60.
+local GRAY_WORTH_BASE_COPPER = 35
+local GRAY_WORTH_PER_LEVEL = 7
+
+local function grayThreshold(state)
+  return GRAY_WORTH_BASE_COPPER + GRAY_WORTH_PER_LEVEL * (state.level or 1)
+end
+
 -- Marks a verdict as "gray item" so the scanner can thin them out.
 Bagwise.Verdict.POOR_QUALITY_TAG = "poorQuality"
 local POOR_QUALITY_TAG = Bagwise.Verdict.POOR_QUALITY_TAG
@@ -244,15 +255,22 @@ end
 -- keeps its dot says it is the cheapest, so the single dot makes sense.
 -- @param value     number   what the stack sells for, in copper
 -- @param isCheapestOfSeveral boolean
-function Bagwise.Verdict.PoorQualityReason(value, isCheapestOfSeveral)
+-- @param isWorthSilver boolean  true for a gray above the safe-to-delete value:
+--        the dot is yellow and the reason warns that it is worth something
+function Bagwise.Verdict.PoorQualityReason(value, isCheapestOfSeveral, isWorthSilver)
+  if isWorthSilver then
+    local label = isCheapestOfSeveral and "Cheapest gray" or "Gray"
+    return label .. ", but worth " .. Bagwise.Verdict.FormatMoney(value)
+  end
   local label = isCheapestOfSeveral and "Cheapest gray" or "Poor quality"
   if value == 0 then return label .. ", no vendor value" end
   return label .. ", sells for " .. Bagwise.Verdict.FormatMoney(value)
 end
 
--- Gray items. Cheap ones are safe to delete; ones that sell for real money
--- stay silent so the player vendors them instead. Anything a quest or recipe
--- still lists is left alone.
+-- Gray items. Cheap ones are safe to delete. One that sells for real money gets
+-- a yellow warning instead, and the scanner keeps only the cheapest gray's dot,
+-- so that warning only shows when no cheaper gray is green. Anything a quest or
+-- recipe still lists is left alone.
 local function evaluatePoorQuality(item, state)
   if item.quality ~= POOR_QUALITY then return nil end
   if item.questItemQuestIDs then return nil end
@@ -262,13 +280,15 @@ local function evaluatePoorQuality(item, state)
   end
 
   local value = stackValue(item)
-  if value >= valueThreshold(state) then return nil end
+  if value >= grayThreshold(state) then
+    return "yellow", Bagwise.Verdict.PoorQualityReason(value, false, true), nil, POOR_QUALITY_TAG
+  end
   return "green", Bagwise.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
 end
 
 --- Keep only the cheapest few poor-quality greens, so a bag full of grays
 -- doesn't turn into a wall of dots. Deleting one lights up the next.
--- @param entries table  list of { key, bag, slot, value } for every poor-quality green
+-- @param entries table  list of { key, bag, slot, value } for every gray with a dot
 -- @param maxDots number how many may stay green
 -- @return table  set of keys that should go silent
 function Bagwise.Verdict.SilenceAllButCheapest(entries, maxDots)
@@ -323,6 +343,60 @@ local function evaluateNoRecipeUse(item, state)
   end
 
   return "green", "Not used for any quest or recipe"
+end
+
+-- Recipes and the reagents behind them. A recipe's item subclass says which
+-- profession it teaches. Nothing here says "delete": a recipe for a profession
+-- you do not have may sell, and one you cannot use yet is only taking up room,
+-- so the advice is to bank it or sell it, and the player decides.
+local RECIPE_CLASS_ID = 9
+local RECIPE_PROFESSIONS = {
+  [1] = "Leatherworking", [2] = "Tailoring", [3] = "Engineering",
+  [4] = "Blacksmithing", [5] = "Cooking", [6] = "Alchemy",
+  [7] = "First Aid", [8] = "Enchanting", [9] = "Fishing",
+}
+-- How many skill points short before something counts as "a while away".
+local BANK_SKILL_GAP = 50
+
+local function evaluateRecipe(item, state)
+  if item.classID ~= RECIPE_CLASS_ID then return nil end
+  local profession = RECIPE_PROFESSIONS[item.subClassID]
+  if not profession then return nil end
+  if state.professionsKnown == false or not state.professionNames then return nil end
+
+  if not state.professionNames[profession] then
+    return "yellow", "You don't have this profession. May sell on AH"
+  end
+
+  local rank = state.professionRanks and state.professionRanks[profession]
+  if rank and item.requiredSkill and item.requiredSkill > rank + BANK_SKILL_GAP then
+    return "yellow", "Bank it, needs " .. profession .. " " .. item.requiredSkill
+  end
+  return nil
+end
+
+-- A reagent the player's own professions will not use for a good while: every
+-- profession of theirs that uses it starts needing it far above their skill.
+local function evaluateDistantReagent(item, state)
+  local entries = Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[item.id]
+  if not entries or state.professionsKnown == false then return nil end
+  if not (state.professionNames and state.professionRanks) then return nil end
+
+  local nearest -- the smallest gap to a profession of theirs
+  for i = 1, #entries do
+    local name, minSkill = entries[i][1], entries[i][3]
+    if state.professionNames[name] then
+      local rank = state.professionRanks[name]
+      if not rank or not minSkill then return nil end
+      if minSkill <= rank + BANK_SKILL_GAP then return nil end
+      if not nearest or minSkill - rank < nearest.gap then
+        nearest = { gap = minSkill - rank, name = name, minSkill = minSkill, rank = rank }
+      end
+    end
+  end
+  if not nearest then return nil end
+  return "yellow", "Bank it, used from " .. nearest.name .. " " .. nearest.minSkill
 end
 
 local COMMON_QUALITY = 1
@@ -437,6 +511,8 @@ local RULES = {
     overrides = { vendor_reagent = true, recipe_reagent = true } },
   { name = "class_reagent",      evaluate = evaluateClassReagent,
     overrides = { spell_reagent = true, recipe_reagent = true } },
+  { name = "recipe",             evaluate = evaluateRecipe },
+  { name = "distant_reagent",    evaluate = evaluateDistantReagent },
   { name = "poor_quality",       evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse },
 }

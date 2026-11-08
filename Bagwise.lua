@@ -34,10 +34,16 @@ local function invalidateAndRescan()
 end
 
 -- Loot window: read what is in it, work out what is worth a slot, repaint.
-local function onLootChanged()
-  Bagwise.Scanner.RefreshLoot()
+-- LOOT_SLOT_CLEARED carries the slot that was just taken. The client can still
+-- report the item for that slot, and Blizzard re-lays the rows after the event,
+-- so the loot dots are repainted once now and once on the next frame.
+local function onLootChanged(self, clearedSlot)
+  Bagwise.Scanner.RefreshLoot(clearedSlot)
   rescanAll()
   Bagwise.Overlay.UpdateLoot()
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function() Bagwise.Overlay.UpdateLoot() end)
+  end
 end
 
 local function onLootClosed()
