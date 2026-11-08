@@ -1432,3 +1432,102 @@ describe("Recipes and reagents you cannot use yet", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Mining = 50 }))))
   end)
 end)
+
+describe("Outleveled consumables", function()
+  local function consumable(overrides)
+    local item = { id = 9100, classID = 0, subClassID = 5, quality = 1, reqLevel = 5, count = 10, sellPrice = 4 }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local function at(level) return { level = level, professionNames = {}, professionsKnown = true } end
+
+  it("food made for a level 5 character is yellow at level 30", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(consumable(), at(30))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Outleveled, a level 5 item", reason)
+  end)
+
+  it("stays silent while it is still within 20 levels", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable(), at(24))))
+  end)
+
+  it("covers potions and bandages but not elixirs or flasks", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 1 }), at(40))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 7 }), at(40))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 2 }), at(40))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 3 }), at(40))))
+  end)
+
+  it("says nothing when the item has no level requirement or serves a quest", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ reqLevel = 0 }), at(50))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ questItemQuestIDs = { 1 } }), at(50))))
+  end)
+end)
+
+describe("Weaker duplicate gear", function()
+  local function piece(key, overrides)
+    local item = { id = 9200 + key, classID = 4, subClassID = 4, equipSlot = "INVTYPE_CHEST",
+                   isEquippable = true, isBound = true, quality = 2, itemLevel = 30, reqLevel = 20 }
+    for k, v in pairs(overrides or {}) do item[k] = v end
+    return { key = "0:" .. key, item = item }
+  end
+  local state = { level = 30 }
+
+  it("flags the weaker of two matching pieces and names the lead", function()
+    local weaker = Bagwise.Verdict.WeakerDuplicates({ piece(1, { itemLevel = 24 }), piece(2, { itemLevel = 33 }) }, state)
+
+    assert.are.equal("Weaker than one in your bags (ilvl 24 vs 33)", weaker["0:1"])
+    assert.is_nil(weaker["0:2"])
+  end)
+
+  it("needs a clear item level lead", function()
+    local weaker = Bagwise.Verdict.WeakerDuplicates({ piece(1, { itemLevel = 30 }), piece(2, { itemLevel = 33 }) }, state)
+
+    assert.is_nil(weaker["0:1"])
+  end)
+
+  it("does not compare different armour types or slots", function()
+    local weaker = Bagwise.Verdict.WeakerDuplicates({
+      piece(1, { itemLevel = 20 }),
+      piece(2, { itemLevel = 40, subClassID = 3 }),
+      piece(3, { itemLevel = 40, equipSlot = "INVTYPE_LEGS" }),
+    }, state)
+
+    assert.is_nil(weaker["0:1"])
+  end)
+
+  it("ignores a better piece you cannot wear yet", function()
+    local weaker = Bagwise.Verdict.WeakerDuplicates({ piece(1, { itemLevel = 20 }), piece(2, { itemLevel = 40, reqLevel = 45 }) }, state)
+
+    assert.is_nil(weaker["0:1"])
+  end)
+
+  it("never flags a piece that is not bound, kept, or better in quality", function()
+    local weaker = Bagwise.Verdict.WeakerDuplicates({
+      piece(1, { itemLevel = 20, isBound = false }),
+      piece(2, { itemLevel = 20, isKept = true }),
+      piece(3, { itemLevel = 20, quality = 3 }),
+      piece(4, { itemLevel = 40 }),
+    }, state)
+
+    assert.is_nil(weaker["0:1"])
+    assert.is_nil(weaker["0:2"])
+    assert.is_nil(weaker["0:3"])
+  end)
+
+  it("a ring slot you fill twice needs two better rings", function()
+    local one = Bagwise.Verdict.WeakerDuplicates({
+      piece(1, { itemLevel = 20, equipSlot = "INVTYPE_FINGER", subClassID = 0 }),
+      piece(2, { itemLevel = 40, equipSlot = "INVTYPE_FINGER", subClassID = 0 }),
+    }, state)
+    local two = Bagwise.Verdict.WeakerDuplicates({
+      piece(1, { itemLevel = 20, equipSlot = "INVTYPE_FINGER", subClassID = 0 }),
+      piece(2, { itemLevel = 40, equipSlot = "INVTYPE_FINGER", subClassID = 0 }),
+      piece(3, { itemLevel = 38, equipSlot = "INVTYPE_FINGER", subClassID = 0 }),
+    }, state)
+
+    assert.is_nil(one["0:1"])
+    assert.is_truthy(two["0:1"])
+  end)
+end)

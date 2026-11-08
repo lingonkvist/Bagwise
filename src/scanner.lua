@@ -278,6 +278,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     reqLevel = reqLevel,
     isBound = isBound,
     isEquippable = isEquippable,
+    equipSlot = equipSlot,
     classID = classID,
     bindType = bindType,
     sellPrice = sellPrice,
@@ -479,6 +480,19 @@ local function scanAllSlots()
         tag = Bagwise.Verdict.POOR_QUALITY_TAG,
       }
     end
+  end
+
+  -- Gear outclassed by another piece in the bags gets a yellow, unless the
+  -- slot already has a verdict of its own.
+  local gearEntries = {}
+  for _, candidate in ipairs(junkCandidates) do
+    local existing = slotResults[candidate.key]
+    if not (existing and existing.verdict) then
+      gearEntries[#gearEntries + 1] = { key = candidate.key, item = candidate.item }
+    end
+  end
+  for key, reason in pairs(Bagwise.Verdict.WeakerDuplicates(gearEntries, state)) do
+    slotResults[key] = { verdict = "yellow", reason = reason }
   end
 
   -- Making room for loot runs last, on the final results.

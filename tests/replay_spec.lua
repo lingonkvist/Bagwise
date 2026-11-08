@@ -31,9 +31,9 @@ describe("Real inventories, as dumped", function()
 end)
 
 describe("Openable items", function()
-  it("never marks a Small Barnacled Clam, which opens for loot", function()
+  it("marks a Small Barnacled Clam, which opens for loot, yellow and never green", function()
     local results = Replay.Evaluate(Replay.Load(DIR .. "warrior_18_horde.txt"))
-    assert.is_nil(verdictOf(results, "Small Barnacled Clam"))
+    assert.are.equal("yellow", verdictOf(results, "Small Barnacled Clam"))
   end)
 end)
 
