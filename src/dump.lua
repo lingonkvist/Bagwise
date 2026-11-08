@@ -67,7 +67,8 @@ end
 --- Render a snapshot as text: a few header lines, then one pipe-separated
 -- row per item.
 -- @param snapshot table  from Bagwise.Scanner.CollectInventory()
--- @param context  table  { version = "...", build = "..." }
+-- @param context  table  { version = "...", build = "...", extra = { "key=value", ... } }
+--                         extra lines go in the header, for bug reports
 -- @return string
 function Bagwise.Dump.Format(snapshot, context)
   context = context or {}
@@ -80,6 +81,12 @@ function Bagwise.Dump.Format(snapshot, context)
     "# professions=" .. table.concat(player.professions or {}, ","),
     "# columns: " .. table.concat(COLUMNS, SEPARATOR),
   }
+
+  -- Extra header lines (bag UI, safety checks, make-room state) go after the
+  -- player lines and before the columns line.
+  for i, extra in ipairs(context.extra or {}) do
+    table.insert(lines, 4 + i, "# " .. cell(extra))
+  end
 
   for _, row in ipairs(snapshot.rows) do
     lines[#lines + 1] = table.concat(rowCells(row), SEPARATOR)

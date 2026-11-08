@@ -86,3 +86,16 @@ describe("Dump.Format", function()
     assert.is_truthy(text:find("1 not cached yet", 1, true))
   end)
 end)
+
+describe("Dump.Format extra header lines", function()
+  it("puts report details after the player lines and before the columns", function()
+    local snapshot = { player = { class = "WARRIOR", level = 20, professions = {} }, rows = {} }
+    local text = Bagwise.Dump.Format(snapshot, { version = "1", build = "2",
+      extra = { "bagUIs=Baganator", "makeRoom=active false; none" } })
+    local lines = {}
+    for line in text:gmatch("[^\n]+") do lines[#lines + 1] = line end
+    assert.are.equal("# bagUIs=Baganator", lines[5])
+    assert.are.equal("# makeRoom=active false/ none", lines[6]) -- the separator is swapped out
+    assert.is_truthy(lines[7]:find("# columns:", 1, true))
+  end)
+end)

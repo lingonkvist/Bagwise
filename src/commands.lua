@@ -82,6 +82,59 @@ local function overrideCommand(usage, apply, confirmation)
   end
 end
 
+-- Facts worth having in a bug report, one "key=value" per line. Each is read
+-- on its own so one failure does not lose the rest.
+local function reportDetails()
+  local details = {}
+  local function add(label, read)
+    local ok, value = pcall(read)
+    details[#details + 1] = label .. "=" .. (ok and tostring(value) or ("error: " .. tostring(value)))
+  end
+  add("bagUIs", function()
+    local found = Bagwise.Overlay.DetectedBagAddons()
+    return #found > 0 and table.concat(found, ",") or "none"
+  end)
+  add("bagsScanned", function() return "0-" .. Bagwise.Bags.LastScanned() end)
+  add("safetyChecks", function() return table.concat(Bagwise.Safety.Names(), ",") end)
+  add("dots", function()
+    local counts = Bagwise.Scanner.Counts()
+    return counts.green .. " green, " .. counts.yellow .. " yellow, " .. counts.items .. " items"
+  end)
+  add("makeRoom", function()
+    local plan = Bagwise.Scanner.MakeRoomSummary()
+    return "lootItems " .. plan.lootItems .. ", freeSlots " .. plan.freeSlots
+      .. ", junkCandidates " .. plan.junkCandidates
+      .. ", active " .. tostring(plan.active)
+  end)
+  add("keptAndFlagged", function()
+    local function size(tbl) local n = 0 for _ in pairs(tbl or {}) do n = n + 1 end return n end
+    return size(BagwiseDB.keepList) .. " kept, " .. size(BagwiseDB.flagList) .. " flagged"
+  end)
+  return details
+end
+
+--- Open the copyable report window. Each step is guarded so a failure says
+-- where it broke instead of showing nothing.
+local function openReport()
+  local ok, snapshot = pcall(Bagwise.Scanner.CollectInventory)
+  if not ok then
+    say("report failed while reading your bags: " .. tostring(snapshot))
+    return
+  end
+  local formatted, text = pcall(Bagwise.Dump.Format, snapshot,
+    { version = Bagwise.Commands.Version(), build = gameBuild(), extra = reportDetails() })
+  if not formatted then
+    say("report failed while formatting: " .. tostring(text))
+    return
+  end
+  local shown, err = pcall(Bagwise.Dump.Show, text)
+  if not shown then
+    say("report failed while opening the window: " .. tostring(err))
+    return
+  end
+  say(#snapshot.rows .. " items listed. Press Ctrl+C in the window to copy, then paste it where you are reporting.")
+end
+
 local COMMAND_HANDLERS = {
   help = function()
     say("commands:")
@@ -89,13 +142,14 @@ local COMMAND_HANDLERS = {
     print("  /bagwise flag [item]    - Always show a yellow dot on this item")
     print("  /bagwise reset [item]   - Return this item to the normal rules")
     print("  /bagwise list           - Show your kept and flagged items")
-    print("  /bagwise status         - Show addon status")
-    print("  /bagwise dump           - Copyable list of everything in your bags")
-    print("  /bagwise why [item]     - Show why an item does or doesn't get a dot")
-    print("  /bagwise loot           - Explain what the make-room plan sees (loot window open)")
-    print("  /bagwise glow           - Test the delete glow on your first item")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
+    print("Troubleshooting (paste the output when something looks wrong):")
+    print("  /bagwise report         - Copyable report of your bags, verdicts and setup")
+    print("  /bagwise why [item]     - Why an item does or doesn't get a dot")
+    print("  /bagwise loot           - What the make-room plan sees (loot window open)")
+    print("  /bagwise glow           - Test the delete glow on your first item")
+    print("  /bagwise status         - Version, bag UI and counts")
   end,
   status = function()
     say("v" .. Bagwise.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))
@@ -189,26 +243,8 @@ local COMMAND_HANDLERS = {
     print("  Seen it: the glow draws fine, so the make-room plan is not starting. Open a loot window and run /bagwise loot.")
     print("  Not seen: the glow itself cannot draw on your bag UI. Tell me which bag addon you use.")
   end,
-  dump = function()
-    -- Each step is guarded so a failure says where it broke instead of nothing.
-    local ok, snapshot = pcall(Bagwise.Scanner.CollectInventory)
-    if not ok then
-      say("dump failed while reading your bags: " .. tostring(snapshot))
-      return
-    end
-    local formatted, text = pcall(Bagwise.Dump.Format, snapshot,
-      { version = Bagwise.Commands.Version(), build = gameBuild() })
-    if not formatted then
-      say("dump failed while formatting: " .. tostring(text))
-      return
-    end
-    local shown, err = pcall(Bagwise.Dump.Show, text)
-    if not shown then
-      say("dump failed while opening the window: " .. tostring(err))
-      return
-    end
-    say(#snapshot.rows .. " items listed. Ctrl+C in the window to copy.")
-  end,
+  report = function() openReport() end,
+  dump = function() openReport() end,
   keep = overrideCommand("/bagwise keep [item]",
     Bagwise.Overrides.AddKeep, "%s will never get a dot."),
   flag = overrideCommand("/bagwise flag [item]",
