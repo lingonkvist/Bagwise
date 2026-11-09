@@ -15,3 +15,53 @@ function Bagwise.Bags.LastScanned()
   if reagentSlots > 0 then last = last + reagentSlots end
   return last
 end
+
+-- The bank. On Forever the character bank is a row of tabs, one bag ID each,
+-- followed by the warband bank tabs (6-14 and 15-23 in the Forever client's
+-- own API documentation). -1 is the keyring there, not a bank. The IDs come
+-- from Enum.BagIndex when the client has it; otherwise any ID in a window
+-- past the carried bags that reports slots counts. The bank is only readable
+-- while it is open.
+local BANK_WINDOW = 20
+
+local function firstBankBag()
+  return Bagwise.Bags.LastScanned() + 1
+end
+
+local function lastBankBag()
+  local index = Enum and Enum.BagIndex
+  return (index and index.AccountBankTab_9) or (firstBankBag() + BANK_WINDOW - 1)
+end
+
+--- Bag IDs that currently hold bank slots.
+-- @return table  list of bag IDs, in scan order
+function Bagwise.Bags.BankBags()
+  local ids = {}
+  if not (C_Container and C_Container.GetContainerNumSlots) then return ids end
+  for bag = firstBankBag(), lastBankBag() do
+    if (C_Container.GetContainerNumSlots(bag) or 0) > 0 then ids[#ids + 1] = bag end
+  end
+  return ids
+end
+
+--- Is this one of the bags you carry (backpack, bags, reagent bag)?
+function Bagwise.Bags.IsCarried(bag)
+  return bag ~= nil and bag >= 0 and bag <= Bagwise.Bags.LastScanned()
+end
+
+--- Is this a bank bag (a character bank tab or a warband bank tab)?
+function Bagwise.Bags.IsBank(bag)
+  return bag ~= nil and bag >= firstBankBag() and bag <= lastBankBag()
+end
+
+--- Is this a warband bank tab, shared by all your characters?
+function Bagwise.Bags.IsWarbandBank(bag)
+  local index = Enum and Enum.BagIndex
+  local firstTab = index and index.AccountBankTab_1
+  return firstTab ~= nil and bag ~= nil and bag >= firstTab and bag <= lastBankBag()
+end
+
+--- Is this a bag Bagwise paints: carried, or a bank bag?
+function Bagwise.Bags.IsScanned(bag)
+  return Bagwise.Bags.IsCarried(bag) or Bagwise.Bags.IsBank(bag)
+end

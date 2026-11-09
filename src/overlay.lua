@@ -1,6 +1,6 @@
 -- Bagwise: dot overlay
--- Blizzard bags (combined and separate), Baganator corner widgets and
--- EllesmereUI Bags.
+-- Blizzard bags (combined and separate), Baganator corner widgets,
+-- EllesmereUI Bags and Bagnon.
 
 Bagwise = Bagwise or {}
 Bagwise.Overlay = {}
@@ -26,17 +26,21 @@ local function makeDot(parent)
   return dot
 end
 
--- Border glow for the slots to delete while making room for loot: a soft green
--- ring around the slot that breathes slowly (about 1.4 seconds a cycle, far
--- below any flash threshold). Nothing else moves.
+-- Glow for the slots to delete while making room for loot: a green wash, a
+-- solid frame and a ring that breathe slowly together (about 1.2 seconds a
+-- cycle, far below any flash threshold, and never fully off). Nothing else moves.
 -- Blizzard's own action-button border: it ships with every client, so it
 -- cannot go missing the way an addon file can. It is a light glow with the
 -- colour left to us, so it is tinted green and added onto the slot.
 local GLOW_TEXTURE = "Interface\\Buttons\\UI-ActionButton-Border"
-local GLOW_COLOR = { 0.33, 0.87, 0.49 }
-local GLOW_SCALE = 1.72 -- frame size as a multiple of the slot, matches the texture
-local GLOW_LOW_ALPHA = 0.5
-local GLOW_SECONDS = 0.7
+local GLOW_COLOR = { 0.25, 1.0, 0.45 }
+local GLOW_SCALE = 1.9 -- frame size as a multiple of the slot, matches the texture
+local GLOW_LOW_ALPHA = 0.35 -- never fades out, so the slot always stands out
+local GLOW_SECONDS = 0.6
+-- A green wash over the whole slot, so the item reads as lit from a distance,
+-- plus a solid frame so the edge is crisp. The ring alone was too faint.
+local GLOW_FILL_ALPHA = 0.4
+local GLOW_FRAME_THICKNESS = 2
 local glowByButton = setmetatable({}, { __mode = "k" })
 
 local function addBreathing(texture)
@@ -56,15 +60,51 @@ local function addBreathing(texture)
   return group
 end
 
-local function makeGlow(button)
+local function colouredLayer(button, alpha)
   local texture = button:CreateTexture(nil, "OVERLAY")
-  texture:SetTexture(GLOW_TEXTURE)
-  texture:SetBlendMode("ADD")
-  texture:SetVertexColor(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
-  texture:SetPoint("CENTER", button, "CENTER", 0, 0)
-  local size = (button.GetWidth and button:GetWidth() or 37) * GLOW_SCALE
-  texture:SetSize(size, size)
-  return { texture = texture, group = addBreathing(texture) }
+  texture:SetColorTexture(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], alpha)
+  return texture
+end
+
+local function makeGlow(button)
+  local layers = {}
+
+  -- The soft ring, added on top of itself for strength.
+  for _ = 1, 2 do
+    local ring = button:CreateTexture(nil, "OVERLAY")
+    ring:SetTexture(GLOW_TEXTURE)
+    ring:SetBlendMode("ADD")
+    ring:SetVertexColor(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
+    ring:SetPoint("CENTER", button, "CENTER", 0, 0)
+    local size = (button.GetWidth and button:GetWidth() or 37) * GLOW_SCALE
+    ring:SetSize(size, size)
+    layers[#layers + 1] = ring
+  end
+
+  -- The wash over the icon.
+  local fill = colouredLayer(button, GLOW_FILL_ALPHA)
+  fill:SetAllPoints(button)
+  layers[#layers + 1] = fill
+
+  -- A solid frame: four thin edges.
+  local t = GLOW_FRAME_THICKNESS
+  local edges = {
+    { "TOPLEFT", "TOPRIGHT", nil, t },
+    { "BOTTOMLEFT", "BOTTOMRIGHT", nil, t },
+    { "TOPLEFT", "BOTTOMLEFT", t, nil },
+    { "TOPRIGHT", "BOTTOMRIGHT", t, nil },
+  }
+  for _, edge in ipairs(edges) do
+    local line = colouredLayer(button, 1)
+    line:SetPoint(edge[1], button, edge[1], 0, 0)
+    line:SetPoint(edge[2], button, edge[2], 0, 0)
+    if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
+    layers[#layers + 1] = line
+  end
+
+  local groups = {}
+  for _, layer in ipairs(layers) do groups[#groups + 1] = addBreathing(layer) or false end
+  return { layers = layers, groups = groups }
 end
 
 --- Show or hide the delete glow on an item button.
@@ -72,8 +112,10 @@ local function applyGlow(button, on)
   local glow = glowByButton[button]
   if not on then
     if glow then
-      if glow.group then glow.group:Stop() end
-      glow.texture:Hide()
+      for i, layer in ipairs(glow.layers) do
+        if glow.groups[i] then glow.groups[i]:Stop() end
+        layer:Hide()
+      end
     end
     return
   end
@@ -81,8 +123,11 @@ local function applyGlow(button, on)
     glow = makeGlow(button)
     glowByButton[button] = glow
   end
-  glow.texture:Show()
-  if glow.group and not glow.group:IsPlaying() then glow.group:Play() end
+  for i, layer in ipairs(glow.layers) do
+    layer:Show()
+    local group = glow.groups[i]
+    if group and not group:IsPlaying() then group:Play() end
+  end
 end
 
 local function applyDot(dot, result)
@@ -113,7 +158,7 @@ end
 -- Item buttons are recycled, so every paint decides the dot from scratch.
 local function paintButton(button, bagID, slotID)
   local result = nil
-  if bagID and bagID >= 0 and bagID <= Bagwise.Bags.LastScanned() then
+  if Bagwise.Bags.IsScanned(bagID) then
     result = Bagwise.Scanner.GetResult(bagID, slotID)
   end
   -- Never create a dot just to hide it; a recycled button may still hold one.
@@ -203,6 +248,23 @@ end
 -- ---------------------------------------------------------------------------
 -- Adapter 2: Baganator
 -- ---------------------------------------------------------------------------
+-- Baganator also draws other characters' bags and banks (through Syndicator)
+-- with the same buttons. Whenever it tells us which item it is showing, check
+-- that it is the item in that real slot, so a remembered item is never judged
+-- against a live slot that happens to share its number.
+local function itemIDOfLink(link)
+  local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  return instant and (instant(link)) or nil
+end
+
+local function showsLiveItem(details, bagID, slotID)
+  if not details.itemLink then return true end
+  local liveID = C_Container.GetContainerItemID(bagID, slotID)
+  if not liveID then return false end
+  local shownID = itemIDOfLink(details.itemLink)
+  return shownID == nil or shownID == liveID
+end
+
 local function initBaganator()
   if not Baganator or not Baganator.API or not Baganator.API.RegisterCornerWidget then
     return false
@@ -217,6 +279,7 @@ local function initBaganator()
     local slotID = details.itemLocation.slotIndex
 
     if not bagID or not slotID then return false end
+    if not showsLiveItem(details, bagID, slotID) then return false end
 
     local result = Bagwise.Scanner.GetResult(bagID, slotID)
     local button = dot.GetParent and dot:GetParent()
@@ -281,30 +344,124 @@ local function hookEllesmereUpdates()
 end
 
 -- ---------------------------------------------------------------------------
--- Loot window: with full bags, a green dot on loot that is worth less than
--- your junk (skip it, same meaning as everywhere). Loot worth a slot stays
--- silent: nothing to warn about.
+-- Adapter 4: Bagnon
 -- ---------------------------------------------------------------------------
-local lootDotsByRow = setmetatable({}, { __mode = "k" })
+-- Bagnon builds every slot from one item class, Bagnon.Item, and refreshes a
+-- slot through UpdateSecondary (older versions: UpdatePrimary or Update). Hook
+-- that, the way Bagnon's own plugins do. The buttons are remembered so they
+-- can be repainted when a scan finishes after Bagnon has already drawn them.
+--
+-- Bagnon also shows other characters' bags, the bank while you are away, and
+-- the guild bank and void storage through the same class. Only your own live
+-- bags may get a dot: a cached or guild slot has the same bag number as one of
+-- yours but holds something else, so those are painted as silent instead.
+local bagnonButtons = setmetatable({}, { __mode = "k" })
 
+local function bagnonItemClass()
+  return Bagnon and Bagnon.Item
+end
+
+-- Guild bank and void storage buttons share the item class but have no
+-- cooldown or glow, which only container buttons (your bags and bank) have.
+local function isBagnonContainerButton(button)
+  return type(button.UpdateCooldown) == "function"
+end
+
+local function paintBagnon(button)
+  bagnonButtons[button] = true
+  local live = isBagnonContainerButton(button)
+      and not (button.IsCached and button:IsCached())
+  if live then
+    paintButton(button, button:GetBag(), button:GetID())
+  else
+    paintButton(button, nil, nil)
+  end
+end
+
+local function hookBagnonUpdates()
+  local item = bagnonItemClass()
+  if not item then return end
+  local method = (item.UpdateSecondary and "UpdateSecondary")
+      or (item.UpdatePrimary and "UpdatePrimary")
+      or (item.Update and "Update")
+  if method then hooksecurefunc(item, method, paintBagnon) end
+end
+
+local function repaintBagnon()
+  for button in pairs(bagnonButtons) do
+    if button.IsVisible and button:IsVisible() then paintBagnon(button) end
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Loot window: with full bags, a green dot on loot that is worth less than
+-- your junk (skip it). Loot worth a slot stays
+-- silent: nothing to warn about. Shown as an X, not a dot.
+-- ---------------------------------------------------------------------------
+local lootMarksByRow = setmetatable({}, { __mode = "k" })
+local LOOT_LEAVE_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+
+-- A small X in the row's corner: this loot is not worth a slot.
 local function paintLootRow(row, slot)
   local decision = slot and Bagwise.Scanner.LootDecision(slot)
-  local dot = lootDotsByRow[row]
+  local mark = lootMarksByRow[row]
   if decision ~= "leave" then
-    if dot then dot:Hide() end
+    if mark then mark:Hide() end
     return
   end
-  if not dot then
-    dot = makeDot(row)
-    dot:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-    lootDotsByRow[row] = dot
+  if not mark then
+    if not row.CreateTexture then return end
+    mark = row:CreateTexture(nil, "OVERLAY")
+    mark:SetSize(16, 16)
+    mark:SetTexture(LOOT_LEAVE_ICON)
+    mark:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    lootMarksByRow[row] = mark
   end
-  applyDot(dot, { verdict = "green" })
+  mark:Show()
+end
+
+-- One line above the loot window while bags are full: what to do, or why
+-- nothing needs doing.
+local banner
+
+local function bannerFrame()
+  if banner then return banner end
+  if not CreateFrame then return nil end
+  banner = CreateFrame("Frame", "BagwiseLootBanner", UIParent)
+  banner:SetFrameStrata("DIALOG")
+  banner:SetSize(250, 32)
+  local background = banner:CreateTexture(nil, "BACKGROUND")
+  background:SetAllPoints(banner)
+  background:SetColorTexture(0, 0, 0, 0.8)
+  banner.text = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  banner.text:SetPoint("CENTER")
+  banner.text:SetWidth(230)
+  banner:Hide()
+  return banner
+end
+
+function Bagwise.Overlay.UpdateBanner()
+  local text = Bagwise.MakeRoom.BannerText(Bagwise.Scanner.MakeRoomSummary())
+  local frame = text and bannerFrame()
+  if not frame then
+    if banner then banner:Hide() end
+    return
+  end
+  frame.text:SetText(text)
+  frame:SetHeight((frame.text.GetStringHeight and frame.text:GetStringHeight() or 20) + 16)
+  frame:ClearAllPoints()
+  if LootFrame and LootFrame:IsShown() then
+    frame:SetPoint("BOTTOM", LootFrame, "TOP", 0, 8)
+  else
+    frame:SetPoint("TOP", UIParent, "TOP", 0, -140)
+  end
+  frame:Show()
 end
 
 --- Repaint the loot window rows. Rows are recycled, so each one is decided
 -- from scratch. Works with the Mainline scroll list and classic loot buttons.
 function Bagwise.Overlay.UpdateLoot()
+  Bagwise.Overlay.UpdateBanner()
   if not LootFrame then return end
 
   if LootFrame.ScrollBox and LootFrame.ScrollBox.ForEachFrame then
@@ -343,6 +500,7 @@ function Bagwise.Overlay.DetectedBagAddons()
     found[#found + 1] = "Baganator"
   end
   if ellesmereSlotPool() then found[#found + 1] = "EllesmereUI Bags" end
+  if bagnonItemClass() then found[#found + 1] = "Bagnon" end
   return found
 end
 
@@ -361,11 +519,13 @@ function Bagwise.Overlay.Init()
 
   hookBlizzardUpdates()
   hookEllesmereUpdates()
+  hookBagnonUpdates()
 end
 
 function Bagwise.Overlay.UpdateAll()
   updateBlizzard()
   paintEllesmere()
+  repaintBagnon()
   -- Baganator only repaints a button when it refreshes it, so ask it to when
   -- our results changed (a dot moved to another slot). Not on every scan: a
   -- refresh resets Baganator's own borders and highlights.

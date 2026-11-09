@@ -1406,8 +1406,17 @@ describe("Recipes and reagents you cannot use yet", function()
     assert.are.equal("Bank it, needs level 45", reason)
   end)
 
-  it("a recipe within ten levels of yours is left alone", function()
-    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ reqLevel = 40 }), state({ Alchemy = 100 }))))
+  it("a recipe at or below your level is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ reqLevel = 30 }), state({ Alchemy = 100 }))))
+  end)
+
+  it("a recipe up to three levels above yours is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ reqLevel = 33 }), state({ Alchemy = 100 }))))
+  end)
+
+  it("a recipe four levels above yours says to bank it", function()
+    local _, reason = Bagwise.Verdict.Evaluate(recipe({ reqLevel = 34 }), state({ Alchemy = 100 }))
+    assert.are.equal("Bank it, needs level 34", reason)
   end)
 
   it("recipe far above your skill says to bank it", function()
@@ -1417,10 +1426,32 @@ describe("Recipes and reagents you cannot use yet", function()
     assert.are.equal("Bank it, needs Alchemy 200", reason)
   end)
 
-  it("recipe you will be able to learn soon stays silent", function()
-    local verdict = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 140 }), state({ Alchemy = 100 }))
+  it("recipe within 25 skill points stays silent while you level the profession", function()
+    local verdict = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 125 }), state({ Alchemy = 100 }))
 
     assert.is_nil(verdict)
+  end)
+
+  it("recipe 26 skill points out of reach says to bank it", function()
+    local _, reason = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 126 }), state({ Alchemy = 100 }))
+
+    assert.are.equal("Bank it, needs Alchemy 126", reason)
+  end)
+
+  it("a profession you have stopped leveling banks any recipe out of reach", function()
+    local idleState = state({ Alchemy = 100 })
+    idleState.professionIdle = { Alchemy = true }
+
+    local _, reason = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 101 }), idleState)
+    assert.are.equal("Bank it, needs Alchemy 101", reason)
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 100 }), idleState)))
+  end)
+
+  it("idle only counts for its own profession", function()
+    local mixed = state({ Alchemy = 100, Tailoring = 100 })
+    mixed.professionIdle = { Tailoring = true }
+
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 101 }), mixed)))
   end)
 
   it("recipe with an unknown skill requirement stays silent", function()
@@ -1481,15 +1512,56 @@ describe("Outleveled consumables", function()
   end)
 
   it("covers potions and bandages but not elixirs or flasks", function()
-    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 1 }), at(40))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(
+      consumable({ subClassID = 1, restoresHealthOrMana = true }), at(40))))
     assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 7 }), at(40))))
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 2 }), at(40))))
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 3 }), at(40))))
   end)
 
+  it("a utility potion (swim speed, water walking) is never outleveled", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 1, restoresHealthOrMana = false }), at(60))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 1 }), at(60))))
+  end)
+
   it("says nothing when the item has no level requirement or serves a quest", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ reqLevel = 0 }), at(50))))
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ questItemQuestIDs = { 1 } }), at(50))))
+  end)
+end)
+
+describe("Outleveled reagents", function()
+  local function state(ranks)
+    local names = {}
+    for name in pairs(ranks) do names[name] = true end
+    return { level = 60, professionNames = names, professionRanks = ranks,
+             professionSkillLines = {}, professionsKnown = true }
+  end
+  local LINEN = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5 }
+  Bagwise.Data.ReagentProfessions = {
+    [2589] = { { "Tailoring", 10, 1, 125 } },
+    [2592] = { { "Tailoring", 10, 1, 125 }, { "First Aid", 3, 1, 260 } },
+  }
+
+  it("is yellow once every profession of yours that uses it is far past it", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 250 }))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Outleveled, Tailoring recipes use it up to 125", reason)
+  end)
+
+  it("stays silent while a recipe of yours still uses it", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 150 }))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 175 }))))
+  end)
+
+  it("stays silent when one of your professions still uses it", function()
+    local wool = { id = 2592, classID = 7, subClassID = 5, quality = 1, sellPrice = 20, count = 5 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(wool, state({ Tailoring = 250, ["First Aid"] = 200 }))))
+  end)
+
+  it("says nothing without a profession that uses it", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Mining = 250 }))))
   end)
 end)
 
@@ -1560,5 +1632,133 @@ describe("Items for a quest far below you", function()
 
   it("never applies to an ordinary item that a quest also asks for", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(questItem({ classID = 15 }), at(30))))
+  end)
+end)
+
+describe("Low level gear that could be an upgrade", function()
+  local state = { class = "Warrior", race = "Human", level = 40 }
+
+  local function gear(overrides)
+    local item = { id = 34001, isBound = true, isEquippable = true, quality = 3,
+                   reqLevel = 20, itemLevel = 25, equipSlot = "INVTYPE_CHEST",
+                   equippedInSlots = { { quality = 1, itemLevel = 30 } } }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  it("stays silent for a blue in the bags while a white is worn", function()
+    local item = gear({ quality = 3, itemLevel = 25 })
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("stays silent when the bag piece has the higher item level, even at lower rarity", function()
+    local item = gear({ quality = 1, itemLevel = 33,
+                        equippedInSlots = { { quality = 2, itemLevel = 30 } } })
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("stays silent when the slot is empty", function()
+    local item = gear({ equippedInSlots = { { quality = 0, itemLevel = 0 } } })
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("keeps its verdict when the worn piece is better in rarity and item level", function()
+    local item = gear({ quality = 2, itemLevel = 22,
+                        equippedInSlots = { { quality = 3, itemLevel = 35 } } })
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+    assert.are.equal("green", verdict)
+  end)
+
+  it("keeps its verdict when worn gear ties it on rarity and item level", function()
+    local item = gear({ quality = 2, itemLevel = 22,
+                        equippedInSlots = { { quality = 2, itemLevel = 22 } } })
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state)))
+  end)
+
+  it("stays silent for a ring that beats the weaker of two worn rings", function()
+    local item = gear({ equipSlot = "INVTYPE_FINGER", quality = 2, itemLevel = 24,
+                        equippedInSlots = { { quality = 3, itemLevel = 35 },
+                                            { quality = 1, itemLevel = 10 } } })
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+
+  it("keeps its verdict when nothing is known about the worn gear", function()
+    local item = gear()
+    item.equippedInSlots = nil
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(item, state)))
+  end)
+
+  it("stays silent for an upgrade at the 10-19 level yellow band too", function()
+    local item = gear({ reqLevel = 28, quality = 3, itemLevel = 28 })
+    assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+end)
+
+describe("Verdicts in the bank", function()
+  local function forBank(rule, verdict, reason)
+    return Bagwise.Verdict.ForBank({ verdict = verdict or "green", reason = reason or "Because",
+                                     rule = rule })
+  end
+
+  it("keeps verdicts that hold for any character", function()
+    for _, rule in ipairs({ "level_gap", "poor_quality", "no_recipe_use", "openable" }) do
+      assert.are.equal("green", forBank(rule).verdict)
+    end
+  end)
+
+  it("caps verdicts that depend on this character at yellow, keeping the reason", function()
+    for _, rule in ipairs({ "vendor_reagent", "class_reagent", "quest_objective_done",
+        "quest_starter_done", "unwearable_white", "outgeared_white", "mana_potion",
+        "outleveled_consumable" }) do
+      local result = forBank(rule, "green", "Why")
+      assert.are.equal("yellow", result.verdict)
+      assert.are.equal("Why", result.reason)
+    end
+  end)
+
+  it("treats a rule it does not know as character specific", function()
+    assert.are.equal("yellow", forBank("brand_new_rule").verdict)
+    assert.are.equal("yellow", forBank(nil).verdict)
+  end)
+
+  it("drops hints that tell you to bank something already in the bank", function()
+    assert.is_nil(forBank("recipe", "yellow", "Bank it, needs level 40").verdict)
+    assert.is_nil(forBank("distant_reagent", "yellow", "Bank it, used from Alchemy 200").verdict)
+  end)
+
+  it("drops the abandon-the-quest hint", function()
+    assert.is_nil(forBank("trivial_quest_item", "yellow", "Quest is far below you").verdict)
+  end)
+
+  it("keeps the recipe hint about a missing profession", function()
+    local result = forBank("recipe", "yellow", "You don't have this profession. May sell on AH")
+    assert.are.equal("yellow", result.verdict)
+  end)
+
+  it("leaves silence alone and never edits the shared result", function()
+    assert.is_nil(Bagwise.Verdict.ForBank(nil))
+    local shared = { verdict = "green", reason = "Why", rule = "vendor_reagent" }
+    Bagwise.Verdict.ForBank(shared)
+    assert.are.equal("green", shared.verdict)
+  end)
+
+  it("reports the rule that decided, so the bank can tell them apart", function()
+    local item = { id = 1, quality = 0, sellPrice = 5, classID = 15, subClassID = 0 }
+    local _, _, _, _, rule = Bagwise.Verdict.Evaluate(item, { class = "Mage", level = 20 })
+    assert.are.equal("poor_quality", rule)
+  end)
+end)
+
+describe("Verdicts in the warband bank", function()
+  it("does not keep a low level gear green there, since an alt may use it", function()
+    local result = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Very low level gear",
+                                              rule = "level_gap" }, true)
+    assert.are.equal("yellow", result.verdict)
+  end)
+
+  it("still keeps verdicts that hold for any character", function()
+    local result = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Sells for 2c",
+                                              rule = "poor_quality" }, true)
+    assert.are.equal("green", result.verdict)
   end)
 end)

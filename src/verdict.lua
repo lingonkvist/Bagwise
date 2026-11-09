@@ -33,8 +33,24 @@ local function professionNamesOf(profEntries)
   return names
 end
 
+-- Could this piece be an upgrade over something the player wears? Better in
+-- rarity or in item level than any slot it fits counts, and so does an empty
+-- slot. This is deliberately crude (no stats, no class): the point is only to
+-- stay quiet when the answer is obviously "keep it", like a blue in the bag
+-- while a white is equipped. Unknown gear (nil) is not treated as an upgrade.
+local function couldBeUpgrade(item)
+  local worn = item.equippedInSlots
+  if not worn then return false end
+  for i = 1, #worn do
+    if (item.quality or 0) > worn[i].quality then return true end
+    if (item.itemLevel or 0) > worn[i].itemLevel then return true end
+  end
+  return false
+end
+
 local function evaluateLevelGap(item, state)
   if not (item.isBound and item.isEquippable) then return nil end
+  if couldBeUpgrade(item) then return nil end
 
   -- A low required level does not make gear outdated by itself: plenty of
   -- items with a modest requirement have an item level a character at this
@@ -274,6 +290,33 @@ function Bagwise.Verdict.FormatMoney(copper)
   return table.concat(parts, " ")
 end
 
+-- Colour codes for tooltips: Blizzard's coin colours and item rarity colours.
+local COIN_COLORS = { gold = "|cffffd100", silver = "|cffc7c7cf", copper = "|cffeda55f" }
+local QUALITY_HEX = {
+  [0] = "|cff9d9d9d", [1] = "|cffffffff", [2] = "|cff1eff00",
+  [3] = "|cff0070dd", [4] = "|cffa335ee", [5] = "|cffff8000",
+}
+
+--- Item name in its rarity colour.
+function Bagwise.Verdict.ColoredName(name, quality)
+  local colors = _G and _G.ITEM_QUALITY_COLORS
+  local hex = colors and colors[quality or 1] and colors[quality or 1].hex or QUALITY_HEX[quality or 1] or QUALITY_HEX[1]
+  return hex .. name .. "|r"
+end
+
+--- Like FormatMoney, with the g, s and c in their coin colours.
+function Bagwise.Verdict.FormatMoneyColored(copper)
+  copper = math.floor(copper or 0)
+  local gold = math.floor(copper / COPPER_PER_GOLD)
+  local silver = math.floor((copper % COPPER_PER_GOLD) / COPPER_PER_SILVER)
+  local rest = copper % COPPER_PER_SILVER
+  local parts = {}
+  if gold > 0 then parts[#parts + 1] = gold .. COIN_COLORS.gold .. "g|r" end
+  if silver > 0 then parts[#parts + 1] = silver .. COIN_COLORS.silver .. "s|r" end
+  if rest > 0 or #parts == 0 then parts[#parts + 1] = rest .. COIN_COLORS.copper .. "c|r" end
+  return table.concat(parts, " ")
+end
+
 --- The reason line for a gray. When other grays were silenced, the one that
 -- keeps its dot says it is the cheapest, so the single dot makes sense.
 -- @param value     number   what the stack sells for, in copper
@@ -398,8 +441,14 @@ local RECIPE_PROFESSIONS = {
 }
 -- How many skill points short before something counts as "a while away".
 local BANK_SKILL_GAP = 50
--- A recipe whose own level requirement is this far above you is no use yet.
-local RECIPE_LEVEL_GAP = 10
+-- Hints that tell you to bank an item. Pointless once it is in the bank.
+Bagwise.Verdict.BANK_IT_PREFIX = "Bank it"
+-- A recipe you cannot learn yet gets the bank hint once it is this far out of
+-- reach. A profession you have stopped leveling has nothing "close", so for
+-- it any shortfall counts (see Bagwise.Progress).
+local RECIPE_SKILL_GAP = 25
+local RECIPE_IDLE_SKILL_GAP = 0
+local RECIPE_LEVEL_GAP = 3
 
 local function evaluateRecipe(item, state)
   if item.classID ~= RECIPE_CLASS_ID then return nil end
@@ -412,7 +461,9 @@ local function evaluateRecipe(item, state)
   end
 
   local rank = state.professionRanks and state.professionRanks[profession]
-  if rank and item.requiredSkill and item.requiredSkill > rank + BANK_SKILL_GAP then
+  local idle = state.professionIdle and state.professionIdle[profession]
+  local skillGap = idle and RECIPE_IDLE_SKILL_GAP or RECIPE_SKILL_GAP
+  if rank and item.requiredSkill and item.requiredSkill > rank + skillGap then
     return "yellow", "Bank it, needs " .. profession .. " " .. item.requiredSkill
   end
   if item.reqLevel and item.reqLevel > (state.level or 1) + RECIPE_LEVEL_GAP then
@@ -445,6 +496,31 @@ local function evaluateDistantReagent(item, state)
   return "yellow", "Bank it, used from " .. nearest.name .. " " .. nearest.minSkill
 end
 
+-- A reagent every one of your professions that uses it has left behind: the
+-- best recipe that needs it is far below your skill. Only a hint, since an
+-- alt or a low recipe may still want it.
+local function evaluateOutleveledReagent(item, state)
+  local entries = Bagwise.Data.ReagentProfessions
+      and Bagwise.Data.ReagentProfessions[item.id]
+  if not entries or state.professionsKnown == false then return nil end
+  if not (state.professionNames and state.professionRanks) then return nil end
+
+  local newest -- the profession whose recipes are closest behind you
+  for i = 1, #entries do
+    local name, maxSkill = entries[i][1], entries[i][4]
+    if state.professionNames[name] then
+      local rank = state.professionRanks[name]
+      if not rank or not maxSkill then return nil end
+      if rank <= maxSkill + BANK_SKILL_GAP then return nil end
+      if not newest or maxSkill > newest.maxSkill then
+        newest = { name = name, maxSkill = maxSkill }
+      end
+    end
+  end
+  if not newest then return nil end
+  return "yellow", "Outleveled, " .. newest.name .. " recipes use it up to " .. newest.maxSkill
+end
+
 -- Something you right-click to open (clams, bags of loot). It takes a slot now
 -- and what is inside often stacks, so opening it usually frees room.
 local function evaluateOpenable(item)
@@ -457,6 +533,7 @@ end
 local CONSUMABLE_CLASS = 0
 local OUTLEVELED_SUBCLASSES = { [1] = true, [5] = true, [7] = true } -- potion, food and drink, bandage
 local OUTLEVELED_GAP = 20
+local POTION_SUBCLASS = 1
 
 local CLASS_PLURALS_FOR_POTIONS = { WARRIOR = "Warriors", ROGUE = "Rogues" }
 
@@ -488,6 +565,9 @@ end
 local function evaluateOutleveledConsumable(item, state)
   if item.classID ~= CONSUMABLE_CLASS or not OUTLEVELED_SUBCLASSES[item.subClassID] then return nil end
   if item.questItemQuestIDs or item.startsQuestID then return nil end
+  -- Utility potions (swimming speed, water walking, free action) stay useful
+  -- at any level. Only a potion known to restore health or mana can be outleveled.
+  if item.subClassID == POTION_SUBCLASS and item.restoresHealthOrMana ~= true then return nil end
   local reqLevel = item.reqLevel
   if not reqLevel or reqLevel <= 0 then return nil end
   if reqLevel + OUTLEVELED_GAP > (state.level or 1) then return nil end
@@ -610,6 +690,7 @@ local RULES = {
   { name = "openable",           evaluate = evaluateOpenable },
   { name = "recipe",             evaluate = evaluateRecipe },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
+  { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent },
   { name = "poor_quality",       evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse },
 }
@@ -639,11 +720,11 @@ function Bagwise.Verdict.Evaluate(item, state)
   if item.isFlagged then return "yellow", "Flagged by you", nil end
   if item.classID == CONSUMABLE_CLASS_ID then
     local verdict, reason = evaluateOpenable(item)
-    if verdict then return verdict, reason, nil end
+    if verdict then return verdict, reason, nil, nil, "openable" end
     verdict, reason = evaluateManaPotion(item, state)
-    if verdict then return verdict, reason, nil end
+    if verdict then return verdict, reason, nil, nil, "mana_potion" end
     verdict, reason = evaluateOutleveledConsumable(item, state)
-    return verdict, reason, nil
+    return verdict, reason, nil, nil, verdict and "outleveled_consumable" or nil
   end
 
   -- A blocked green is dropped and the next rule gets its turn. A yellow is
@@ -652,13 +733,53 @@ function Bagwise.Verdict.Evaluate(item, state)
   local hint
   for i = 1, #RULES do
     local verdict, reason, detail, tag, blockedBy = runRule(RULES[i], item, state)
-    if verdict == "green" and not blockedBy then return verdict, reason, detail, tag end
+    if verdict == "green" and not blockedBy then
+      return verdict, reason, detail, tag, RULES[i].name
+    end
     if verdict == "yellow" and not hint then
-      hint = { verdict, reason, detail, tag }
+      hint = { verdict, reason, detail, tag, RULES[i].name }
     end
   end
-  if hint then return hint[1], hint[2], hint[3], hint[4] end
+  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5] end
   return nil, nil, nil
+end
+
+-- What a verdict means once the item is in the bank. People bank things on
+-- purpose, often for another character, so a verdict only stays as it is
+-- when it holds for any character; one that depends on this character's
+-- professions, class or quests is capped at a yellow reminder; and one that
+-- only says what to do with an item that is not banked yet is dropped. An
+-- unknown rule gets the cautious treatment.
+local BANK_KEEPS = {
+  level_gap = true,     -- soulbound, so it cannot go to an alt
+  poor_quality = true,
+  no_recipe_use = true, -- nothing uses it, whoever you play
+  openable = true,
+}
+local BANK_DROPS = {
+  trivial_quest_item = true, -- you cannot abandon a quest from the bank
+}
+
+--- Turn a verdict result into what the bank should show.
+-- The warband bank exists to share items between your characters, so there
+-- even soulbound-looking gear may be meant for an alt: nothing is kept there
+-- that depends on the item being bound.
+-- @param result table|nil  { verdict, reason, detail, tag, rule }
+-- @param isWarband boolean|nil  the slot is in the warband bank
+-- @return table|nil  a fresh table (results are shared between slots), or
+--   the same nil/empty result when there is nothing to show
+function Bagwise.Verdict.ForBank(result, isWarband)
+  if not result or not result.verdict then return result end
+  local reason = result.reason or ""
+  if reason:sub(1, #Bagwise.Verdict.BANK_IT_PREFIX) == Bagwise.Verdict.BANK_IT_PREFIX then
+    return {}
+  end
+  if BANK_DROPS[result.rule] then return {} end
+  if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
+    return result
+  end
+  return { verdict = "yellow", reason = result.reason, detail = result.detail,
+           tag = result.tag, rule = result.rule }
 end
 
 --- Every rule that had something to say about an item, including greens that

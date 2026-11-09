@@ -147,3 +147,23 @@ function Bagwise.MakeRoom.RestoreResult(result)
   restored.quiet = nil
   return restored
 end
+
+--- The one-line explanation shown while a make-room plan is active.
+-- @param summary table  Scanner.MakeRoomSummary()
+-- @return string|nil  nil when the bags have room and there is nothing to say
+function Bagwise.MakeRoom.BannerText(summary)
+  if not (summary and summary.active) then return nil end
+  if summary.deletes > 0 then
+    local names = summary.deleteNames or {}
+    if #names == 0 then
+      return "Bags full: delete the glowing " .. (summary.deletes == 1 and "item" or "items")
+    end
+    local text = "Bags full: consider deleting " .. names[1]
+    if #names > 1 then text = text .. " and " .. (#names - 1) .. " more" end
+    return text
+  end
+  if (summary.noRoom or 0) > 0 then return "Bags full: make room by hand" end
+  if (summary.leaving or 0) == 0 then return nil end
+  if not summary.cheapestJunkValue then return "Bags full, nothing safe to delete" end
+  return "Bags full: loot is worth less than your junk"
+end

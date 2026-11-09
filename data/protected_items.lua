@@ -10,11 +10,13 @@ Bagwise      = Bagwise or {}
 Bagwise.Data = Bagwise.Data or {}
 
 Bagwise.Data.ProtectedItems = {
-  -- Herbalism Greenhouse and Seed Hybridizer (Forever camp objects)
-  [268415] = "Herb seed, used in the Herbalism Greenhouse", -- Commonplace Herb Seeds
-  [268416] = "Herb seed, used in the Herbalism Greenhouse", -- Uncommon Herb Seeds
-  [268417] = "Herb seed, used in the Herbalism Greenhouse", -- Unusual Herb Seeds
-  [268418] = "Herb seed, used in the Herbalism Greenhouse", -- Scarce Herb Seeds
+  -- Herbalism camp items (Forever): the Greenhouse (Herbalism 140) grows herbs
+  -- from seeds, the Seed Hybridizer (Herbalism 300) combines seeds into the
+  -- next tier. Both are placed beside a campfire.
+  [268415] = "Plant in a Herbalism Greenhouse, or combine in a Seed Hybridizer", -- Commonplace Herb Seeds
+  [268416] = "Plant in a Herbalism Greenhouse, or combine in a Seed Hybridizer", -- Uncommon Herb Seeds
+  [268417] = "Plant in a Herbalism Greenhouse, or combine in a Seed Hybridizer", -- Unusual Herb Seeds
+  [268418] = "Plant in a Herbalism Greenhouse (camp item)", -- Scarce Herb Seeds
   -- Found by the trade goods audit
   [11099] = "Smelts into Dark Iron Bars at the Black Forge", -- Dark Iron Ore
   [273295] = "Forever seasonal item, use unknown", -- Seasonal Fish Steaks

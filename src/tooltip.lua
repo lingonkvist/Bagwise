@@ -115,7 +115,22 @@ local function lootSlotOf(owner)
 end
 
 local LOOT_TAKE_LINE = "Worth a slot, more than your junk"
+local LOOT_CONSIDER_LINE = "Consider taking it"
 local LOOT_LEAVE_REASON = "Worth less than your junk"
+local LOOT_NOROOM_REASON = "Needs a slot, nothing safe to delete"
+
+-- Name the junk the loot lost to, so the comparison is visible:
+-- "Worth less than your cheapest gray (Odd Bauble, 8s)", item and coins coloured.
+local function lootLeaveReason()
+  local summary = Bagwise.Scanner.MakeRoomSummary and Bagwise.Scanner.MakeRoomSummary()
+  if not (summary and summary.cheapestJunkValue) then return LOOT_LEAVE_REASON end
+  local kind = (summary.cheapestJunkQuality or 0) == 0 and "gray" or "junk"
+  local junk = Bagwise.Verdict.FormatMoneyColored(summary.cheapestJunkValue)
+  if summary.cheapestJunkName then
+    junk = Bagwise.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality) .. ", " .. junk
+  end
+  return "Worth less than your cheapest " .. kind .. " (" .. junk .. ")"
+end
 
 -- The loot window gives no "opens for loot" flag, but the item's own tooltip
 -- says "Right Click to Open". Read it so a clam is not called unneeded.
@@ -143,7 +158,7 @@ local function bagSlotOf(tooltip)
   -- says nothing about which bag an item is in.
   if owner.GetBagID then
     local bagID = owner:GetBagID()
-    if bagID and bagID >= 0 and bagID <= Bagwise.Bags.LastScanned() then
+    if Bagwise.Bags.IsScanned(bagID) then
       return bagID, slotID
     end
     return nil
@@ -303,7 +318,7 @@ local function dotEscape(verdict)
   return "|T" .. DOT_TEXTURES[verdict] .. ":" .. DOT_ESCAPE_SIZE .. ":" .. DOT_ESCAPE_SIZE .. "|t"
 end
 
-local function renderVerdict(tooltip, verdict, reason, headings)
+local function renderVerdict(tooltip, verdict, reason, headings, keepWhole)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
@@ -312,7 +327,7 @@ local function renderVerdict(tooltip, verdict, reason, headings)
 
   -- Break long reasons at the last comma before the wrap threshold so
   -- multi-profession lists don't make the tooltip wider than the item's own.
-  if #reason > VERDICT_LINE_WRAP then
+  if not keepWhole and #reason > VERDICT_LINE_WRAP then
     for i = VERDICT_LINE_WRAP, 1, -1 do
       if reason:sub(i, i) == "," then
         tooltip:AddLine(reason:sub(1, i), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
@@ -361,8 +376,26 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local lootDecision = lootSlot and Bagwise.Scanner.LootDecision
       and Bagwise.Scanner.LootDecision(lootSlot)
   -- Full bags: loot worth less than the junk you would delete is a skip.
-  if lootDecision == "leave" and not verdict then
-    verdict, reason = "green", LOOT_LEAVE_REASON
+  -- An item that already has its own verdict keeps it and gets the loot
+  -- decision as an extra line, so the X (or the missing X) is always explained.
+  local lootNote
+  local keepWhole = false
+  -- A gray's own "Poor quality, sells for ..." only repeats the comparison
+  -- the skip reason makes, so the skip reason replaces it.
+  if lootDecision == "leave" and verdict and result.tag == Bagwise.Verdict.POOR_QUALITY_TAG then
+    verdict, reason = nil, nil
+  end
+  if lootDecision == "leave" then
+    -- A gray's own "sells for ..." line would only repeat the comparison.
+    local isGray = result and result.tag == Bagwise.Verdict.POOR_QUALITY_TAG
+    if verdict and not isGray then lootNote = lootLeaveReason() else
+      verdict, reason = "green", lootLeaveReason()
+      keepWhole = true -- the comma sits inside the parentheses
+    end
+  elseif lootDecision == "noroom" then
+    if verdict then lootNote = LOOT_NOROOM_REASON else
+      verdict, reason = "yellow", LOOT_NOROOM_REASON
+    end
   end
 
   local profEntries = Bagwise.Data.ReagentProfessions
@@ -375,7 +408,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       and Bagwise.Data.ProtectedItems[itemID]
 
   if verdict then
-    renderVerdict(tooltip, verdict, reason, headings)
+    renderVerdict(tooltip, verdict, reason, headings, keepWhole)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
@@ -395,8 +428,13 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     end
   end
 
-  if lootDecision == "take" then
-    tooltip:AddLine(LOOT_TAKE_LINE, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+  if lootNote then
+    tooltip:AddLine(lootNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+  end
+
+  if lootDecision == "take" or lootDecision == "consider" then
+    tooltip:AddLine(lootDecision == "take" and LOOT_TAKE_LINE or LOOT_CONSIDER_LINE,
+      INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
   end
 
   tooltip:Show()

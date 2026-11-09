@@ -84,8 +84,8 @@ Troubleshooting:
 
 ## Compatibility
 
-- Blizzard bags, Baganator and EllesmereUI Bags.
-- WoW Forever and Classic Era (Interface 16001 and 11509).
+- Blizzard bags, Baganator (with Syndicator), EllesmereUI Bags and Bagnon.
+- WoW Forever (Interface 16001).
 
 ## Reporting a bug
 

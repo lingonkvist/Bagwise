@@ -108,6 +108,19 @@ local function gatherProfessionSkillLines()
   return skillLines, complete or foundByModernApi, ranks, table.concat(sources, " + ")
 end
 
+-- Per-character skill history, kept in the saved variables when they exist.
+local fallbackProgress = {}
+local function progressStore()
+  if not BagwiseDB then return fallbackProgress end
+  BagwiseDB.skillProgress = BagwiseDB.skillProgress or {}
+  local who = (UnitName and UnitName("player") or "?") .. "-" .. (GetRealmName and GetRealmName() or "?")
+  BagwiseDB.skillProgress[who] = BagwiseDB.skillProgress[who] or {}
+  return BagwiseDB.skillProgress[who]
+end
+local function now()
+  return (GetServerTime and GetServerTime()) or (time and time()) or (os and os.time and os.time()) or 0
+end
+
 --- Gather player state once per scan.
 -- @return table  State table matching what Verdict.Evaluate expects
 local function getPlayerState()
@@ -130,6 +143,20 @@ local function getPlayerState()
     end
   end
 
+  -- Professions you have stopped leveling (no gain for a day): nothing is
+  -- close for them, so out-of-reach recipes get the bank hint at once.
+  local professionIdle = {}
+  if Bagwise.Progress and next(professionRanks) then
+    local store = progressStore()
+    Bagwise.Progress.Observe(store, professionRanks, now())
+    if professionsKnown then -- forget professions you no longer have
+      for name in pairs(store) do
+        if not professionRanks[name] then store[name] = nil end
+      end
+    end
+    professionIdle = Bagwise.Progress.IdleSet(store, professionRanks, now())
+  end
+
   -- Expose for tooltip sorting (player's professions listed first)
   Bagwise.Scanner.professionNames = professionNames
 
@@ -142,6 +169,7 @@ local function getPlayerState()
     professionSkillLines = skillLines,
     professionNames = professionNames,
     professionRanks = professionRanks,
+    professionIdle = professionIdle,
     professionsKnown = professionsKnown,
     professionSource = professionSource,
   }
@@ -186,8 +214,10 @@ local EQUIP_SLOTS = {
 }
 
 -- equipSlot -> the character inventory slots an item of that type can occupy.
--- Only armor slots: shirts and tabards are cosmetic, and weapons are left to
--- later rules. Rings and trinkets have two slots; the item must beat both.
+-- Shirts and tabards are cosmetic and left out. Rings and trinkets have two
+-- slots. A one-hand weapon is compared with the main hand only: the off hand
+-- is empty for anyone with a two-hander or a shield, and an empty slot would
+-- make every one-hander look like an upgrade.
 local INVENTORY_SLOTS = {
   INVTYPE_HEAD     = { 1 },
   INVTYPE_NECK     = { 2 },
@@ -202,11 +232,22 @@ local INVENTORY_SLOTS = {
   INVTYPE_FINGER   = { 11, 12 },
   INVTYPE_TRINKET  = { 13, 14 },
   INVTYPE_CLOAK    = { 15 },
+
+  INVTYPE_WEAPON         = { 16 },
+  INVTYPE_2HWEAPON       = { 16 },
+  INVTYPE_WEAPONMAINHAND = { 16 },
+  INVTYPE_WEAPONOFFHAND  = { 17 },
+  INVTYPE_SHIELD         = { 17 },
+  INVTYPE_HOLDABLE       = { 17 },
+  INVTYPE_RANGED         = { 18 },
+  INVTYPE_RANGEDRIGHT    = { 18 },
+  INVTYPE_THROWN         = { 18 },
 }
 
 --- What the player wears in every slot this item could go in.
--- @return table|nil  { {quality, itemLevel}, ... }, or nil when a slot is
---   empty, the item has no comparable slot, or something isn't loaded yet
+-- An empty slot is listed as quality 0, item level 0, so anything beats it.
+-- @return table|nil  { {quality, itemLevel}, ... }, or nil when the item has
+--   no comparable slot or something isn't loaded yet
 local function equippedInSlotsFor(equipSlot)
   local slots = INVENTORY_SLOTS[equipSlot]
   if not slots then return nil end
@@ -214,10 +255,13 @@ local function equippedInSlotsFor(equipSlot)
   local worn = {}
   for _, inventorySlot in ipairs(slots) do
     local link = GetInventoryItemLink("player", inventorySlot)
-    if not link then return nil end
-    local _, _, quality, itemLevel = getItemInfo(link)
-    if not (quality and itemLevel) then return nil end
-    worn[#worn + 1] = { quality = quality, itemLevel = itemLevel }
+    if not link then
+      worn[#worn + 1] = { quality = 0, itemLevel = 0 }
+    else
+      local _, _, quality, itemLevel = getItemInfo(link)
+      if not (quality and itemLevel) then return nil end
+      worn[#worn + 1] = { quality = quality, itemLevel = itemLevel }
+    end
   end
   return worn
 end
@@ -315,8 +359,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     allQuestObjectivesCompleted = allQuestObjectivesCompleted,
     openQuestIDs = openQuestIDs,
     onOpenQuest = onOpenQuest,
-    equippedInSlots = (quality == 1 and isEquippable)
-        and equippedInSlotsFor(equipSlot) or nil,
+    equippedInSlots = isEquippable and equippedInSlotsFor(equipSlot) or nil,
     isKept = Bagwise.Overrides.IsKept(itemID),
     isFlagged = Bagwise.Overrides.IsFlagged(itemID),
   }
@@ -358,6 +401,30 @@ local function readRequiredSkill(bag, slot)
 end
 
 local RECIPE_CLASS_ID = 9
+local CONSUMABLE_CLASS_ID = 0
+local POTION_SUBCLASS_ID = 1
+
+-- Does this potion restore health or mana? Utility potions (swim speed, free
+-- action) are never outleveled, so the potion rule needs a yes. The wording is
+-- English only: on other clients the answer stays "no" and nothing is flagged.
+local function readRestores(bag, slot)
+  if not (CreateFrame and UIParent) then return false end
+  if not skillTip then
+    skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+  end
+  skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+  skillTip:ClearLines()
+  skillTip:SetBagItem(bag, slot)
+  for line = 2, skillTip:NumLines() do
+    local text = _G["BagwiseSkillTipTextLeft" .. line]
+    local content = text and text:GetText()
+    if content and content:find("Restores", 1, true)
+        and (content:find("health", 1, true) or content:find("mana", 1, true)) then
+      return true
+    end
+  end
+  return false
+end
 
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index
@@ -373,6 +440,8 @@ local function gatherItem(bag, slot, state)
     containerInfo.stackCount, containerInfo.hasLoot)
   if item and item.classID == RECIPE_CLASS_ID then
     item.requiredSkill = readRequiredSkill(bag, slot)
+  elseif item and item.classID == CONSUMABLE_CLASS_ID and item.subClassID == POTION_SUBCLASS_ID then
+    item.restoresHealthOrMana = readRestores(bag, slot)
   end
   return item
 end
@@ -385,6 +454,7 @@ local function professionCacheKey(state)
   local parts = {}
   for name in pairs(state.professionNames or {}) do
     parts[#parts + 1] = name .. "=" .. tostring(state.professionRanks and state.professionRanks[name])
+      .. (state.professionIdle and state.professionIdle[name] and "!" or "")
   end
   table.sort(parts)
   local key = table.concat(parts, ",")
@@ -418,14 +488,14 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.isFlagged)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
-      .. ":" .. tostring(item.requiredSkill)
+      .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana)
       .. ":" .. equippedKey(item)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
-  local verdict, reason, detail, tag = Bagwise.Verdict.Evaluate(item, state)
-  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag }
+  local verdict, reason, detail, tag, rule = Bagwise.Verdict.Evaluate(item, state)
+  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule }
   verdictCache[cacheKey] = result
   return result
 end
@@ -449,6 +519,7 @@ local lootPlan = { take = {}, deletes = {}, active = false }
 -- neither list, so it must not be told to "leave".
 local liveLootSlots = {}
 local lastFreeSlots, lastJunkCount = 0, 0
+local lastCheapestJunk = nil -- { itemID, value } of the cheapest thing that could be deleted
 
 local lastScanError = nil
 
@@ -472,8 +543,13 @@ local function scanAllSlots()
   local stackRoom = {} -- itemID -> how many more fit in the stacks you carry
   local regularBags = NUM_BAG_SLOTS or 4
 
-  for bag = 0, Bagwise.Bags.LastScanned() do
-    if bag <= regularBags then freeSlots = freeSlots + generalFreeSlots(bag) end
+  local bagsToScan = {}
+  for bag = 0, Bagwise.Bags.LastScanned() do bagsToScan[#bagsToScan + 1] = bag end
+  for _, bag in ipairs(Bagwise.Bags.BankBags()) do bagsToScan[#bagsToScan + 1] = bag end
+
+  for _, bag in ipairs(bagsToScan) do
+    local carried = Bagwise.Bags.IsCarried(bag)
+    if carried and bag <= regularBags then freeSlots = freeSlots + generalFreeSlots(bag) end
 
     local numSlots = C_Container.GetContainerNumSlots(bag)
     for slot = 1, numSlots do
@@ -485,7 +561,11 @@ local function scanAllSlots()
         item = nil
       end
 
-      if item then
+      if item and not carried then
+        -- Banked on purpose, maybe for an alt: see Verdict.ForBank.
+        slotResults[key] = Bagwise.Verdict.ForBank(evaluateCached(item, state, profKey),
+            Bagwise.Bags.IsWarbandBank(bag))
+      elseif item then
         local maxStack = item.maxStack or 1
         if maxStack > 1 and (item.count or 1) < maxStack then
           stackRoom[item.id] = (stackRoom[item.id] or 0) + maxStack - (item.count or 1)
@@ -514,11 +594,14 @@ local function scanAllSlots()
   for _, entry in ipairs(poorQuality) do
     if silenced[entry.key] then
       slotResults[entry.key] = {}
-    elseif next(silenced) then
+    else
+      local original = slotResults[entry.key]
       slotResults[entry.key] = {
         verdict = entry.verdict,
         reason = Bagwise.Verdict.PoorQualityReason(entry.value, true, entry.verdict == "yellow"),
         tag = Bagwise.Verdict.POOR_QUALITY_TAG,
+        detail = original.detail,
+        rule = original.rule,
       }
     end
   end
@@ -526,6 +609,7 @@ local function scanAllSlots()
   -- Making room for loot runs last, on the final results.
   lootPlan = { take = {}, deletes = {}, active = false }
   lastFreeSlots, lastJunkCount = freeSlots, 0
+  lastCheapestJunk = nil
   if #lootPieces == 0 then return end
 
   for _, candidate in ipairs(junkCandidates) do
@@ -535,6 +619,11 @@ local function scanAllSlots()
   end
 
   lastJunkCount = #junkEntries
+  for _, entry in ipairs(junkEntries) do
+    if not lastCheapestJunk or entry.value < lastCheapestJunk.value then
+      lastCheapestJunk = { itemID = entry.item.id, value = entry.value }
+    end
+  end
   -- Loot that fits into a stack you already carry needs no free slot.
   local pieces = {}
   for i, piece in ipairs(lootPieces) do
@@ -549,7 +638,9 @@ local function scanAllSlots()
   end
   lootPlan = Bagwise.MakeRoom.Plan(pieces, junkEntries, freeSlots)
 
-  if not lootPlan.active then return end
+  -- Nothing to delete means nothing to act on, so the dots stay as they are
+  -- and the banner explains why the loot is being left.
+  if #lootPlan.deletes == 0 then return end
 
   -- Quiet every other dot, then mark the slots to delete. Fresh tables: the
   -- cached results are shared between slots.
@@ -593,6 +684,7 @@ function Bagwise.Scanner.ProfessionSummary()
   local parts = {}
   for name in pairs(state.professionNames or {}) do
     parts[#parts + 1] = name .. " " .. tostring(state.professionRanks and state.professionRanks[name] or "?")
+      .. (state.professionIdle and state.professionIdle[name] and " idle" or "")
   end
   table.sort(parts)
   local list = #parts > 0 and table.concat(parts, ", ") or "none"
@@ -607,13 +699,36 @@ end
 
 -- Does the loot window piece count as must-take? Quest items, rares and
 -- anything with no vendor price can't be compared with junk by price.
+-- Do quests still want this item? true: an open quest does. false: it is
+-- listed for quests and you have finished them all. nil: no quest data.
+local function questStillWantsIt(itemID)
+  local ids = Bagwise.Data and Bagwise.Data.QuestItems and Bagwise.Data.QuestItems[itemID]
+  if not ids then return nil end
+  local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+  ids = Bagwise.Verdict.QuestsForFaction(ids, faction)
+  if #ids == 0 then return nil end
+  for _, questID in ipairs(ids) do
+    if not questFinished(questID) then return true end
+  end
+  return false
+end
+
 local function isPriorityLoot(info)
+  local wanted = questStillWantsIt(info.itemID)
+  if wanted then return true end -- an open quest needs it, even a gray
   if info.quality and info.quality >= 3 then return true end
-  if info.classID == 12 or (info.sellPrice or 0) == 0 then return true end
+  -- Green gear can be an upgrade, which a vendor price cannot tell.
+  if info.quality and info.quality >= 2 and (info.classID == 2 or info.classID == 4) then
+    return true
+  end
+  -- Finished the quests it was for, or a gray: it is only worth its price.
+  if wanted == false or info.quality == 0 then return false end
+  if info.classID == 12 then return true end
+  -- No vendor price usually means it is worth something elsewhere (AH,
+  -- quests, a use we cannot see).
+  if (info.sellPrice or 0) == 0 then return true end
   local data = Bagwise.Data or {}
-  return (data.QuestItems and data.QuestItems[info.itemID])
-      or (data.ReagentProfessions and data.ReagentProfessions[info.itemID])
-      or false
+  return (data.ReagentProfessions and data.ReagentProfessions[info.itemID]) and true or false
 end
 
 --- Read the open loot window and rescan with it in mind.
@@ -647,9 +762,33 @@ end
 
 --- What the make-room plan saw on the last scan (for /bagwise loot).
 function Bagwise.Scanner.MakeRoomSummary()
-  local takes = 0
+  local takes, leaving, noRoom = 0, 0, 0
   for _ in pairs(lootPlan.take) do takes = takes + 1 end
+  if lootPlan.active then
+    for _, piece in ipairs(lootPieces) do
+      if not lootPlan.take[piece.slot] then
+        if piece.priority then noRoom = noRoom + 1 else leaving = leaving + 1 end
+      end
+    end
+  end
+  local cheapest = lastCheapestJunk
+  local cheapestName, cheapestQuality
+  if cheapest then
+    local name, _, quality = getItemInfo(cheapest.itemID)
+    cheapestName, cheapestQuality = name, quality
+  end
+  local deleteNames = {}
+  for _, victim in ipairs(lootPlan.deletes) do
+    local name = victim.item and victim.item.id and (getItemInfo(victim.item.id))
+    if name then deleteNames[#deleteNames + 1] = name end
+  end
   return {
+    deleteNames = deleteNames,
+    leaving = leaving,
+    noRoom = noRoom,
+    cheapestJunkValue = cheapest and cheapest.value or nil,
+    cheapestJunkName = cheapestName,
+    cheapestJunkQuality = cheapestQuality,
     lootItems = #lootPieces,
     freeSlots = lastFreeSlots,
     junkCandidates = lastJunkCount,
@@ -665,11 +804,25 @@ function Bagwise.Scanner.ClearLoot()
   lootPlan = { take = {}, deletes = {}, active = false }
 end
 
---- What the make-room plan says about a loot slot: "take", "leave", or nil when
+--- What the make-room plan says about a loot slot: "take", "leave" (worth less
+-- than your junk), "consider" (taken, but not by price), "noroom" (must-take, but nothing to delete) or nil when
 -- there is nothing to decide (bags have room, or no loot window).
 function Bagwise.Scanner.LootDecision(slot)
   if not lootPlan.active or not liveLootSlots[slot] then return nil end
-  return lootPlan.take[slot] and "take" or "leave"
+  if lootPlan.take[slot] then
+    -- Taken because it beats the junk by price, or because a price cannot
+    -- judge it (quests, reagents, no vendor value): that one is a "consider".
+    for _, piece in ipairs(lootPieces) do
+      if piece.slot == slot and piece.priority then return "consider" end
+    end
+    return "take"
+  end
+  -- Must-take loot that nothing can be deleted for is not "not needed": the
+  -- player has to make room by hand.
+  for _, piece in ipairs(lootPieces) do
+    if piece.slot == slot and piece.priority then return "noroom" end
+  end
+  return "leave"
 end
 
 --- Get the verdict for a specific bag slot.
@@ -705,10 +858,13 @@ end
 -- @return table { items = n, green = n, yellow = n }
 function Bagwise.Scanner.Counts()
   local counts = { items = 0, green = 0, yellow = 0 }
-  for _, result in pairs(slotResults) do
-    counts.items = counts.items + 1
-    if result.verdict == "green" then counts.green = counts.green + 1 end
-    if result.verdict == "yellow" then counts.yellow = counts.yellow + 1 end
+  for key, result in pairs(slotResults) do
+    -- Count what you carry; the bank is only there while it is open.
+    if Bagwise.Bags.IsCarried(tonumber(key:match("^(-?%d+):"))) then
+      counts.items = counts.items + 1
+      if result.verdict == "green" then counts.green = counts.green + 1 end
+      if result.verdict == "yellow" then counts.yellow = counts.yellow + 1 end
+    end
   end
   return counts
 end
@@ -792,7 +948,7 @@ function Bagwise.Scanner.CollectInventory()
               and Bagwise.Data.VendorReagents[itemID] ~= nil or false,
           isClassReagent = Bagwise.Data.ClassReagents
               and Bagwise.Data.ClassReagents[itemID] ~= nil or false,
-          equippedInSlots = (quality == 1) and equippedInSlotsFor(equipSlot) or nil,
+          equippedInSlots = isEquippable and equippedInSlotsFor(equipSlot) or nil,
           isKept = Bagwise.Overrides.IsKept(itemID),
           isFlagged = Bagwise.Overrides.IsFlagged(itemID),
           lootable = containerInfo.hasLoot and true or false,

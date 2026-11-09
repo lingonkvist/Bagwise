@@ -11,6 +11,10 @@ local function makeDotTexture()
   function dot:SetBlendMode() end
   function dot:SetTexture(path) self.texture = path end
   function dot:SetPoint() end
+  function dot:SetColorTexture() end
+  function dot:SetAllPoints() end
+  function dot:SetWidth() end
+  function dot:SetHeight() end
   function dot:SetVertexColor(r, g, b) self.color = { r, g, b } end
   function dot:Show() self.shown = true end
   function dot:Hide() self.shown = false end
@@ -87,14 +91,19 @@ describe("Ellesmere Bags adapter", function()
     installScanner({ ["0:3"] = { verdict = "yellow", glow = true } })
 
     Bagwise.Overlay.UpdateAll()
-    local glow = button.dots[#button.dots]
-    assert.is_truthy(glow.shown)
-    assert.is_truthy(glow.group.playing)
+    -- dot 1 is the verdict dot; the rest are the glow layers (rings, wash, frame)
+    assert.is_truthy(#button.dots >= 8)
+    for i = 2, #button.dots do
+      assert.is_truthy(button.dots[i].shown)
+      assert.is_truthy(button.dots[i].group.playing)
+    end
 
     installScanner({ ["0:3"] = { verdict = "yellow" } })
     Bagwise.Overlay.UpdateAll()
-    assert.are.equal(false, glow.shown)
-    assert.are.equal(false, glow.group.playing)
+    for i = 2, #button.dots do
+      assert.are.equal(false, button.dots[i].shown)
+      assert.are.equal(false, button.dots[i].group.playing)
+    end
     _G.EllesmereUI = nil
   end)
 
@@ -123,14 +132,14 @@ describe("Ellesmere Bags adapter", function()
     _G.EllesmereUI = nil
   end)
 
-  it("creates no dot for hidden buttons, unscanned bags or silent items", function()
+  it("creates no dot for hidden buttons, bags out of range or silent items", function()
     local hidden = makeButton(0, 1, false)
-    local bankBag = makeButton(6, 1)
+    local bankBag = makeButton(99, 1)
     local silent = makeButton(0, 2)
     installEllesmere({ hidden, bankBag, silent })
     installScanner({
       ["0:1"] = { verdict = "green" },
-      ["6:1"] = { verdict = "green" },
+      ["99:1"] = { verdict = "green" },
     })
 
     Bagwise.Overlay.UpdateAll()
@@ -157,23 +166,264 @@ describe("Ellesmere Bags adapter", function()
 end)
 
 
-describe("Reagent bag (Forever)", function()
-  it("paints dots in bag 5 only when the client has a reagent bag slot", function()
-    local button = makeButton(5, 2)
-    installEllesmere({ button })
-    installScanner({ ["5:2"] = { verdict = "green" } })
+describe("Bank bags", function()
+  it("paints a bank bag slot when the scanner has a result for it", function()
+    local bank = makeButton(6, 2)
+    local empty = makeButton(7, 1)
+    installEllesmere({ bank, empty })
+    installScanner({ ["6:2"] = { verdict = "yellow" } })
 
-    _G.NUM_REAGENTBAG_SLOTS = nil
     Bagwise.Overlay.UpdateAll()
-    local paintedWithout = #button.dots
-
-    _G.NUM_REAGENTBAG_SLOTS = 1
-    Bagwise.Overlay.UpdateAll()
-    _G.NUM_REAGENTBAG_SLOTS = nil
     _G.EllesmereUI = nil
 
-    assert.are.equal(0, paintedWithout)
+    assert.are.equal(1, #bank.dots)
+    assert.is_truthy(bank.dots[1].shown)
+    assert.are.equal(0, #empty.dots)
+  end)
+end)
+
+
+describe("Bagnon adapter", function()
+  -- A fake Bagnon: Item.UpdateSecondary is what Bagnon calls after each slot refresh.
+  local function installBagnon()
+    _G.hooksecurefunc = function(target, name, hook)
+      local original = target[name]
+      target[name] = function(...)
+        if original then original(...) end
+        hook(...)
+      end
+    end
+    _G.CreateFrame = function()
+      return { RegisterEvent = function() end, SetScript = function() end }
+    end
+    _G.Bagnon = { Item = { UpdateSecondary = function() end } }
+  end
+
+  local function makeBagnonButton(bagID, slotID, options)
+    options = options or {}
+    local button = makeButton(bagID, slotID)
+    function button:GetBag() return bagID end
+    if options.container ~= false then function button:UpdateCooldown() end end
+    if options.cached ~= nil then function button:IsCached() return options.cached end end
+    return button
+  end
+
+  local function refresh(button)
+    Bagnon.Item.UpdateSecondary(button)
+  end
+
+  local function tearDown()
+    _G.Bagnon = nil
+    _G.hooksecurefunc = nil
+    _G.CreateFrame = nil
+  end
+
+  it("paints a live bag slot when Bagnon refreshes it", function()
+    installBagnon()
+    installScanner({ ["0:3"] = { verdict = "green" } })
+    Bagwise.Overlay.Init()
+    local button = makeBagnonButton(0, 3, { cached = false })
+
+    refresh(button)
+
     assert.are.equal(1, #button.dots)
     assert.is_truthy(button.dots[1].shown)
+    assert.is_truthy(button.dots[1].texture:find("dot_green$"))
+    tearDown()
+  end)
+
+  it("never paints another character's cached slot, even with a matching bag and slot", function()
+    installBagnon()
+    installScanner({ ["0:3"] = { verdict = "green" } })
+    Bagwise.Overlay.Init()
+    local cached = makeBagnonButton(0, 3, { cached = true })
+
+    refresh(cached)
+
+    assert.are.equal(0, #cached.dots)
+    tearDown()
+  end)
+
+  it("clears a dot left on a button that now shows cached items", function()
+    installBagnon()
+    installScanner({ ["0:3"] = { verdict = "green" } })
+    Bagwise.Overlay.Init()
+    local button = makeBagnonButton(0, 3, { cached = false })
+    refresh(button)
+    assert.is_truthy(button.dots[1].shown)
+
+    function button:IsCached() return true end
+    refresh(button)
+
+    assert.is_truthy(not button.dots[1].shown)
+    tearDown()
+  end)
+
+  it("ignores guild bank and void storage buttons", function()
+    installBagnon()
+    installScanner({ ["1:1"] = { verdict = "green" } })
+    Bagwise.Overlay.Init()
+    local guild = makeBagnonButton(1, 1, { container = false })
+
+    refresh(guild)
+
+    assert.are.equal(0, #guild.dots)
+    tearDown()
+  end)
+
+  it("repaints remembered buttons when a scan finishes after Bagnon drew them", function()
+    installBagnon()
+    installScanner({})
+    Bagwise.Overlay.Init()
+    local button = makeBagnonButton(0, 3, { cached = false })
+    refresh(button)
+    assert.are.equal(0, #button.dots)
+
+    installScanner({ ["0:3"] = { verdict = "yellow" } })
+    Bagwise.Overlay.UpdateAll()
+
+    assert.is_truthy(button.dots[1].shown)
+    assert.is_truthy(button.dots[1].texture:find("dot_yellow$"))
+    tearDown()
+  end)
+
+  it("does nothing, and does not error, when Bagnon is not installed", function()
+    _G.Bagnon = nil
+    _G.CreateFrame = function()
+      return { RegisterEvent = function() end, SetScript = function() end }
+    end
+    installScanner({})
+    Bagwise.Overlay.Init()
+    Bagwise.Overlay.UpdateAll()
+    _G.CreateFrame = nil
+  end)
+end)
+
+
+describe("Baganator adapter", function()
+  local onUpdate
+
+  local function installBaganator()
+    onUpdate = nil
+    _G.Baganator = { API = { RegisterCornerWidget = function(_, _, update) onUpdate = update end } }
+    _G.C_Container = { GetContainerItemID = function(bag, slot) return bag == 0 and slot == 3 and 111 or nil end }
+    _G.C_Item = { GetItemInfoInstant = function(link) return tonumber(link:match("item:(%d+)")) end }
+    installScanner({ ["0:3"] = { verdict = "green" } })
+    Bagwise.Overlay.Init()
+  end
+
+  local function paint(details)
+    local dot = makeDotTexture()
+    return onUpdate(dot, details), dot
+  end
+
+  local function tearDown()
+    _G.Baganator, _G.C_Container, _G.C_Item = nil, nil, nil
+  end
+
+  it("paints a live slot whose item matches the one Baganator shows", function()
+    installBaganator()
+    local painted, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
+    assert.is_truthy(painted)
+    assert.is_truthy(dot.shown)
+    tearDown()
+  end)
+
+  it("never paints a remembered item that shares a live slot's number", function()
+    installBaganator()
+    local painted, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:222" })
+    assert.is_truthy(not painted)
+    assert.is_truthy(not dot.shown)
+    tearDown()
+  end)
+
+  it("does not paint a slot that is empty in the real bags", function()
+    installBaganator()
+    local painted = paint({ itemLocation = { bagID = 0, slotIndex = 4 }, itemLink = "item:111" })
+    assert.is_truthy(not painted)
+    tearDown()
+  end)
+
+  it("keeps painting when Baganator gives no item link to compare", function()
+    installBaganator()
+    local painted = paint({ itemLocation = { bagID = 0, slotIndex = 3 } })
+    assert.is_truthy(painted)
+    tearDown()
+  end)
+
+  it("skips an item with no location, such as another character's", function()
+    installBaganator()
+    assert.is_truthy(not paint({ itemLink = "item:111" }))
+    tearDown()
+  end)
+end)
+
+
+describe("Loot banner", function()
+  local sharedBanner
+  local function fakeFrame()
+    local frame = { shown = false, points = {} }
+    function frame:SetFrameStrata() end
+    function frame:SetSize() end
+    function frame:SetHeight() end
+    function frame:CreateTexture()
+      local texture = makeDotTexture()
+      function texture:SetAllPoints() end
+      function texture:SetColorTexture() end
+      return texture
+    end
+    function frame:CreateFontString()
+      local text = { value = nil }
+      function text:SetPoint() end
+      function text:SetWidth() end
+      function text:SetText(value) self.value = value end
+      function text:GetStringHeight() return 14 end
+      return text
+    end
+    function frame:ClearAllPoints() end
+    function frame:SetPoint(...) self.points[#self.points + 1] = { ... } end
+    function frame:Show() self.shown = true end
+    function frame:Hide() self.shown = false end
+    return frame
+  end
+
+  local function install(summary)
+    dofile("src/makeroom.lua")
+    -- The overlay keeps its banner for the whole session, so one fake frame serves every test.
+    sharedBanner = sharedBanner or fakeFrame()
+    _G.UIParent = {}
+    _G.CreateFrame = function() return sharedBanner end
+    Bagwise.Scanner = { MakeRoomSummary = function() return summary end }
+    return function() return sharedBanner end
+  end
+
+  local function tearDown()
+    _G.CreateFrame, _G.UIParent, _G.LootFrame = nil, nil, nil
+  end
+
+  it("shows what to do while bags are full", function()
+    local frame = install({ active = true, deletes = 1, leaving = 0 })
+    Bagwise.Overlay.UpdateBanner()
+    assert.is_truthy(frame().shown)
+    assert.is_truthy(frame().text.value:find("delete the glowing item", 1, true))
+    tearDown()
+  end)
+
+  it("hides again once the plan is over", function()
+    local frame = install({ active = true, deletes = 1, leaving = 0 })
+    Bagwise.Overlay.UpdateBanner()
+    Bagwise.Scanner = { MakeRoomSummary = function() return { active = false, deletes = 0 } end }
+    Bagwise.Overlay.UpdateBanner()
+    assert.is_truthy(not frame().shown)
+    tearDown()
+  end)
+
+  it("sits above the loot window when it is open", function()
+    local frame = install({ active = true, deletes = 1, leaving = 0 })
+    _G.LootFrame = { IsShown = function() return true end }
+    frame().points = {}
+    Bagwise.Overlay.UpdateBanner()
+    assert.are.equal("BOTTOM", frame().points[1][1])
+    tearDown()
   end)
 end)

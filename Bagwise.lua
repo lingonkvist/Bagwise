@@ -46,10 +46,31 @@ local function onLootChanged(self, clearedSlot)
   end
 end
 
+-- With full bags the dots that matter are in the bags, so open them. If they
+-- were closed, close them again when the loot window goes away.
+local openedBagsForLoot = false
+
+local function anyBagOpen()
+  if IsAnyBagOpen then return IsAnyBagOpen() end
+  return ContainerFrameCombinedBags and ContainerFrameCombinedBags:IsShown() or false
+end
+
+local function onLootOpened(self, ...)
+  onLootChanged(self, ...)
+  if BagwiseDB and BagwiseDB.autoOpenBags == false then return end
+  if not Bagwise.Scanner.MakeRoomSummary().active then return end
+  if anyBagOpen() or not OpenAllBags then return end
+  if pcall(OpenAllBags) then openedBagsForLoot = true end
+end
+
 local function onLootClosed()
   Bagwise.Scanner.ClearLoot()
   rescanAll()
   Bagwise.Overlay.UpdateLoot()
+  if openedBagsForLoot then
+    openedBagsForLoot = false
+    if CloseAllBags then pcall(CloseAllBags) end
+  end
 end
 
 local function onAddonLoaded(self, addonName)
@@ -60,6 +81,7 @@ local function onAddonLoaded(self, addonName)
   BagwiseDB = BagwiseDB or {}
   BagwiseDB.keepList = BagwiseDB.keepList or {}
   BagwiseDB.flagList = BagwiseDB.flagList or {}
+  if BagwiseDB.autoOpenBags == nil then BagwiseDB.autoOpenBags = true end
   BagwiseDB.version = BagwiseDB.version or 1
 
   self:UnregisterEvent("ADDON_LOADED")
@@ -79,6 +101,13 @@ local function onPlayerLogin(self)
   self:RegisterEvent("LOOT_OPENED")
   self:RegisterEvent("LOOT_SLOT_CLEARED")
   self:RegisterEvent("LOOT_CLOSED")
+  -- The bank can only be read while it is open. Which of these a client has
+  -- differs, and an unknown event must not stop the rest of the setup.
+  for _, bankEvent in ipairs({ "BANKFRAME_OPENED", "BANKFRAME_CLOSED",
+      "PLAYERBANKSLOTS_CHANGED", "PLAYERBANKBAGSLOTS_CHANGED",
+      "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED" }) do
+    pcall(self.RegisterEvent, self, bankEvent)
+  end
 
   -- Hook bag frame Show so dots appear when bags open.
   -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
@@ -107,9 +136,14 @@ local EVENT_HANDLERS = {
   QUEST_REMOVED          = invalidateAndRescan,
   SKILL_LINES_CHANGED    = invalidateAndRescan,
   PLAYER_EQUIPMENT_CHANGED = invalidateAndRescan,
-  LOOT_OPENED            = onLootChanged,
+  LOOT_OPENED            = onLootOpened,
   LOOT_SLOT_CLEARED      = onLootChanged,
   LOOT_CLOSED            = onLootClosed,
+  BANKFRAME_OPENED       = rescanSoon,
+  BANKFRAME_CLOSED       = rescanSoon,
+  PLAYERBANKSLOTS_CHANGED = rescanSoon,
+  PLAYERBANKBAGSLOTS_CHANGED = rescanSoon,
+  PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED = rescanSoon,
 }
 
 frame:SetScript("OnEvent", function(self, event, ...)

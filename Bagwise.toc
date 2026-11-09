@@ -1,15 +1,16 @@
-## Interface: 16001, 11509
+## Interface: 16001
 ## Title: Bagwise
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist
-## Version: 0.5.0
+## Version: 0.5.1
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
-## OptionalDeps: Baganator
+## OptionalDeps: Baganator, Bagnon
 ## X-Curse-Project-ID: 1784913
 
 src\bags.lua
 src\safety.lua
+src\progress.lua
 src\verdict.lua
 src\makeroom.lua
 src\scanner.lua

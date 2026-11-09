@@ -5,6 +5,7 @@
 _G.Bagwise = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
+dofile("src/progress.lua")
 dofile("src/verdict.lua")
 dofile("src/makeroom.lua")
 Bagwise.Data = { ReagentProfessions = {}, VendorReagents = {}, ClassReagents = {}, QuestItems = {}, QuestInfo = {} }
@@ -20,6 +21,16 @@ local ITEMS = {
   [600] = { "Odd Trinket", 0, 1, 0, 1, "", 500, 15, 0 },
   [700] = { "Odd Bauble", 0, 1, 0, 1, "", 800, 15, 0 },
   [800] = { "Recipe: Fancy Elixir", 1, 1, 0, 1, "", 100, 9, 6 },
+  [1100] = { "Healing Draught", 1, 1, 1, 5, "", 10, 0, 1 }, -- potion
+  [1003] = { "Spent Token", 1, 1, 0, 1, "", 5, 12, 0 },   -- quest item, 5c
+  [1004] = { "Gray Totem", 0, 1, 0, 1, "", 5, 15, 0 },    -- gray, 5c
+  [1001] = { "Strange Mineral", 1, 1, 0, 20, "", 0, 7, 7 }, -- white, no vendor price
+  [1002] = { "Broken Fang", 0, 1, 0, 1, "", 0, 15, 0 },     -- gray, no vendor price
+  [1000] = { "Odd Scroll", 1, 1, 0, 1, "", 0, 12, 0 }, -- a quest item: no vendor price
+  [903] = { "Green Cloak", 2, 20, 10, 1, "INVTYPE_CLOAK", 20, 4, 1 }, -- sells for 20c
+  [900] = { "Old Blue Chest", 3, 10, 10, 1, "INVTYPE_CHEST", 300, 4, 1 },
+  [901] = { "Worn White Chest", 1, 30, 20, 1, "INVTYPE_CHEST", 100, 4, 1 },
+  [902] = { "Worn Blue Chest", 3, 40, 30, 1, "INVTYPE_CHEST", 900, 4, 1 },
 }
 local bags, freeByBag, loot
 
@@ -36,6 +47,7 @@ local function setUp(layout, free, lootWindow)
   _G.C_QuestLog = { IsQuestFlaggedCompleted = function() return false end, GetQuestInfo = function() end }
   _G.GetInventoryItemLink = function() return nil end
   _G.GetItemInfo = function(id)
+    if type(id) == "string" then id = tonumber(id:match("item:(%d+)")) end
     local it = ITEMS[id]
     if not it then return nil end
     return it[1], "link", it[2], it[3], it[4], "", "", it[5], it[6], "", it[7], it[8], it[9], 0
@@ -220,12 +232,43 @@ describe("Scanner: recipes", function()
     _G.GetProfessions = nil
   end)
 
-  it("stays quiet when the skill is within reach", function()
+  it("stays quiet when the skill is already enough", function()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
-    giveSkills({ { "Alchemy", 100 } })
+    giveSkills({ { "Alchemy", 125 } })
     giveTooltip("Requires Alchemy (125)")
     Bagwise.Scanner.ScanAll()
     assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
+  end)
+
+  it("banks a recipe one point out of reach once the profession has gone idle", function()
+    local saved = _G.BagwiseDB
+    _G.BagwiseDB = { skillProgress = { ["?-?"] = { Alchemy = { rank = 100, quiet = 1, seen = 0, gained = 0 } } } }
+    Bagwise.Progress.ResetSession()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    giveSkills({ { "Alchemy", 100 } })
+    giveTooltip("Requires Alchemy (101)")
+    Bagwise.Scanner.ScanAll()
+    local result = Bagwise.Scanner.GetResult(0, 1)
+    _G.BagwiseDB = saved
+    assert.are.equal("yellow", result.verdict)
+    assert.are.equal("Bank it, needs Alchemy 101", result.reason)
+  end)
+
+  it("forgets the history of a profession you no longer have, and shows idle in the summary", function()
+    local saved = _G.BagwiseDB
+    _G.BagwiseDB = { skillProgress = { ["?-?"] = {
+      Alchemy = { rank = 100, quiet = 1, seen = 0, gained = 0 },
+      Tailoring = { rank = 50, quiet = 1, seen = 0, gained = 0 },
+    } } }
+    Bagwise.Progress.ResetSession()
+    setUp({ [0] = {} }, { [0] = 0 })
+    giveSkills({ { "Alchemy", 100 } })
+    Bagwise.Scanner.ScanAll()
+    local store = _G.BagwiseDB.skillProgress["?-?"]
+    local summary = Bagwise.Scanner.ProfessionSummary()
+    _G.BagwiseDB = saved
+    assert.is_nil(store.Tailoring)
+    assert.is_truthy(summary:find("Alchemy 100 idle", 1, true))
   end)
 
   it("says a recipe is for another profession when you do not have it", function()
@@ -272,5 +315,198 @@ describe("Scanner: repeatable quests", function()
     assert.is_truthy(not result or result.verdict ~= "green")
     Bagwise.Data.QuestItems = {}
     Bagwise.Data.RepeatableQuests = nil
+  end)
+end)
+
+
+describe("Scanner: low level gear that could be an upgrade", function()
+  -- A level 40 character carrying a bound blue chest from level 10. wornChest
+  -- is the item ID in the chest slot, or nil for an empty slot.
+  local function scanWith(wornChest)
+    setUp({ [0] = { { id = 900, bound = true } } }, {})
+    _G.UnitLevel = function() return 40 end
+    _G.GetInventoryItemLink = function(_, slot)
+      if slot == 5 then return wornChest end
+      return nil
+    end
+    Bagwise.Scanner.ClearCache()
+    Bagwise.Scanner.ScanAll()
+    return Bagwise.Scanner.GetResult(0, 1)
+  end
+
+  it("gives no verdict while the chest slot is empty", function()
+    local result = scanWith(nil)
+    assert.is_truthy(not result or result.verdict == nil)
+  end)
+
+  it("gives no verdict when a white chest is worn, however old the blue is", function()
+    local result = scanWith(901)
+    assert.is_truthy(not result or result.verdict == nil)
+  end)
+
+  it("hints it is low level when the worn chest is better in rarity and item level", function()
+    local result = scanWith(902)
+    assert.is_truthy(result)
+    assert.are.equal("yellow", result.verdict)
+  end)
+end)
+
+
+describe("Scanner: the bank", function()
+  -- Bag 5 is a bank bag here (4 bags carried, no reagent bag); -1 is the bank itself.
+  local function scanWithBank(carried, bank)
+    local layout = { [0] = carried }
+    for bag, cells in pairs(bank) do layout[bag] = cells end
+    setUp(layout, {})
+    Bagwise.Scanner.ClearCache()
+    Bagwise.Scanner.ScanAll()
+  end
+
+  it("paints bank items with the verdict that fits the bank", function()
+    scanWithBank({ { id = 300 } }, { [5] = { { id = 300 } } })
+    -- A gray is worthless whoever you play, so it keeps its verdict in the bank.
+    assert.are.equal("green", Bagwise.Scanner.GetResult(0, 1).verdict)
+    assert.are.equal("green", Bagwise.Scanner.GetResult(5, 1).verdict)
+  end)
+
+  it("counts only what you carry in the status numbers", function()
+    scanWithBank({ { id = 300 } }, { [5] = { { id = 300 }, { id = 300 } } })
+    assert.are.equal(1, Bagwise.Scanner.Counts().items)
+  end)
+
+  it("recognises carried and bank bag IDs, and nothing else", function()
+    assert.is_truthy(Bagwise.Bags.IsScanned(0))
+    assert.is_truthy(Bagwise.Bags.IsScanned(5))
+    assert.is_truthy(not Bagwise.Bags.IsScanned(-1)) -- the keyring on Forever
+    assert.is_truthy(not Bagwise.Bags.IsScanned(-2))
+    assert.is_truthy(not Bagwise.Bags.IsScanned(nil))
+    assert.is_truthy(not Bagwise.Bags.IsScanned(400))
+  end)
+end)
+
+describe("Scanner: make room with only a pricey gray in the bags", function()
+  -- Odd Bauble (700) is a gray that sells for 8s: yellow, "worth some".
+  -- Shiny Thing (500) is a white that sells for 50c. Odd Trinket (600) is a
+  -- gray that sells for 5s.
+  local function scanFull(lootID)
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = lootID, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+  end
+
+  it("glows the gray when the loot is worth more than it", function()
+    setUp({ [0] = { { id = 600 }, { id = 100 } } }, { [0] = 0 }, { { id = 700, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    local gray = Bagwise.Scanner.GetResult(0, 1)
+    assert.are.equal(true, gray.glow)
+    assert.is_truthy(not gray.quiet)
+    assert.are.equal("take", Bagwise.Scanner.LootDecision(1))
+    assert.are.equal("Odd Trinket", Bagwise.Scanner.MakeRoomSummary().deleteNames[1])
+  end)
+
+  it("glows the gray for loot that must be taken, however little the gray is worth", function()
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1000, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
+    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
+  end)
+
+  it("takes loot with no vendor price: it may be worth more elsewhere", function()
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1001, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
+  end)
+
+  it("a gray with no vendor price is just junk, not must-take", function()
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1002, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal("leave", Bagwise.Scanner.LootDecision(1))
+  end)
+
+  it("must-take loot with nothing to delete is no-room, not not-needed", function()
+    setUp({ [0] = { { id = 903 }, { id = 902 } } }, { [0] = 0 }, { { id = 1000, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal("noroom", Bagwise.Scanner.LootDecision(1))
+    assert.are.equal(1, Bagwise.Scanner.MakeRoomSummary().noRoom)
+  end)
+
+  local function lootDecisionWith(itemID, questID, finished)
+    Bagwise.Data.QuestItems = { [itemID] = { questID } }
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = itemID, qty = 1 } })
+    _G.C_QuestLog.IsQuestFlaggedCompleted = function() return finished end
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    local decision = Bagwise.Scanner.LootDecision(1)
+    Bagwise.Data.QuestItems = {}
+    return decision
+  end
+
+  it("takes a quest item while its quest is open", function()
+    assert.are.equal("consider", lootDecisionWith(1003, 77, false))
+  end)
+
+  it("a quest item for a finished quest is only worth its price", function()
+    assert.are.equal("leave", lootDecisionWith(1003, 77, true))
+  end)
+
+  it("takes even a gray while an open quest wants it", function()
+    assert.are.equal("consider", lootDecisionWith(1004, 78, false))
+  end)
+
+  it("leaves the loot, keeps the dots, and names the junk it lost to", function()
+    scanFull(500)
+    local summary = Bagwise.Scanner.MakeRoomSummary()
+    assert.are.equal(true, summary.active)
+    assert.are.equal(0, summary.deletes)
+    assert.are.equal(1, summary.leaving)
+    assert.are.equal("Odd Bauble", summary.cheapestJunkName)
+    assert.are.equal(800, summary.cheapestJunkValue)
+    assert.are.equal("leave", Bagwise.Scanner.LootDecision(1))
+    local gray = Bagwise.Scanner.GetResult(0, 1)
+    assert.is_nil(gray.glow)
+    assert.is_truthy(not gray.quiet)
+    assert.are.equal("yellow", gray.verdict)
+  end)
+
+  it("always takes green gear, even when it sells for less than the junk", function()
+    setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 903, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
+  end)
+end)
+
+describe("Scanner: potions outleveled", function()
+  local function giveTooltipLine(text)
+    _G.UIParent = {}
+    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.CreateFrame = function()
+      return {
+        SetOwner = function() end, ClearLines = function() end,
+        SetBagItem = function() end, NumLines = function() return 2 end,
+      }
+    end
+  end
+
+  local function resultFor(line)
+    setUp({ [0] = { { id = 1100 } } }, { [0] = 0 })
+    _G.UnitLevel = function() return 40 end
+    giveTooltipLine(line)
+    Bagwise.Scanner.ScanAll()
+    return Bagwise.Scanner.GetResult(0, 1)
+  end
+
+  it("flags a healing potion made for a much lower level", function()
+    assert.are.equal("yellow", resultFor("Use: Restores 40 to 60 health.").verdict)
+  end)
+
+  it("leaves a utility potion alone", function()
+    assert.is_nil(resultFor("Use: Increases swim speed by 50% for 30 sec.").verdict)
   end)
 end)

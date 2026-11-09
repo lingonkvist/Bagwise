@@ -144,6 +144,7 @@ local COMMAND_HANDLERS = {
     print("  /bagwise flag [item]    - Always show a yellow dot on this item")
     print("  /bagwise reset [item]   - Return this item to the normal rules")
     print("  /bagwise list           - Show your kept and flagged items")
+    print("  /bagwise autoopen       - Turn on or off opening your bags when loot needs room")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
     print("Troubleshooting (paste the output when something looks wrong):")
@@ -220,6 +221,18 @@ local COMMAND_HANDLERS = {
     if explained.professionsKnown == false then
       print("  Your professions could not be fully read (Skills tab collapsed or not loaded), so profession-based greens are held back.")
     end
+  end,
+  autoopen = function(argument)
+    BagwiseDB = BagwiseDB or {}
+    local word = (argument or ""):lower():match("^%s*(%a*)")
+    if word == "on" then
+      BagwiseDB.autoOpenBags = true
+    elseif word == "off" then
+      BagwiseDB.autoOpenBags = false
+    else
+      BagwiseDB.autoOpenBags = BagwiseDB.autoOpenBags == false
+    end
+    say("Opening your bags when loot needs room: " .. (BagwiseDB.autoOpenBags and "on" or "off"))
   end,
   loot = function()
     local plan = Bagwise.Scanner.MakeRoomSummary()

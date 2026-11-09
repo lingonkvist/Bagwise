@@ -284,12 +284,12 @@ describe("tooltip bag and slot lookup", function()
     assert.are.equal(2, lookups[1].slot)
   end)
 
-  it("button in an unscanned bag (bank) shows nothing", function()
+  it("button in a bag outside the scanned ranges shows nothing", function()
     local lookups = recordLookups()
 
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
-      "BankFrame", 0, 4, 6)
+      "SomeFrame", 0, 4, 99)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #lookups)
@@ -884,6 +884,104 @@ describe("tooltip in the loot window", function()
     assert.is_truthy(tt.lines[1].text:find("Not needed$"))
     assert.are.equal("Vendor reagent (Alchemy)", tt.lines[2].text)
     assert.are.equal(2320, calls.evaluated[1])
+  end)
+
+  it("explains the X on an item that already has its own verdict", function()
+    setup()
+    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+    Bagwise.Scanner.LootDecision = function() return "leave" end
+    Bagwise.Scanner.MakeRoomSummary = function()
+      return { cheapestJunkValue = 800, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
+    end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
+    assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
+      .. "8|cffc7c7cfs|r)", tt.lines[3].text)
+  end)
+
+  it("says a must-take item has no room even when it has its own verdict", function()
+    setup()
+    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+    Bagwise.Scanner.LootDecision = function() return "noroom" end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal("Needs a slot, nothing safe to delete", tt.lines[3].text)
+  end)
+
+  it("says to consider an item taken for a reason a price cannot judge", function()
+    setup()
+    installScanner(nil)
+    Bagwise.Scanner.LootDecision = function() return "consider" end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal("Consider taking it", tt.lines[#tt.lines].text)
+  end)
+
+  it("names the cheapest gray on one line, item and coins coloured", function()
+    setup()
+    installScanner(nil)
+    Bagwise.Scanner.LootDecision = function() return "leave" end
+    Bagwise.Scanner.MakeRoomSummary = function()
+      return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
+    end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
+      .. "1|cffc7c7cfs|r 17|cffeda55fc|r)", tt.lines[2].text)
+  end)
+
+  it("a skipped gray does not repeat its own price", function()
+    setup()
+    installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
+                     tag = Bagwise.Verdict.POOR_QUALITY_TAG })
+    Bagwise.Scanner.LootDecision = function() return "leave" end
+    Bagwise.Scanner.MakeRoomSummary = function()
+      return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
+    end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[2].text:find("^Worth less than your cheapest gray"))
+  end)
+
+  it("does not repeat a gray's own sell price next to the comparison", function()
+    setup()
+    installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
+      tag = Bagwise.Verdict.POOR_QUALITY_TAG })
+    Bagwise.Scanner.LootDecision = function() return "leave" end
+    Bagwise.Scanner.MakeRoomSummary = function()
+      return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
+    end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[2].text:find("Worth less than your cheapest gray", 1, true))
   end)
 
   it("keeps the yellow heading as is", function()

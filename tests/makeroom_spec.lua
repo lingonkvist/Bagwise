@@ -167,3 +167,46 @@ describe("MakeRoom quieting", function()
     assert.is_nil(Bagwise.MakeRoom.RestoreResult(quiet).quiet)
   end)
 end)
+
+describe("Make room banner text", function()
+  local function banner(summary) return Bagwise.MakeRoom.BannerText(summary) end
+
+  it("says nothing while the bags have room", function()
+    assert.is_nil(banner({ active = false, deletes = 0 }))
+    assert.is_nil(banner(nil))
+  end)
+
+  it("tells you to delete the glowing item", function()
+    assert.are.equal("Bags full: delete the glowing item",
+      banner({ active = true, deletes = 1, leaving = 0 }))
+    assert.are.equal("Bags full: delete the glowing items",
+      banner({ active = true, deletes = 2, leaving = 0 }))
+  end)
+
+  it("names the item to delete, and counts the rest", function()
+    assert.are.equal("Bags full: consider deleting Torn Rag",
+      banner({ active = true, deletes = 1, leaving = 0, deleteNames = { "Torn Rag" } }))
+    assert.are.equal("Bags full: consider deleting Torn Rag and 2 more",
+      banner({ active = true, deletes = 3, leaving = 0, deleteNames = { "Torn Rag", "A", "B" } }))
+  end)
+
+  it("explains why loot is left (the tooltip names the junk)", function()
+    local text = banner({ active = true, deletes = 0, leaving = 1,
+      cheapestJunkValue = 800, cheapestJunkName = "Odd Bauble" })
+    assert.are.equal("Bags full: loot is worth less than your junk", text)
+  end)
+
+  it("asks you to make room by hand for must-take loot", function()
+    assert.are.equal("Bags full: make room by hand",
+      banner({ active = true, deletes = 0, leaving = 0, noRoom = 1 }))
+  end)
+
+  it("says so when there is no junk to delete at all", function()
+    local text = banner({ active = true, deletes = 0, leaving = 1 })
+    assert.are.equal("Bags full, nothing safe to delete", text)
+  end)
+
+  it("says nothing when every piece of loot is taken without a deletion", function()
+    assert.is_nil(banner({ active = true, deletes = 0, leaving = 0 }))
+  end)
+end)
