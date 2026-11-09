@@ -309,6 +309,87 @@ describe("tooltip bag and slot lookup", function()
   end)
 end)
 
+describe("tooltip recipe hints", function()
+  local function hover(itemID, professionNames)
+    Bagwise.Data = Bagwise.Data or {}
+    Bagwise.Data.ReagentProfessions = { [itemID] = { { "Alchemy", 1, 250, 300 } } }
+    Bagwise.Scanner = { professionNames = professionNames, GetResult = function() return {} end }
+    local tt = makeTooltip("|cff...|Hitem:" .. itemID .. ":...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    return tt
+  end
+
+  local function recipes()
+    Bagwise.Data.ReagentRecipes = { [5000] = {
+      { "Elixir A", "Alchemy", 250, 2000, 101 }, { "Elixir B", "Alchemy", 260, 2001, 102 },
+      { "Elixir C", "Alchemy", 270, 2002, 103 }, { "Boots", "Leatherworking", 255, 2003, 104 } } }
+  end
+
+  it("shows one line: the lowest-skill recipe of the player's professions, with +N for the rest", function()
+    recipes()
+    local tt = hover(5000, { Alchemy = true })
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[2].text:find("Elixir A %(250%) %+2"))
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+
+  it("sits beside a yellow Bank it hint, but not beside a green", function()
+    recipes()
+    Bagwise.Data.ReagentProfessions = { [5000] = { { "Alchemy", 1, 250, 300 } } }
+    Bagwise.Scanner = { professionNames = { Alchemy = true },
+      GetResult = function() return { verdict = "yellow", reason = "Bank it, used from Alchemy 250" } end }
+    local tt = makeTooltip("|cff...|Hitem:5000:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    local lastLine = tt.lines[#tt.lines].text
+    assert.is_truthy(lastLine:find("Elixir A %(250%) %+2"))
+
+    Bagwise.Scanner.GetResult = function() return { verdict = "green", reason = "Gray, safe to vendor" } end
+    local tt2 = makeTooltip("|cff...|Hitem:5000:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt2)
+    for i = 1, #tt2.lines do assert.is_nil(tt2.lines[i].text:find("Elixir A")) end
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+
+  it("says nothing about professions the player does not have", function()
+    recipes()
+    local tt = hover(5000, { Cooking = true })
+
+    assert.are.equal(1, #tt.lines)
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+
+  it("says nothing when the player's professions are unknown", function()
+    recipes()
+    local tt = hover(5000, nil)
+
+    assert.are.equal(1, #tt.lines)
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+
+  it("skips recipes the player already knows", function()
+    recipes()
+    _G.IsPlayerSpell = function(id) return id == 101 or id == 102 end
+    local tt = hover(5000, { Alchemy = true })
+    _G.IsPlayerSpell = nil
+
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(tt.lines[2].text:find("Elixir C %(270%)"))
+    assert.is_nil(tt.lines[2].text:find("%+"))
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+
+  it("says nothing once every recipe of theirs is known", function()
+    recipes()
+    _G.IsPlayerSpell = function() return true end
+    local tt = hover(5000, { Alchemy = true, Leatherworking = true })
+    _G.IsPlayerSpell = nil
+
+    assert.are.equal(1, #tt.lines)
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+end)
+
 describe("tooltip profession info (no verdict)", function()
   it("single profession, no extras", function()
     Bagwise.Data = Bagwise.Data or {}

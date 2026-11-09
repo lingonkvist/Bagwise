@@ -190,6 +190,29 @@ local function evaluateClassReagent(item, state)
   return classReagent.verdict, classString .. " only (" .. source .. ")"
 end
 
+-- An open quest far below the player: its item is only held for a quest that
+-- is barely worth finishing. Only a hint. Chains and rewards can still make a
+-- low quest worth it, so it says "consider", never "delete".
+local QUEST_TRIVIAL_GAP = 10
+
+local function evaluateTrivialQuestItem(item, state)
+  if not item.questItemQuestIDs or item.allQuestObjectivesCompleted then return nil end
+  if isOrdinaryItem(item) then return nil end
+  local open = item.openQuestIDs or item.questItemQuestIDs
+  if #open == 0 then return nil end
+  local info = Bagwise.Data.QuestInfo
+  for i = 1, #open do
+    local entry = info and info[open[i]]
+    local level = entry and entry[QUEST_INFO_LEVEL]
+    if not level or level <= 0 or level + QUEST_TRIVIAL_GAP > (state.level or 1) then return nil end
+  end
+  local label = #open == 1 and questLabel(open[1], nil) or nil
+  if item.onOpenQuest then
+    return "yellow", "Quest is far below you, consider abandoning it", label
+  end
+  return "yellow", "Quest is far below you, probably not worth taking", label
+end
+
 local function evaluateQuestObjective(item)
   if not item.questItemQuestIDs then return nil end
   if not item.allQuestObjectivesCompleted then return nil end
@@ -412,6 +435,33 @@ local CONSUMABLE_CLASS = 0
 local OUTLEVELED_SUBCLASSES = { [1] = true, [5] = true, [7] = true } -- potion, food and drink, bandage
 local OUTLEVELED_GAP = 20
 
+local CLASS_PLURALS_FOR_POTIONS = { WARRIOR = "Warriors", ROGUE = "Rogues" }
+
+-- Mana potions are no use to a class with no mana. The IDs are listed instead
+-- of matched by name, so it works in every language.
+local MANA_POTIONS = {
+  [2455] = true,  -- Minor Mana Potion
+  [3385] = true,  -- Lesser Mana Potion
+  [3827] = true,  -- Mana Potion
+  [6149] = true,  -- Greater Mana Potion
+  [13443] = true, -- Superior Mana Potion
+  [13444] = true, -- Major Mana Potion
+}
+local CLASSES_WITHOUT_MANA = { WARRIOR = true, ROGUE = true }
+
+-- data/mana_consumables.lua is generated from game data and covers every
+-- mana-only consumable. The short list above is the fallback when it is empty.
+local function isManaOnly(itemID)
+  local generated = Bagwise.Data and Bagwise.Data.ManaOnlyConsumables
+  return MANA_POTIONS[itemID] or (generated and generated[itemID]) or false
+end
+
+local function evaluateManaPotion(item, state)
+  if not isManaOnly(item.id) then return nil end
+  if not CLASSES_WITHOUT_MANA[state.playerClass or ""] then return nil end
+  return "yellow", CLASS_PLURALS_FOR_POTIONS[state.playerClass] .. " have no mana. May sell on AH"
+end
+
 local function evaluateOutleveledConsumable(item, state)
   if item.classID ~= CONSUMABLE_CLASS or not OUTLEVELED_SUBCLASSES[item.subClassID] then return nil end
   if item.questItemQuestIDs or item.startsQuestID then return nil end
@@ -529,6 +579,7 @@ local RULES = {
     overrides = { quest_item = true } },
   { name = "quest_objective_done", evaluate = evaluateQuestObjective,
     overrides = { quest_item = true } },
+  { name = "trivial_quest_item", evaluate = evaluateTrivialQuestItem },
   { name = "vendor_reagent",     evaluate = evaluateVendorReagent,
     overrides = { vendor_reagent = true, recipe_reagent = true } },
   { name = "class_reagent",      evaluate = evaluateClassReagent,
@@ -565,6 +616,8 @@ function Bagwise.Verdict.Evaluate(item, state)
   if item.isFlagged then return "yellow", "Flagged by you", nil end
   if item.classID == CONSUMABLE_CLASS_ID then
     local verdict, reason = evaluateOpenable(item)
+    if verdict then return verdict, reason, nil end
+    verdict, reason = evaluateManaPotion(item, state)
     if verdict then return verdict, reason, nil end
     verdict, reason = evaluateOutleveledConsumable(item, state)
     return verdict, reason, nil

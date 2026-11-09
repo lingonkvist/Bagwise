@@ -269,13 +269,17 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     if #questItemQuestIDs == 0 then questItemQuestIDs = nil end
   end
   local allQuestObjectivesCompleted = nil
+  local openQuestIDs = nil
+  local onOpenQuest = false
 
   if questItemQuestIDs and #questItemQuestIDs > 0 then
     allQuestObjectivesCompleted = true
+    openQuestIDs = {}
     for _, qid in ipairs(questItemQuestIDs) do
       if not C_QuestLog.IsQuestFlaggedCompleted(qid) then
         allQuestObjectivesCompleted = false
-        break
+        openQuestIDs[#openQuestIDs + 1] = qid
+        if C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(qid) then onOpenQuest = true end
       end
     end
   end
@@ -301,6 +305,8 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     startsQuestName = startsQuestName,
     questItemQuestIDs = questItemQuestIDs,
     allQuestObjectivesCompleted = allQuestObjectivesCompleted,
+    openQuestIDs = openQuestIDs,
+    onOpenQuest = onOpenQuest,
     equippedInSlots = (quality == 1 and isEquippable)
         and equippedInSlotsFor(equipSlot) or nil,
     isKept = Bagwise.Overrides.IsKept(itemID),
@@ -399,6 +405,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.classID)
       .. ":" .. tostring(item.startsQuestCompleted)
       .. ":" .. tostring(item.allQuestObjectivesCompleted)
+      .. ":" .. tostring(item.onOpenQuest)
       .. ":" .. tostring(item.isKept)
       .. ":" .. tostring(item.isFlagged)
       .. ":" .. tostring(item.count)
@@ -430,6 +437,9 @@ end
 -- when the window opens and as items are taken; cleared when it closes.
 local lootPieces = {}
 local lootPlan = { take = {}, deletes = {}, active = false }
+-- Loot slots that still hold an item. A slot that was just looted is in
+-- neither list, so it must not be told to "leave".
+local liveLootSlots = {}
 local lastFreeSlots, lastJunkCount = 0, 0
 
 local lastScanError = nil
@@ -602,6 +612,7 @@ end
 -- @param clearedSlot number|nil  a slot that was just looted, to leave out
 function Bagwise.Scanner.RefreshLoot(clearedSlot)
   lootPieces = {}
+  liveLootSlots = {}
   local count = GetNumLootItems and GetNumLootItems() or 0
   for slot = 1, count do
     local link = GetLootSlotLink and GetLootSlotLink(slot)
@@ -613,6 +624,7 @@ function Bagwise.Scanner.RefreshLoot(clearedSlot)
       local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = getItemInfo(link)
       if itemID then
         local info = { itemID = itemID, quality = quality, sellPrice = sellPrice, classID = classID }
+        liveLootSlots[slot] = true
         lootPieces[#lootPieces + 1] = {
           slot = slot,
           itemID = itemID,
@@ -641,13 +653,14 @@ end
 
 function Bagwise.Scanner.ClearLoot()
   lootPieces = {}
+  liveLootSlots = {}
   lootPlan = { take = {}, deletes = {}, active = false }
 end
 
 --- What the make-room plan says about a loot slot: "take", "leave", or nil when
 -- there is nothing to decide (bags have room, or no loot window).
 function Bagwise.Scanner.LootDecision(slot)
-  if not lootPlan.active then return nil end
+  if not lootPlan.active or not liveLootSlots[slot] then return nil end
   return lootPlan.take[slot] and "take" or "leave"
 end
 

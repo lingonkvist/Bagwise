@@ -70,6 +70,10 @@ local function onPlayerLogin(self)
   self:RegisterEvent("PLAYER_LEVEL_UP")
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
   self:RegisterEvent("QUEST_TURNED_IN")
+  -- Registering an event a client does not have is an error, and it would stop
+  -- the rest of the setup. These two only refresh quest hints, so try them safely.
+  pcall(self.RegisterEvent, self, "QUEST_ACCEPTED")
+  pcall(self.RegisterEvent, self, "QUEST_REMOVED")
   self:RegisterEvent("SKILL_LINES_CHANGED")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
   self:RegisterEvent("LOOT_OPENED")
@@ -99,6 +103,8 @@ local EVENT_HANDLERS = {
   GET_ITEM_INFO_RECEIVED = rescanSoon,
   PLAYER_LEVEL_UP        = invalidateAndRescan,
   QUEST_TURNED_IN        = invalidateAndRescan,
+  QUEST_ACCEPTED         = invalidateAndRescan,
+  QUEST_REMOVED          = invalidateAndRescan,
   SKILL_LINES_CHANGED    = invalidateAndRescan,
   PLAYER_EQUIPMENT_CHANGED = invalidateAndRescan,
   LOOT_OPENED            = onLootChanged,

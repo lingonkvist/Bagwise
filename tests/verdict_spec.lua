@@ -1464,3 +1464,89 @@ describe("Outleveled consumables", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ questItemQuestIDs = { 1 } }), at(50))))
   end)
 end)
+
+describe("Mana potions for classes without mana", function()
+  local function potion(id) return { id = id, classID = 0, subClassID = 1, quality = 1, reqLevel = 0, count = 5, sellPrice = 50 } end
+  local function as(class, level) return { level = level or 30, playerClass = class, professionNames = {}, professionsKnown = true } end
+
+  it("a warrior or rogue gets a yellow", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(potion(3827), as("WARRIOR"))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Warriors have no mana. May sell on AH", reason)
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(potion(13443), as("ROGUE"))))
+  end)
+
+  it("a class with mana, including a druid, does not", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(potion(3827), as("MAGE"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(potion(3827), as("DRUID"))))
+  end)
+
+  it("other potions are not touched", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(potion(929), as("WARRIOR"))))
+  end)
+
+  it("uses the generated mana-only list, so new potions are covered", function()
+    local saved = Bagwise.Data.ManaOnlyConsumables
+    Bagwise.Data.ManaOnlyConsumables = { [99001] = true }
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(potion(99001), as("WARRIOR"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(potion(99002), as("WARRIOR"))))
+    Bagwise.Data.ManaOnlyConsumables = saved
+  end)
+end)
+
+describe("Distant reagents that only a found recipe uses", function()
+  it("still gets the bank hint, since there is no sense buying the recipe yet", function()
+    Bagwise.Data.ReagentProfessions = { [88001] = { { "Alchemy", 1, 250, 300 } } }
+    Bagwise.Data.ReagentRecipes = { [88001] = { { "Elixir of Finding", "Alchemy", 250, 2000, 10 } } }
+    local state = { level = 30, professionNames = { Alchemy = true }, professionRanks = { Alchemy = 10 },
+                    professionsKnown = true }
+    local item = { id = 88001, classID = 7, quality = 1, reqLevel = 0, count = 5, sellPrice = 50 }
+
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Bank it, used from Alchemy 250", reason)
+    Bagwise.Data.ReagentRecipes = nil
+  end)
+end)
+
+describe("Items for a quest far below you", function()
+  local function questItem(overrides)
+    local item = { id = 9300, classID = 12, quality = 1, questItemQuestIDs = { 5001 },
+                   allQuestObjectivesCompleted = false, openQuestIDs = { 5001 }, onOpenQuest = true }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local function at(level) return { level = level, professionNames = {}, professionsKnown = true } end
+  Bagwise.Data.QuestInfo = Bagwise.Data.QuestInfo or {}
+  Bagwise.Data.QuestInfo[5001] = { 5, "Elwynn Forest", "Wolf Problem" }
+  Bagwise.Data.QuestInfo[5002] = { 28, "Duskwood", "Deep Trouble" }
+
+  it("is yellow and suggests abandoning a quest that is in your log", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(questItem(), at(30))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Quest is far below you, consider abandoning it", reason)
+  end)
+
+  it("says it is probably not worth taking when the quest is not in your log", function()
+    local _, reason = Bagwise.Verdict.Evaluate(questItem({ onOpenQuest = false }), at(30))
+
+    assert.are.equal("Quest is far below you, probably not worth taking", reason)
+  end)
+
+  it("stays silent while the quest is within 10 levels", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(questItem(), at(14))))
+  end)
+
+  it("stays silent when any open quest for the item is not far below you", function()
+    local item = questItem({ questItemQuestIDs = { 5001, 5002 }, openQuestIDs = { 5001, 5002 } })
+
+    assert.is_nil((Bagwise.Verdict.Evaluate(item, at(30))))
+  end)
+
+  it("never applies to an ordinary item that a quest also asks for", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(questItem({ classID = 15 }), at(30))))
+  end)
+end)

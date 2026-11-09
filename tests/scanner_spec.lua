@@ -143,6 +143,18 @@ describe("Scanner: looted slots", function()
     Bagwise.Scanner.RefreshLoot(2)
     assert.are.equal(1, Bagwise.Scanner.MakeRoomSummary().lootItems)
   end)
+
+  it("a looted slot is told neither to take nor to leave", function()
+    setUp({ [0] = { { id = 300 }, { id = 300 } } }, { [0] = 0 },
+      { { id = 500, qty = 1 }, { id = 500, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.is_truthy(Bagwise.Scanner.LootDecision(1))
+    Bagwise.Scanner.RefreshLoot(1)
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.LootDecision(1))
+    assert.is_truthy(Bagwise.Scanner.LootDecision(2))
+  end)
 end)
 
 describe("Scanner: grays worth some silver", function()

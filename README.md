@@ -36,6 +36,12 @@ Yellow:
 - Bound gear 10 to 19 levels below you.
 - Rare and better gear far below you.
 - Unused trade goods that sell for a fair price.
+- A gray that is worth some silver (the cheapest one only).
+- Things you open: clams, lockboxes and bags of loot.
+- Recipes for a profession you do not have, and recipes or reagents far above your skill ("Bank it").
+- Food, drink, potions and bandages made for a much lower level.
+- Mana potions, if your class has no mana.
+- Quest items for a quest far below your level.
 - Anything you flag yourself.
 
 ## What never gets a dot
@@ -45,9 +51,8 @@ Anything that could still matter:
 - Items a quest still needs, and items that start an open quest.
 - Items a quest also asks for but that have other uses, such as Thieves' Tools.
 - Profession tools, the Hearthstone and soul shards.
-- Containers, gems, recipes, keys and ammo.
-- Anything you right-click to open, such as clams and lockboxes.
-- Consumables.
+- Containers, gems, recipes, keys and ammo (recipes can be yellow, never green).
+- Consumables, other than the yellow cases above.
 - Anything you have told Bagwise to keep.
 
 ## Making room for loot
