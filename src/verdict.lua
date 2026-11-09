@@ -328,10 +328,28 @@ function Bagwise.Verdict.SilenceAllButCheapest(entries, maxDots)
   return silenced
 end
 
+-- Only plain crafting materials can be called unused. The other Trade Goods
+-- subclasses (generic, parts, explosives, devices, other, enchanting rods and
+-- oils) hold things
+-- you use directly, tokens, and every new item the data has not seen yet.
+local MATERIAL_SUBCLASSES = {
+  [4] = true,  -- Jewelcrafting
+  [5] = true,  -- Cloth
+  [6] = true,  -- Leather
+  [7] = true,  -- Metal and Stone
+  [8] = true,  -- Meat
+  [9] = true,  -- Herb
+  [10] = true, -- Elemental
+  [13] = true, -- Materials
+}
+
 local function evaluateNoRecipeUse(item, state)
-  -- Epic 5.1: Trade Goods that no recipe uses for any profession.
+  -- Epic 5.1: crafting materials that no recipe uses for any profession.
   -- Gear, consumables, and quest items are excluded by the classID gate.
   if item.classID ~= TRADE_GOODS_CLASS_ID then return nil end
+  if not MATERIAL_SUBCLASSES[item.subClassID] then return nil end
+  -- Nothing to sell usually means a token or currency, not a leftover.
+  if (item.sellPrice or 0) <= 0 then return nil end
 
   -- Already used in at least one recipe -- nothing to flag
   if Bagwise.Data.ReagentProfessions
@@ -380,6 +398,8 @@ local RECIPE_PROFESSIONS = {
 }
 -- How many skill points short before something counts as "a while away".
 local BANK_SKILL_GAP = 50
+-- A recipe whose own level requirement is this far above you is no use yet.
+local RECIPE_LEVEL_GAP = 10
 
 local function evaluateRecipe(item, state)
   if item.classID ~= RECIPE_CLASS_ID then return nil end
@@ -394,6 +414,9 @@ local function evaluateRecipe(item, state)
   local rank = state.professionRanks and state.professionRanks[profession]
   if rank and item.requiredSkill and item.requiredSkill > rank + BANK_SKILL_GAP then
     return "yellow", "Bank it, needs " .. profession .. " " .. item.requiredSkill
+  end
+  if item.reqLevel and item.reqLevel > (state.level or 1) + RECIPE_LEVEL_GAP then
+    return "yellow", "Bank it, needs level " .. item.reqLevel
   end
   return nil
 end

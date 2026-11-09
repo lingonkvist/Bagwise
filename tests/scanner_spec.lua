@@ -13,7 +13,7 @@ Bagwise.Overrides = { IsKept = function() return false end, IsFlagged = function
 -- id -> { name, quality, ilvl, req, maxStack, equipSlot, sell, class, subclass }
 local ITEMS = {
   [100] = { "Wolf Meat", 1, 5, 0, 20, "", 4, 7, 8 },
-  [200] = { "Small Clam", 1, 10, 0, 1, "", 15, 7, 11 },
+  [200] = { "Small Clam", 1, 10, 0, 1, "", 15, 7, 9 },
   [300] = { "Torn Rag", 0, 1, 0, 1, "", 2, 15, 0 },
   [400] = { "Fine Rag", 0, 1, 0, 1, "", 9, 15, 0 },
   [500] = { "Shiny Thing", 1, 1, 0, 1, "", 50, 15, 0 },
@@ -246,5 +246,31 @@ describe("Scanner: professions", function()
     Bagwise.Scanner.ClearCache()
     local explained = Bagwise.Scanner.Explain(100)
     assert.are.equal(false, explained.professionsKnown)
+  end)
+end)
+
+describe("Scanner: repeatable quests", function()
+  local function withQuest(repeatable)
+    setUp({ [0] = { { id = 500 } } }, {})
+    _G.C_QuestLog.IsQuestFlaggedCompleted = function() return true end
+    Bagwise.Data.QuestItems = { [500] = { 55 } }
+    Bagwise.Data.RepeatableQuests = repeatable and { [55] = true } or nil
+    Bagwise.Scanner.ClearCache()
+    Bagwise.Scanner.ScanAll()
+  end
+
+  it("a finished one-time quest still counts as done", function()
+    withQuest(false)
+    assert.are.equal(true, Bagwise.Scanner.Explain(500).quests[1].done)
+    Bagwise.Data.QuestItems = {}
+  end)
+
+  it("a finished repeatable quest never counts as done, so its items are kept", function()
+    withQuest(true)
+    assert.are.equal(false, Bagwise.Scanner.Explain(500).quests[1].done)
+    local result = Bagwise.Scanner.GetResult(0, 1)
+    assert.is_truthy(not result or result.verdict ~= "green")
+    Bagwise.Data.QuestItems = {}
+    Bagwise.Data.RepeatableQuests = nil
   end)
 end)

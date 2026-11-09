@@ -239,6 +239,14 @@ local function questTitle(questID)
   return nil
 end
 
+-- Has this quest been handed in for good? A repeatable quest (daily, weekly,
+-- or turn-in-again) never counts: its items will be wanted again.
+local function questFinished(questID)
+  local repeatable = Bagwise.Data.RepeatableQuests
+  if repeatable and repeatable[questID] then return false end
+  return C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false
+end
+
 local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   local name, _, quality, itemLevel, reqLevel, _, _, maxStack,
   equipSlot, _, sellPrice, classID, subClassID, bindType = getItemInfo(itemID)
@@ -254,7 +262,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   local startsQuestName = nil
 
   if startsQuestID then
-    startsQuestCompleted = C_QuestLog.IsQuestFlaggedCompleted(startsQuestID)
+    startsQuestCompleted = questFinished(startsQuestID)
     startsQuestName = questTitle(startsQuestID)
   end
 
@@ -276,7 +284,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     allQuestObjectivesCompleted = true
     openQuestIDs = {}
     for _, qid in ipairs(questItemQuestIDs) do
-      if not C_QuestLog.IsQuestFlaggedCompleted(qid) then
+      if not questFinished(qid) then
         allQuestObjectivesCompleted = false
         openQuestIDs[#openQuestIDs + 1] = qid
         if C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(qid) then onOpenQuest = true end
@@ -718,7 +726,7 @@ local function questProgressOf(questIDs)
     local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
     progress[#progress + 1] = {
       id = questID,
-      done = C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false,
+      done = questFinished(questID),
       faction = info and info[4] or nil, -- "A", "H" or nil for both
     }
   end
@@ -776,7 +784,7 @@ function Bagwise.Scanner.CollectInventory()
           sellPrice = sellPrice,
           startsQuestID = startsQuestID,
           startsQuestDone = startsQuestID
-              and C_QuestLog.IsQuestFlaggedCompleted(startsQuestID) or nil,
+              and questFinished(startsQuestID) or nil,
           quests = questProgressOf(Bagwise.Data.QuestItems
               and Bagwise.Data.QuestItems[itemID]),
           recipeProfessions = professionNamesFor(itemID),
@@ -839,7 +847,7 @@ function Bagwise.Scanner.Explain(itemID)
       id = questID,
       name = info and info[3],
       faction = info and info[4],
-      done = C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false,
+      done = questFinished(questID),
     }
   end
 

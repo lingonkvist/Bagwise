@@ -20,6 +20,7 @@ import argparse
 import csv
 import io
 import json
+import re
 import os
 import sys
 import urllib.request
@@ -138,12 +139,40 @@ def fetch_csv_table(table, build, cache_dir=None):
     return rows
 
 
+FOREVER_VERSION_PREFIX = "1.60."
+
+
+def version_key(version):
+    """Sort key for '1.60.1.70862': compare the numbers, not the text."""
+    return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def pick_forever_build(data):
+    """The newest build whose version is in the Forever line (1.60.x), from
+    either a flat list of builds or a dict of product -> list of builds."""
+    if isinstance(data, dict):
+        rows = [b for value in data.values() if isinstance(value, list) for b in value]
+    else:
+        rows = data
+    versions = {str(b.get("version", "")) for b in rows
+                if isinstance(b, dict) and str(b.get("version", "")).startswith(FOREVER_VERSION_PREFIX)}
+    return max(versions, key=version_key) if versions else None
+
+
 def resolve_build(expansion):
     """Ask the builds API for the latest build of *expansion*."""
+    if expansion == "forever":
+        print("Querying builds API for the Forever line (%s*)..." % FOREVER_VERSION_PREFIX)
+        build = pick_forever_build(json.loads(fetch_url(BUILDS_API)))
+        if not build:
+            print("  No %s* build found. Pass the build yourself with --build." % FOREVER_VERSION_PREFIX)
+            sys.exit(1)
+        print(f"  Latest Forever build: {build}")
+        return build
+
     products = {
         "classic_era": "wow_classic_era",
         "classic":     "wow_classic_era",
-        "forever":     "wow_classic_era",
     }
     product = products.get(expansion)
     if not product:
@@ -500,9 +529,9 @@ def main():
              "Omit to auto-detect the latest Classic Era build.",
     )
     ap.add_argument(
-        "--expansion", default="classic_era",
+        "--expansion", default="forever",
         help="Which expansion to query for the latest build "
-             "(classic_era, forever). Default: classic_era",
+             "(classic_era, forever). Default: forever",
     )
     ap.add_argument(
         "--output", default=DEFAULT_OUTPUT,

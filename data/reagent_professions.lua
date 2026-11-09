@@ -1,9 +1,9 @@
 -- Bagwise: reagent-to-profession mapping with recipe stats
 -- For each reagent item: which professions use it, how many
 -- recipes, and the skill level range.
--- Generated from wago.tools DB2 build 1.60.1.69893. Do not edit by hand.
+-- Generated from wago.tools DB2 build 1.60.1.70862. Do not edit by hand.
 --
--- 593 reagent items across 9 professions.
+-- 588 reagent items across 9 professions.
 
 Bagwise                         = Bagwise or {}
 Bagwise.Data                    = Bagwise.Data or {}
@@ -16,13 +16,13 @@ Bagwise.Data.ReagentProfessions = {
   [2456] = { { "Alchemy", 1, 225, 225 } },  -- Minor Rejuvenation Potion
   [3355] = { { "Alchemy", 9, 70, 215 } },  -- Wild Steelbloom
   [3358] = { { "Alchemy", 10, 120, 250 } },  -- Khadgar's Whisker
-  [3369] = { { "Alchemy", 6, 90, 270 } },  -- Grave Moss
+  [3369] = { { "Alchemy", 5, 90, 270 } },  -- Grave Moss
   [3820] = { { "Alchemy", 8, 90, 210 } },  -- Stranglekelp
   [6358] = { { "Alchemy", 1, 80, 80 } },  -- Oily Blackmouth
   [6359] = { { "Alchemy", 1, 150, 150 } },  -- Firefin Snapper
   [8836] = { { "Alchemy", 7, 170, 255 } },  -- Arthas' Tears
   [8839] = { { "Alchemy", 9, 180, 305 } },  -- Blindweed
-  [8845] = { { "Alchemy", 8, 185, 280 } },  -- Ghost Mushroom
+  [8845] = { { "Alchemy", 7, 250, 280 } },  -- Ghost Mushroom
   [8846] = { { "Alchemy", 14, 260, 315 } },  -- Gromsblood
   [9260] = { { "Alchemy", 1, 225, 225 } },  -- Volatile Rum
   [13422] = { { "Alchemy", 1, 250, 250 } },  -- Stonescale Eel
@@ -48,25 +48,25 @@ Bagwise.Data.ReagentProfessions = {
   [234006] = { { "Alchemy", 1, 315, 315 }, { "Blacksmithing", 3, 320, 320 }, { "Enchanting", 2, 320, 320 } },
 
   -- Alchemy, Blacksmithing, Enchanting, Engineering
-  [248822] = { { "Alchemy", 4, 320, 320 }, { "Blacksmithing", 1, 320, 320 }, { "Enchanting", 2, 285, 320 }, { "Engineering", 2, 320, 320 } },  -- Death Lotus
+  [248822] = { { "Alchemy", 4, 320, 320 }, { "Blacksmithing", 1, 320, 320 }, { "Enchanting", 2, 295, 320 }, { "Engineering", 2, 320, 320 } },  -- Death Lotus
 
   -- Alchemy, Blacksmithing, Enchanting, Engineering, First Aid, Leatherworking, Tailoring
-  [7080] = { { "Alchemy", 3, 275, 315 }, { "Blacksmithing", 11, 285, 320 }, { "Enchanting", 10, 285, 320 }, { "Engineering", 2, 310, 320 }, { "First Aid", 1, 295, 295 }, { "Leatherworking", 25, 250, 320 }, { "Tailoring", 23, 1, 315 } },  -- Essence of Water
+  [7080] = { { "Alchemy", 3, 275, 315 }, { "Blacksmithing", 11, 285, 320 }, { "Enchanting", 10, 285, 320 }, { "Engineering", 2, 310, 320 }, { "First Aid", 1, 295, 295 }, { "Leatherworking", 25, 250, 320 }, { "Tailoring", 21, 230, 315 } },  -- Essence of Water
 
   -- Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring
-  [7067] = { { "Alchemy", 2, 225, 305 }, { "Blacksmithing", 3, 180, 275 }, { "Enchanting", 1, 195, 195 }, { "Engineering", 4, 225, 320 }, { "Leatherworking", 14, 1, 270 }, { "Tailoring", 11, 155, 215 } },  -- Elemental Earth
-  [7076] = { { "Alchemy", 3, 275, 315 }, { "Blacksmithing", 18, 270, 320 }, { "Enchanting", 6, 285, 320 }, { "Engineering", 4, 320, 320 }, { "Leatherworking", 12, 1, 320 }, { "Tailoring", 11, 230, 310 } },  -- Essence of Earth
-  [7077] = { { "Alchemy", 1, 301, 301 }, { "Blacksmithing", 17, 1, 305 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 3, 205, 285 }, { "Leatherworking", 1, 245, 245 }, { "Tailoring", 13, 145, 250 } },  -- Heart of Fire
-  [7078] = { { "Alchemy", 2, 275, 315 }, { "Blacksmithing", 13, 1, 325 }, { "Enchanting", 8, 285, 320 }, { "Engineering", 3, 280, 320 }, { "Leatherworking", 17, 265, 320 }, { "Tailoring", 13, 245, 320 } },  -- Essence of Fire
-  [7082] = { { "Alchemy", 2, 275, 315 }, { "Blacksmithing", 6, 235, 320 }, { "Enchanting", 9, 305, 320 }, { "Engineering", 4, 320, 320 }, { "Leatherworking", 12, 1, 320 }, { "Tailoring", 4, 290, 310 } },  -- Essence of Air
+  [7067] = { { "Alchemy", 2, 225, 305 }, { "Blacksmithing", 3, 180, 275 }, { "Enchanting", 1, 195, 195 }, { "Engineering", 4, 225, 320 }, { "Leatherworking", 12, 135, 270 }, { "Tailoring", 11, 155, 215 } },  -- Elemental Earth
+  [7076] = { { "Alchemy", 3, 275, 315 }, { "Blacksmithing", 18, 270, 320 }, { "Enchanting", 6, 285, 320 }, { "Engineering", 4, 320, 320 }, { "Leatherworking", 10, 280, 320 }, { "Tailoring", 11, 230, 310 } },  -- Essence of Earth
+  [7077] = { { "Alchemy", 1, 301, 301 }, { "Blacksmithing", 15, 235, 305 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 3, 205, 285 }, { "Leatherworking", 1, 245, 245 }, { "Tailoring", 13, 145, 250 } },  -- Heart of Fire
+  [7078] = { { "Alchemy", 2, 275, 315 }, { "Blacksmithing", 11, 280, 325 }, { "Enchanting", 8, 285, 320 }, { "Engineering", 3, 280, 320 }, { "Leatherworking", 17, 265, 320 }, { "Tailoring", 13, 245, 320 } },  -- Essence of Fire
+  [7082] = { { "Alchemy", 2, 275, 315 }, { "Blacksmithing", 6, 235, 320 }, { "Enchanting", 9, 305, 320 }, { "Engineering", 4, 320, 320 }, { "Leatherworking", 10, 270, 320 }, { "Tailoring", 4, 290, 310 } },  -- Essence of Air
   [8153] = { { "Alchemy", 1, 225, 225 }, { "Blacksmithing", 1, 270, 270 }, { "Enchanting", 1, 270, 270 }, { "Engineering", 1, 265, 265 }, { "Leatherworking", 7, 215, 265 }, { "Tailoring", 3, 205, 220 } },  -- Wildvine
   [12803] = { { "Alchemy", 2, 275, 315 }, { "Blacksmithing", 9, 270, 320 }, { "Enchanting", 4, 320, 320 }, { "Engineering", 3, 285, 320 }, { "Leatherworking", 24, 265, 320 }, { "Tailoring", 12, 250, 320 } },  -- Living Essence
 
   -- Alchemy, Blacksmithing, Enchanting, Engineering, Mining
-  [12359] = { { "Alchemy", 1, 275, 275 }, { "Blacksmithing", 119, 1, 320 }, { "Enchanting", 1, 250, 250 }, { "Engineering", 16, 270, 320 }, { "Mining", 1, 300, 300 } },  -- Thorium Bar
+  [12359] = { { "Alchemy", 1, 275, 275 }, { "Blacksmithing", 113, 245, 320 }, { "Enchanting", 1, 250, 250 }, { "Engineering", 16, 270, 320 }, { "Mining", 1, 300, 300 } },  -- Thorium Bar
 
   -- Alchemy, Blacksmithing, Enchanting, Engineering, Tailoring
-  [7068] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 3, 1, 190 }, { "Enchanting", 1, 195, 195 }, { "Engineering", 5, 225, 320 }, { "Tailoring", 5, 175, 250 } },  -- Elemental Fire
+  [7068] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 1, 190, 190 }, { "Enchanting", 1, 195, 195 }, { "Engineering", 5, 225, 320 }, { "Tailoring", 5, 175, 250 } },  -- Elemental Fire
   [7972] = { { "Alchemy", 1, 230, 230 }, { "Blacksmithing", 1, 250, 250 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 1, 260, 260 }, { "Tailoring", 1, 230, 230 } },  -- Ichor of Undeath
   [12808] = { { "Alchemy", 1, 275, 275 }, { "Blacksmithing", 4, 290, 320 }, { "Enchanting", 6, 285, 320 }, { "Engineering", 2, 260, 320 }, { "Tailoring", 4, 260, 310 } },  -- Essence of Undeath
 
@@ -81,7 +81,7 @@ Bagwise.Data.ReagentProfessions = {
   [251291] = { { "Alchemy", 1, 275, 275 }, { "Blacksmithing", 37, 270, 320 }, { "Engineering", 4, 310, 310 } },  -- Heavy Thorium Bar
 
   -- Alchemy, Blacksmithing, Engineering, Leatherworking, Tailoring
-  [7069] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 2, 185, 190 }, { "Engineering", 2, 270, 310 }, { "Leatherworking", 17, 1, 300 }, { "Tailoring", 1, 175, 175 } },  -- Elemental Air
+  [7069] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 2, 185, 190 }, { "Engineering", 2, 270, 310 }, { "Leatherworking", 15, 155, 300 }, { "Tailoring", 1, 175, 175 } },  -- Elemental Air
   [12804] = { { "Alchemy", 1, 315, 315 }, { "Blacksmithing", 5, 280, 325 }, { "Engineering", 2, 320, 320 }, { "Leatherworking", 5, 285, 320 }, { "Tailoring", 2, 315, 315 } },  -- Powerful Mojo
   [220688] = { { "Alchemy", 2, 250, 250 }, { "Blacksmithing", 3, 250, 250 }, { "Engineering", 3, 250, 250 }, { "Leatherworking", 7, 250, 250 }, { "Tailoring", 3, 250, 250 } },
   [221021] = { { "Alchemy", 3, 250, 250 }, { "Blacksmithing", 3, 250, 250 }, { "Engineering", 3, 250, 250 }, { "Leatherworking", 7, 250, 250 }, { "Tailoring", 3, 250, 250 } },
@@ -90,14 +90,14 @@ Bagwise.Data.ReagentProfessions = {
   [3575] = { { "Alchemy", 2, 240, 240 }, { "Blacksmithing", 34, 125, 195 }, { "Engineering", 10, 125, 215 }, { "Mining", 1, 165, 165 } },  -- Iron Bar
 
   -- Alchemy, Blacksmithing, First Aid, Leatherworking, Tailoring
-  [7070] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 1, 190, 190 }, { "First Aid", 1, 225, 225 }, { "Leatherworking", 15, 155, 270 }, { "Tailoring", 4, 1, 175 } },  -- Elemental Water
+  [7070] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 1, 190, 190 }, { "First Aid", 1, 225, 225 }, { "Leatherworking", 15, 155, 270 }, { "Tailoring", 2, 160, 175 } },  -- Elemental Water
 
   -- Alchemy, Blacksmithing, Leatherworking, Tailoring
   [3824] = { { "Alchemy", 1, 305, 305 }, { "Blacksmithing", 1, 200, 200 }, { "Leatherworking", 3, 170, 195 }, { "Tailoring", 1, 155, 155 } },  -- Shadow Oil
 
   -- Alchemy, Cooking
   [730] = { { "Alchemy", 6, 55, 290 }, { "Cooking", 2, 115, 220 } },  -- Murloc Eye
-  [785] = { { "Alchemy", 11, 30, 145 }, { "Cooking", 1, 85, 85 } },  -- Mageroyal
+  [785] = { { "Alchemy", 11, 30, 145 }, { "Cooking", 1, 105, 105 } },  -- Mageroyal
   [3818] = { { "Alchemy", 9, 145, 220 }, { "Cooking", 1, 195, 195 } },  -- Fadeleaf
   [3821] = { { "Alchemy", 15, 155, 255 }, { "Cooking", 1, 215, 215 } },  -- Goldthorn
   [6522] = { { "Alchemy", 1, 120, 120 }, { "Cooking", 1, 125, 125 } },  -- Deviate Fish
@@ -113,7 +113,7 @@ Bagwise.Data.ReagentProfessions = {
   [4402] = { { "Alchemy", 1, 210, 210 }, { "Cooking", 2, 215, 240 }, { "Engineering", 1, 125, 125 } },  -- Small Flame Sac
 
   -- Alchemy, Cooking, First Aid
-  [2447] = { { "Alchemy", 10, 10, 80 }, { "Cooking", 1, 25, 25 }, { "First Aid", 1, 55, 55 } },  -- Peacebloom
+  [2447] = { { "Alchemy", 10, 10, 80 }, { "Cooking", 1, 30, 30 }, { "First Aid", 1, 55, 55 } },  -- Peacebloom
   [3357] = { { "Alchemy", 5, 85, 210 }, { "Cooking", 1, 155, 155 }, { "First Aid", 1, 175, 175 } },  -- Liferoot
 
   -- Alchemy, Enchanting
@@ -126,7 +126,7 @@ Bagwise.Data.ReagentProfessions = {
   [249424] = { { "Alchemy", 1, 130, 130 }, { "Enchanting", 1, 225, 225 } },  -- Rosecap
 
   -- Alchemy, Enchanting, Engineering
-  [12363] = { { "Alchemy", 1, 275, 275 }, { "Enchanting", 1, 290, 290 }, { "Engineering", 1, 320, 320 } },  -- Arcane Crystal
+  [12363] = { { "Alchemy", 1, 275, 275 }, { "Enchanting", 1, 295, 295 }, { "Engineering", 1, 320, 320 } },  -- Arcane Crystal
   [13467] = { { "Alchemy", 7, 300, 320 }, { "Enchanting", 1, 305, 305 }, { "Engineering", 1, 280, 280 } },  -- Icecap
   [234010] = { { "Alchemy", 1, 315, 315 }, { "Enchanting", 9, 320, 320 }, { "Engineering", 1, 315, 315 } },
   [234011] = { { "Alchemy", 5, 315, 315 }, { "Enchanting", 8, 320, 320 }, { "Engineering", 2, 315, 315 } },
@@ -139,14 +139,14 @@ Bagwise.Data.ReagentProfessions = {
   -- Alchemy, Enchanting, First Aid
   [3371] = { { "Alchemy", 37, 10, 150 }, { "Enchanting", 1, 30, 30 }, { "First Aid", 2, 55, 85 } },  -- Empty Vial
   [3372] = { { "Alchemy", 51, 85, 260 }, { "Enchanting", 3, 100, 210 }, { "First Aid", 2, 135, 175 } },  -- Leaded Vial
-  [8925] = { { "Alchemy", 81, 170, 315 }, { "Enchanting", 3, 260, 285 }, { "First Aid", 2, 230, 290 } },  -- Crystal Vial
+  [8925] = { { "Alchemy", 80, 170, 315 }, { "Enchanting", 3, 260, 285 }, { "First Aid", 2, 230, 290 } },  -- Crystal Vial
 
   -- Alchemy, Enchanting, Leatherworking
   [3356] = { { "Alchemy", 15, 80, 210 }, { "Enchanting", 1, 170, 170 }, { "Leatherworking", 1, 135, 135 } },  -- Kingsblood
   [11083] = { { "Alchemy", 1, 90, 90 }, { "Enchanting", 20, 140, 190 }, { "Leatherworking", 2, 155, 155 } },  -- Soul Dust
 
   -- Alchemy, Enchanting, Leatherworking, Tailoring
-  [11176] = { { "Alchemy", 1, 305, 305 }, { "Enchanting", 31, 200, 290 }, { "Leatherworking", 2, 235, 235 }, { "Tailoring", 3, 245, 275 } },  -- Dream Dust
+  [11176] = { { "Alchemy", 1, 305, 305 }, { "Enchanting", 32, 200, 290 }, { "Leatherworking", 2, 235, 235 }, { "Tailoring", 3, 245, 275 } },  -- Dream Dust
 
   -- Alchemy, Enchanting, Tailoring
   [4625] = { { "Alchemy", 10, 135, 285 }, { "Enchanting", 3, 285, 310 }, { "Tailoring", 2, 220, 220 } },  -- Firebloom
@@ -216,9 +216,10 @@ Bagwise.Data.ReagentProfessions = {
   [273127] = { { "Blacksmithing", 1, 300, 300 } },  -- Golem Heart
 
   -- Blacksmithing, Cooking, Leatherworking
-  [8146] = { { "Blacksmithing", 5, 320, 320 }, { "Cooking", 1, 240, 240 }, { "Leatherworking", 1, 220, 220 } },  -- Wicked Claw
+  [8146] = { { "Blacksmithing", 5, 320, 320 }, { "Cooking", 1, 255, 255 }, { "Leatherworking", 1, 220, 220 } },  -- Wicked Claw
 
   -- Blacksmithing, Enchanting
+  [7081] = { { "Blacksmithing", 2, 245, 260 }, { "Enchanting", 1, 285, 285 } },  -- Breath of Wind
   [10938] = { { "Blacksmithing", 11, 40, 155 }, { "Enchanting", 15, 75, 130 } },  -- Lesser Magic Essence
   [11139] = { { "Blacksmithing", 10, 230, 250 }, { "Enchanting", 7, 210, 240 } },  -- Large Glowing Shard
   [11382] = { { "Blacksmithing", 6, 320, 325 }, { "Enchanting", 4, 285, 285 } },  -- Blood of the Mountain
@@ -233,15 +234,16 @@ Bagwise.Data.ReagentProfessions = {
   [249726] = { { "Blacksmithing", 10, 270, 320 }, { "Enchanting", 1, 320, 320 }, { "Engineering", 3, 275, 320 } },  -- Azerothium Bar
 
   -- Blacksmithing, Enchanting, Engineering, First Aid, Leatherworking, Tailoring
-  [8170] = { { "Blacksmithing", 21, 260, 315 }, { "Enchanting", 1, 250, 250 }, { "Engineering", 14, 275, 320 }, { "First Aid", 1, 280, 280 }, { "Leatherworking", 175, 1, 320 }, { "Tailoring", 12, 230, 315 } },  -- Rugged Leather
+  [8170] = { { "Blacksmithing", 21, 260, 315 }, { "Enchanting", 1, 250, 250 }, { "Engineering", 14, 275, 320 }, { "First Aid", 1, 280, 280 }, { "Leatherworking", 163, 1, 320 }, { "Tailoring", 12, 230, 315 } },  -- Rugged Leather
 
   -- Blacksmithing, Enchanting, Engineering, Leatherworking
-  [7075] = { { "Blacksmithing", 4, 235, 245 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 3, 205, 320 }, { "Leatherworking", 6, 1, 290 } },  -- Core of Earth
+  [7075] = { { "Blacksmithing", 4, 235, 245 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 3, 205, 320 }, { "Leatherworking", 4, 225, 290 } },  -- Core of Earth
+  [12361] = { { "Blacksmithing", 25, 245, 320 }, { "Enchanting", 1, 280, 280 }, { "Engineering", 2, 280, 295 }, { "Leatherworking", 1, 290, 290 } },  -- Blue Sapphire
   [249410] = { { "Blacksmithing", 30, 110, 270 }, { "Enchanting", 4, 140, 225 }, { "Engineering", 2, 100, 320 }, { "Leatherworking", 9, 80, 150 } },  -- Sulfuric Acid
 
   -- Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring
   [1210] = { { "Blacksmithing", 18, 85, 230 }, { "Enchanting", 2, 130, 140 }, { "Engineering", 3, 145, 205 }, { "Leatherworking", 10, 80, 185 }, { "Tailoring", 10, 80, 170 } },  -- Shadowgem
-  [7079] = { { "Blacksmithing", 8, 155, 270 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 2, 285, 320 }, { "Leatherworking", 1, 225, 225 }, { "Tailoring", 18, 1, 250 } },  -- Globe of Water
+  [7079] = { { "Blacksmithing", 8, 155, 270 }, { "Enchanting", 1, 285, 285 }, { "Engineering", 2, 285, 320 }, { "Leatherworking", 1, 225, 225 }, { "Tailoring", 16, 145, 250 } },  -- Globe of Water
   [12810] = { { "Blacksmithing", 27, 295, 320 }, { "Enchanting", 12, 320, 320 }, { "Engineering", 6, 290, 320 }, { "Leatherworking", 55, 265, 320 }, { "Tailoring", 19, 260, 320 } },  -- Enchanted Leather
   [12811] = { { "Blacksmithing", 10, 260, 320 }, { "Enchanting", 8, 305, 320 }, { "Engineering", 1, 305, 305 }, { "Leatherworking", 16, 260, 285 }, { "Tailoring", 10, 260, 310 } },  -- Righteous Orb
   [274030] = { { "Blacksmithing", 27, 310, 320 }, { "Enchanting", 6, 310, 310 }, { "Engineering", 1, 310, 310 }, { "Leatherworking", 42, 310, 320 }, { "Tailoring", 21, 310, 320 } },  -- Malleable Essence of Nature
@@ -254,7 +256,6 @@ Bagwise.Data.ReagentProfessions = {
 
   -- Blacksmithing, Enchanting, Leatherworking
   [2459] = { { "Blacksmithing", 1, 130, 130 }, { "Enchanting", 1, 320, 320 }, { "Leatherworking", 1, 195, 195 } },  -- Swiftness Potion
-  [7081] = { { "Blacksmithing", 2, 245, 260 }, { "Enchanting", 1, 285, 285 }, { "Leatherworking", 2, 1, 1 } },  -- Breath of Wind
   [10940] = { { "Blacksmithing", 10, 40, 155 }, { "Enchanting", 31, 10, 165 }, { "Leatherworking", 2, 95, 95 } },  -- Strange Dust
   [11754] = { { "Blacksmithing", 1, 320, 320 }, { "Enchanting", 1, 320, 320 }, { "Leatherworking", 1, 310, 310 } },  -- Black Diamond
   [12753] = { { "Blacksmithing", 1, 320, 320 }, { "Enchanting", 1, 320, 320 }, { "Leatherworking", 2, 320, 320 } },  -- Skin of Shadow
@@ -281,7 +282,6 @@ Bagwise.Data.ReagentProfessions = {
   [22202] = { { "Blacksmithing", 13, 315, 320 }, { "Engineering", 1, 315, 315 } },  -- Small Obsidian Shard
   [213383] = { { "Blacksmithing", 1, 225, 225 }, { "Engineering", 2, 225, 225 } },  -- Polished Truesilver Gears
   [251290] = { { "Blacksmithing", 17, 310, 320 }, { "Engineering", 5, 310, 320 } },  -- Legionite Bar
-  [251652] = { { "Blacksmithing", 6, 1, 1 }, { "Engineering", 1, 1, 1 } },
 
   -- Blacksmithing, Engineering, First Aid, Leatherworking, Tailoring
   [4304] = { { "Blacksmithing", 15, 215, 260 }, { "Engineering", 12, 225, 265 }, { "First Aid", 1, 220, 220 }, { "Leatherworking", 79, 185, 255 }, { "Tailoring", 5, 190, 220 } },  -- Thick Leather
@@ -292,12 +292,11 @@ Bagwise.Data.ReagentProfessions = {
 
   -- Blacksmithing, Engineering, Leatherworking
   [1206] = { { "Blacksmithing", 6, 135, 240 }, { "Engineering", 5, 135, 175 }, { "Leatherworking", 1, 165, 165 } },  -- Moss Agate
-  [12361] = { { "Blacksmithing", 25, 245, 320 }, { "Engineering", 2, 280, 295 }, { "Leatherworking", 1, 290, 290 } },  -- Blue Sapphire
   [12799] = { { "Blacksmithing", 16, 270, 320 }, { "Engineering", 3, 295, 320 }, { "Leatherworking", 1, 290, 290 } },  -- Large Opal
   [213376] = { { "Blacksmithing", 2, 225, 225 }, { "Engineering", 1, 225, 225 }, { "Leatherworking", 2, 225, 225 } },  -- Low-Background Truesilver Plates
 
   -- Blacksmithing, Engineering, Leatherworking, Mining
-  [2840] = { { "Blacksmithing", 51, 10, 155 }, { "Engineering", 11, 30, 130 }, { "Leatherworking", 1, 285, 285 }, { "Mining", 2, 20, 65 } },  -- Copper Bar
+  [2840] = { { "Blacksmithing", 51, 10, 155 }, { "Engineering", 11, 30, 130 }, { "Leatherworking", 1, 1, 1 }, { "Mining", 2, 20, 65 } },  -- Copper Bar
 
   -- Blacksmithing, Engineering, Leatherworking, Mining, Tailoring
   [17010] = { { "Blacksmithing", 15, 290, 325 }, { "Engineering", 2, 320, 320 }, { "Leatherworking", 6, 315, 320 }, { "Mining", 1, 310, 310 }, { "Tailoring", 5, 315, 320 } },  -- Fiery Core
@@ -370,7 +369,7 @@ Bagwise.Data.ReagentProfessions = {
   [2672] = { { "Cooking", 2, 45, 50 } },  -- Stringy Wolf Meat
   [2673] = { { "Cooking", 1, 90, 90 } },  -- Coyote Meat
   [2674] = { { "Cooking", 1, 115, 115 } },  -- Crawler Meat
-  [2675] = { { "Cooking", 2, 30, 125 } },  -- Crawler Claw
+  [2675] = { { "Cooking", 2, 40, 125 } },  -- Crawler Claw
   [2677] = { { "Cooking", 2, 120, 130 } },  -- Boar Ribs
   [2886] = { { "Cooking", 1, 60, 60 } },  -- Crag Boar Rib
   [2894] = { { "Cooking", 1, 60, 60 } },  -- Rhapsody Malt
@@ -381,7 +380,7 @@ Bagwise.Data.ReagentProfessions = {
   [3667] = { { "Cooking", 2, 160, 160 } },  -- Tender Crocolisk Meat
   [3685] = { { "Cooking", 2, 35, 170 } },  -- Raptor Egg
   [3712] = { { "Cooking", 3, 215, 290 } },  -- Turtle Meat
-  [3730] = { { "Cooking", 3, 150, 275 } },  -- Big Bear Meat
+  [3730] = { { "Cooking", 3, 150, 280 } },  -- Big Bear Meat
   [3731] = { { "Cooking", 2, 175, 190 } },  -- Lion Meat
   [4536] = { { "Cooking", 2, 90, 215 } },  -- Shiny Red Apple
   [4603] = { { "Cooking", 2, 265, 290 } },  -- Raw Spotted Yellowtail
@@ -393,7 +392,7 @@ Bagwise.Data.ReagentProfessions = {
   [5468] = { { "Cooking", 1, 90, 90 } },  -- Soft Frenzy Flesh
   [5469] = { { "Cooking", 1, 90, 90 } },  -- Strider Meat
   [5470] = { { "Cooking", 1, 140, 140 } },  -- Thunder Lizard Tail
-  [5471] = { { "Cooking", 4, 1, 260 } },  -- Stag Meat
+  [5471] = { { "Cooking", 4, 1, 280 } },  -- Stag Meat
   [5503] = { { "Cooking", 2, 90, 130 } },  -- Clam Meat
   [5504] = { { "Cooking", 1, 165, 165 } },  -- Tangy Clam Meat
   [6289] = { { "Cooking", 1, 90, 90 } },  -- Raw Longjaw Mud Snapper
@@ -403,17 +402,17 @@ Bagwise.Data.ReagentProfessions = {
   [6317] = { { "Cooking", 1, 90, 90 } },  -- Raw Loch Frenzy
   [6361] = { { "Cooking", 1, 90, 90 } },  -- Raw Rainbow Fin Albacore
   [6362] = { { "Cooking", 2, 190, 290 } },  -- Raw Rockscale Cod
-  [6889] = { { "Cooking", 5, 20, 75 } },  -- Small Egg
-  [7974] = { { "Cooking", 2, 200, 265 } },  -- Zesty Clam Meat
+  [6889] = { { "Cooking", 5, 30, 80 } },  -- Small Egg
+  [7974] = { { "Cooking", 2, 265, 280 } },  -- Zesty Clam Meat
   [8365] = { { "Cooking", 1, 215, 215 } },  -- Raw Mithril Head Trout
-  [8766] = { { "Cooking", 2, 240, 260 } },  -- Morning Glory Dew
+  [8766] = { { "Cooking", 2, 255, 260 } },  -- Morning Glory Dew
   [8959] = { { "Cooking", 1, 210, 210 } },  -- Raw Spinefin Halibut
-  [10284] = { { "Cooking", 4, 20, 300 } },  -- Simple Flour
-  [12037] = { { "Cooking", 4, 140, 240 } },  -- Mystery Meat
+  [10284] = { { "Cooking", 4, 30, 300 } },  -- Simple Flour
+  [12037] = { { "Cooking", 4, 145, 240 } },  -- Mystery Meat
   [12184] = { { "Cooking", 6, 115, 290 } },  -- Raptor Flesh
-  [12202] = { { "Cooking", 3, 175, 260 } },  -- Tiger Meat
+  [12202] = { { "Cooking", 3, 215, 280 } },  -- Tiger Meat
   [12203] = { { "Cooking", 3, 215, 285 } },  -- Red Wolf Meat
-  [12204] = { { "Cooking", 2, 140, 240 } },  -- Heavy Kodo Meat
+  [12204] = { { "Cooking", 2, 145, 240 } },  -- Heavy Kodo Meat
   [12205] = { { "Cooking", 1, 240, 240 } },  -- White Spider Meat
   [12206] = { { "Cooking", 2, 220, 265 } },  -- Tender Crab Meat
   [12207] = { { "Cooking", 4, 1, 265 } },  -- Giant Egg
@@ -442,10 +441,10 @@ Bagwise.Data.ReagentProfessions = {
   [249796] = { { "Cooking", 1, 280, 280 } },  -- Hyjal Berries
   [251524] = { { "Cooking", 1, 125, 125 } },  -- Whimsyfin
   [252948] = { { "Cooking", 1, 1, 1 } },
-  [272941] = { { "Cooking", 1, 200, 200 } },  -- Thick Logs
+  [272941] = { { "Cooking", 1, 205, 205 } },  -- Thick Logs
 
   -- Cooking, Enchanting
-  [11291] = { { "Cooking", 1, 90, 90 }, { "Enchanting", 17, 140, 320 } },  -- Star Wood
+  [11291] = { { "Cooking", 1, 95, 95 }, { "Enchanting", 17, 140, 320 } },  -- Star Wood
 
   -- Cooking, Enchanting, First Aid, Leatherworking, Tailoring
   [4470] = { { "Cooking", 2, 1, 25 }, { "Enchanting", 6, 10, 140 }, { "First Aid", 2, 140, 300 }, { "Leatherworking", 1, 140, 140 }, { "Tailoring", 2, 140, 300 } },  -- Simple Wood
@@ -454,19 +453,19 @@ Bagwise.Data.ReagentProfessions = {
   [9061] = { { "Cooking", 1, 325, 325 }, { "Engineering", 7, 235, 295 } },  -- Goblin Rocket Fuel
 
   -- Cooking, Engineering, First Aid
-  [159] = { { "Cooking", 10, 5, 315 }, { "Engineering", 3, 130, 275 }, { "First Aid", 1, 20, 20 } },  -- Refreshing Spring Water
+  [159] = { { "Cooking", 10, 30, 315 }, { "Engineering", 3, 130, 275 }, { "First Aid", 1, 20, 20 } },  -- Refreshing Spring Water
 
   -- Cooking, Engineering, Leatherworking
   [8150] = { { "Cooking", 1, 325, 325 }, { "Engineering", 1, 250, 250 }, { "Leatherworking", 1, 175, 175 } },  -- Deeprock Salt
 
   -- Cooking, First Aid
   [1468] = { { "Cooking", 2, 130, 135 }, { "First Aid", 1, 160, 160 } },  -- Murloc Fin
-  [1475] = { { "Cooking", 1, 5, 5 }, { "First Aid", 1, 80, 80 } },  -- Small Venom Sac
+  [1475] = { { "Cooking", 1, 30, 30 }, { "First Aid", 1, 80, 80 } },  -- Small Venom Sac
   [2596] = { { "Cooking", 1, 215, 215 }, { "First Aid", 1, 225, 225 } },  -- Skin of Dwarven Stout
-  [2678] = { { "Cooking", 24, 5, 200 }, { "First Aid", 3, 55, 90 } },  -- Mild Spices
+  [2678] = { { "Cooking", 24, 30, 200 }, { "First Aid", 3, 55, 90 } },  -- Mild Spices
   [2692] = { { "Cooking", 29, 130, 325 }, { "First Aid", 4, 135, 295 } },  -- Hot Spices
-  [3174] = { { "Cooking", 2, 85, 100 }, { "First Aid", 1, 90, 90 } },  -- Spider Ichor
-  [3713] = { { "Cooking", 27, 140, 325 }, { "First Aid", 3, 160, 290 } },  -- Soothing Spices
+  [3174] = { { "Cooking", 2, 100, 105 }, { "First Aid", 1, 90, 90 } },  -- Spider Ichor
+  [3713] = { { "Cooking", 27, 145, 325 }, { "First Aid", 3, 160, 290 } },  -- Soothing Spices
 
   -- Enchanting
   [2289] = { { "Enchanting", 1, 225, 225 } },  -- Scroll of Strength II
@@ -474,7 +473,7 @@ Bagwise.Data.ReagentProfessions = {
   [4605] = { { "Enchanting", 1, 140, 140 } },  -- Red-speckled Mushroom
   [6217] = { { "Enchanting", 1, 5, 5 } },  -- Copper Rod
   [6338] = { { "Enchanting", 1, 130, 130 } },  -- Silver Rod
-  [9224] = { { "Enchanting", 1, 250, 250 } },  -- Potion of Demonslaying
+  [9224] = { { "Enchanting", 1, 250, 250 } },  -- Potion of Demon Slaying
   [10308] = { { "Enchanting", 1, 320, 320 } },  -- Scroll of Intellect IV
   [10939] = { { "Enchanting", 5, 100, 140 } },  -- Greater Magic Essence
   [10978] = { { "Enchanting", 9, 120, 140 } },  -- Small Glimmering Shard
@@ -513,8 +512,8 @@ Bagwise.Data.ReagentProfessions = {
   [249409] = { { "Enchanting", 12, 140, 320 }, { "Engineering", 2, 25, 125 }, { "Leatherworking", 9, 80, 150 }, { "Tailoring", 108, 75, 270 } },  -- Cerulean Dye
 
   -- Enchanting, Engineering, Tailoring
-  [11175] = { { "Enchanting", 17, 225, 265 }, { "Engineering", 1, 230, 230 }, { "Tailoring", 12, 210, 220 } },  -- Greater Nether Essence
-  [14344] = { { "Enchanting", 53, 290, 320 }, { "Engineering", 1, 320, 320 }, { "Tailoring", 6, 270, 315 } },  -- Large Brilliant Shard
+  [11175] = { { "Enchanting", 18, 225, 280 }, { "Engineering", 1, 230, 230 }, { "Tailoring", 12, 210, 220 } },  -- Greater Nether Essence
+  [14344] = { { "Enchanting", 53, 295, 320 }, { "Engineering", 1, 320, 320 }, { "Tailoring", 6, 270, 315 } },  -- Large Brilliant Shard
   [234008] = { { "Enchanting", 4, 320, 320 }, { "Engineering", 1, 315, 315 }, { "Tailoring", 1, 315, 315 } },
   [249430] = { { "Enchanting", 12, 225, 320 }, { "Engineering", 1, 145, 145 }, { "Tailoring", 52, 145, 270 } },  -- Magenta Dye
   [249431] = { { "Enchanting", 3, 320, 320 }, { "Engineering", 3, 240, 320 }, { "Tailoring", 9, 230, 315 } },  -- Viridian Dye
@@ -535,7 +534,7 @@ Bagwise.Data.ReagentProfessions = {
   [6048] = { { "Enchanting", 1, 160, 160 }, { "Tailoring", 2, 135, 140 } },  -- Shadow Protection Potion
   [11082] = { { "Enchanting", 10, 140, 175 }, { "Tailoring", 18, 125, 145 } },  -- Greater Astral Essence
   [11134] = { { "Enchanting", 11, 165, 225 }, { "Tailoring", 4, 185, 185 } },  -- Lesser Mystic Essence
-  [11178] = { { "Enchanting", 18, 225, 270 }, { "Tailoring", 8, 145, 250 } },  -- Large Radiant Shard
+  [11178] = { { "Enchanting", 19, 225, 280 }, { "Tailoring", 8, 145, 250 } },  -- Large Radiant Shard
   [14343] = { { "Enchanting", 9, 285, 310 }, { "Tailoring", 6, 290, 295 } },  -- Small Brilliant Shard
 
   -- Engineering
@@ -605,11 +604,10 @@ Bagwise.Data.ReagentProfessions = {
   [20881] = { { "Engineering", 1, 320, 320 } },  -- Idol of Strife
   [213381] = { { "Engineering", 1, 200, 200 } },  -- Pile of Tarnished Gears
   [220689] = { { "Engineering", 3, 250, 250 } },
-  [238737] = { { "Engineering", 6, 270, 280 } },  -- Tinkerbox
-  [238780] = { { "Engineering", 3, 1, 1 } },
-  [238786] = { { "Engineering", 1, 320, 320 } },  -- Schematic: Tinker: Teleport
-  [238787] = { { "Engineering", 1, 320, 320 } },  -- Schematic: Tinker: Nitro Boosts
-  [238788] = { { "Engineering", 1, 320, 320 } },  -- Schematic: Tinker: Magnetic Displacement
+  [238737] = { { "Engineering", 6, 270, 280 } },
+  [238786] = { { "Engineering", 1, 320, 320 } },
+  [238787] = { { "Engineering", 1, 320, 320 } },
+  [238788] = { { "Engineering", 1, 320, 320 } },
   [255007] = { { "Engineering", 1, 65, 65 } },  -- Golem Isospring
   [260784] = { { "Engineering", 1, 55, 55 } },  -- SAF-T Tabs
   [260794] = { { "Engineering", 2, 115, 130 } },  -- EZ-Thro Wrap
@@ -627,9 +625,6 @@ Bagwise.Data.ReagentProfessions = {
   [2592] = { { "Engineering", 10, 100, 200 }, { "First Aid", 3, 80, 120 }, { "Tailoring", 1, 70, 70 } },  -- Wool Cloth
   [4306] = { { "Engineering", 7, 160, 200 }, { "First Aid", 2, 150, 180 }, { "Tailoring", 1, 110, 110 } },  -- Silk Cloth
 
-  -- Engineering, Leatherworking
-  [251651] = { { "Engineering", 1, 1, 1 }, { "Leatherworking", 12, 1, 1 } },
-
   -- Engineering, Leatherworking, Tailoring
   [4305] = { { "Engineering", 1, 180, 180 }, { "Leatherworking", 4, 155, 190 }, { "Tailoring", 100, 105, 220 } },  -- Bolt of Silk Cloth
   [4337] = { { "Engineering", 1, 230, 230 }, { "Leatherworking", 1, 195, 195 }, { "Tailoring", 6, 150, 195 } },  -- Thick Spider's Silk
@@ -646,7 +641,6 @@ Bagwise.Data.ReagentProfessions = {
   [2996] = { { "Engineering", 1, 130, 130 }, { "Tailoring", 45, 20, 80 } },  -- Bolt of Linen Cloth
   [4339] = { { "Engineering", 2, 205, 245 }, { "Tailoring", 81, 145, 225 } },  -- Bolt of Mageweave
   [10285] = { { "Engineering", 2, 230, 245 }, { "Tailoring", 6, 190, 215 } },  -- Shadow Silk
-  [251650] = { { "Engineering", 1, 1, 1 }, { "Tailoring", 6, 1, 1 } },
 
   -- First Aid
   [1251] = { { "First Aid", 1, 20, 20 } },  -- Linen Bandage
@@ -658,8 +652,8 @@ Bagwise.Data.ReagentProfessions = {
   [8544] = { { "First Aid", 1, 140, 140 } },  -- Mageweave Bandage
   [14530] = { { "First Aid", 2, 300, 315 } },  -- Heavy Runecloth Bandage
   [19441] = { { "First Aid", 1, 300, 300 } },  -- Huge Venom Sac
-  [23567] = { { "First Aid", 1, 300, 300 } },  -- [PH] Silithus PvP Dust [DEP]
-  [255645] = { { "First Aid", 1, 230, 230 } },  -- Swolen Venom Sac
+  [23567] = { { "First Aid", 1, 300, 300 } },  -- DEPRECATED ITEM
+  [255645] = { { "First Aid", 1, 230, 230 } },  -- Swollen Venom Sac
 
   -- First Aid, Leatherworking, Tailoring
   [2321] = { { "First Aid", 1, 120, 120 }, { "Leatherworking", 86, 70, 190 }, { "Tailoring", 108, 55, 190 } },  -- Fine Thread
@@ -688,7 +682,6 @@ Bagwise.Data.ReagentProfessions = {
   [4253] = { { "Leatherworking", 2, 160, 160 } },  -- Toughened Leather Gloves
   [4265] = { { "Leatherworking", 2, 155, 155 } },  -- Heavy Armor Kit
   [4289] = { { "Leatherworking", 3, 50, 135 } },  -- Salt
-  [4321] = { { "Leatherworking", 4, 65, 65 } },  -- Spider Silk Slippers
   [4461] = { { "Leatherworking", 3, 155, 160 } },  -- Raptor Hide
   [5082] = { { "Leatherworking", 1, 65, 65 } },  -- Thin Kodo Leather
   [5116] = { { "Leatherworking", 1, 125, 125 } },  -- Long Tail Feather
@@ -742,16 +735,16 @@ Bagwise.Data.ReagentProfessions = {
   [2324] = { { "Leatherworking", 5, 70, 185 }, { "Tailoring", 12, 35, 200 } },  -- Bleach
   [2325] = { { "Leatherworking", 11, 160, 300 }, { "Tailoring", 3, 170, 200 } },  -- Black Dye
   [2455] = { { "Leatherworking", 1, 95, 95 }, { "Tailoring", 1, 55, 55 } },  -- Minor Mana Potion
-  [2997] = { { "Leatherworking", 3, 105, 285 }, { "Tailoring", 48, 75, 250 } },  -- Bolt of Woolen Cloth
+  [2997] = { { "Leatherworking", 3, 1, 145 }, { "Tailoring", 48, 75, 250 } },  -- Bolt of Woolen Cloth
   [3182] = { { "Leatherworking", 9, 135, 270 }, { "Tailoring", 13, 80, 145 } },  -- Spider's Silk
   [3383] = { { "Leatherworking", 1, 125, 125 }, { "Tailoring", 1, 125, 125 } },  -- Elixir of Wisdom
   [3827] = { { "Leatherworking", 1, 205, 205 }, { "Tailoring", 4, 170, 220 } },  -- Mana Potion
   [4340] = { { "Leatherworking", 8, 40, 140 }, { "Tailoring", 7, 90, 170 } },  -- Gray Dye
   [6260] = { { "Leatherworking", 12, 185, 300 }, { "Tailoring", 16, 50, 185 } },  -- Blue Dye
   [6261] = { { "Leatherworking", 8, 255, 300 }, { "Tailoring", 2, 185, 190 } },  -- Orange Dye
-  [14048] = { { "Leatherworking", 2, 285, 285 }, { "Tailoring", 181, 1, 320 } },  -- Bolt of Runecloth
+  [14048] = { { "Leatherworking", 2, 285, 285 }, { "Tailoring", 175, 220, 320 } },  -- Bolt of Runecloth
   [14256] = { { "Leatherworking", 1, 300, 300 }, { "Tailoring", 17, 245, 315 } },  -- Felcloth
-  [14341] = { { "Leatherworking", 194, 250, 320 }, { "Tailoring", 116, 220, 320 } },  -- Rune Thread
+  [14341] = { { "Leatherworking", 194, 1, 320 }, { "Tailoring", 116, 220, 320 } },  -- Rune Thread
   [14342] = { { "Leatherworking", 2, 310, 320 }, { "Tailoring", 59, 270, 320 } },  -- Mooncloth
   [18240] = { { "Leatherworking", 2, 285, 285 }, { "Tailoring", 1, 285, 285 } },  -- Ogre Tannin
   [213372] = { { "Leatherworking", 3, 225, 225 }, { "Tailoring", 1, 225, 225 } },

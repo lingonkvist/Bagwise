@@ -10,6 +10,12 @@ describe("Safety.Protections", function()
     ClassReagents = { [17020] = { classes = { MAGE = true } } },
   }
 
+  it("protects items on the hand-kept known-use list", function()
+    Bagwise.Data.ProtectedItems = { [268415] = "Herb seed" }
+    assert.are.equal("known_use", Bagwise.Safety.Protections({ id = 268415, classID = 7 })[1])
+    Bagwise.Data.ProtectedItems = nil
+  end)
+
   it("lists nothing for an ordinary item", function()
     assert.are.equal(0, #Bagwise.Safety.Protections({ id = 990300, classID = 15 }))
   end)

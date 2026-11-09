@@ -10,3 +10,5 @@ Thumbs.db
 
 tools/source/
 .cache/
+__pycache__/
+.venv/

@@ -627,7 +627,7 @@ describe("Epic 5.1: flag Trade Goods not used in any recipe", function()
     "test setup: orphan ID must not be in ClassReagents")
 
   it("green for Trade Goods item not used in any recipe or quest", function()
-    local item = { id = ORPHAN_ITEM_ID, classID = 7 }
+    local item = { id = ORPHAN_ITEM_ID, classID = 7, subClassID = 9, sellPrice = 20 }
     local state = { class = "Warrior", playerClass = "WARRIOR", level = 60 }
 
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
@@ -1037,7 +1037,7 @@ end)
 
 describe("Unused trade goods that sell well", function()
   local function unusedTradeGood(overrides)
-    local item = { id = 7002, quality = 1, classID = 7, isBound = false, sellPrice = 0, count = 1 }
+    local item = { id = 7002, quality = 1, classID = 7, subClassID = 9, isBound = false, sellPrice = 0, count = 1 }
     for key, value in pairs(overrides or {}) do item[key] = value end
     return item
   end
@@ -1062,6 +1062,23 @@ describe("Unused trade goods that sell well", function()
     local verdict = Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 50, count = 20 }), state)
 
     assert.are.equal("yellow", verdict)
+  end)
+
+  it("things you use directly are never called unused: parts, devices, explosives, rods, oils, generic goods", function()
+    for _, subClassID in ipairs({ 0, 1, 2, 3, 11, 12, 14, 15 }) do
+      assert.is_nil((Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 20, subClassID = subClassID }), state)))
+    end
+  end)
+
+  it("a known-use item such as a Greenhouse seed is never called unused", function()
+    Bagwise.Data.ProtectedItems = { [268415] = "Herb seed, used in the Herbalism Greenhouse" }
+    local seed = unusedTradeGood({ id = 268415, sellPrice = 10, subClassID = 9 })
+    assert.is_nil((Bagwise.Verdict.Evaluate(seed, state)))
+    Bagwise.Data.ProtectedItems = nil
+  end)
+
+  it("an item with no vendor value is a token, not a leftover, so it gets no verdict", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(unusedTradeGood({ sellPrice = 0 }), state)))
   end)
 end)
 
@@ -1382,6 +1399,17 @@ describe("Recipes and reagents you cannot use yet", function()
     assert.is_truthy(reason:find("You don't have this profession", 1, true))
   end)
 
+  it("recipe whose level requirement is far above yours says to bank it", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(recipe({ reqLevel = 45 }), state({ Alchemy = 100 }))
+
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Bank it, needs level 45", reason)
+  end)
+
+  it("a recipe within ten levels of yours is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe({ reqLevel = 40 }), state({ Alchemy = 100 }))))
+  end)
+
   it("recipe far above your skill says to bank it", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(recipe({ requiredSkill = 200 }), state({ Alchemy = 100 }))
 
@@ -1492,22 +1520,6 @@ describe("Mana potions for classes without mana", function()
     assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(potion(99001), as("WARRIOR"))))
     assert.is_nil((Bagwise.Verdict.Evaluate(potion(99002), as("WARRIOR"))))
     Bagwise.Data.ManaOnlyConsumables = saved
-  end)
-end)
-
-describe("Distant reagents that only a found recipe uses", function()
-  it("still gets the bank hint, since there is no sense buying the recipe yet", function()
-    Bagwise.Data.ReagentProfessions = { [88001] = { { "Alchemy", 1, 250, 300 } } }
-    Bagwise.Data.ReagentRecipes = { [88001] = { { "Elixir of Finding", "Alchemy", 250, 2000, 10 } } }
-    local state = { level = 30, professionNames = { Alchemy = true }, professionRanks = { Alchemy = 10 },
-                    professionsKnown = true }
-    local item = { id = 88001, classID = 7, quality = 1, reqLevel = 0, count = 5, sellPrice = 50 }
-
-    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
-
-    assert.are.equal("yellow", verdict)
-    assert.are.equal("Bank it, used from Alchemy 250", reason)
-    Bagwise.Data.ReagentRecipes = nil
   end)
 end)
 

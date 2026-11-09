@@ -68,6 +68,10 @@ local PROTECTIONS = {
   { name = "vendor_reagent", test = function(item)
       return data().VendorReagents and data().VendorReagents[item.id] or false
     end },
+  -- Hand-kept list of things the data tables do not know are in use.
+  { name = "known_use", test = function(item)
+      return data().ProtectedItems and data().ProtectedItems[item.id] ~= nil or false
+    end },
   { name = "spell_reagent", test = function(item)
       return (data().ClassReagents and data().ClassReagents[item.id])
           or item.classID == REAGENT_CLASS_ID or false

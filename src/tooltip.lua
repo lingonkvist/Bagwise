@@ -221,47 +221,6 @@ local function renderProfessionDetails(tooltip, profEntries)
   end
 end
 
--- Reagents only a recipe you must find uses: name up to two of them.
-local RECIPE_ENTRY_NAME, RECIPE_ENTRY_PROFESSION, RECIPE_ENTRY_SKILL = 1, 2, 3
-local RECIPE_ENTRY_SPELL = 5
-local RECIPE_LINES_SHOWN = 1
-
-local function isRecipeKnown(spellID)
-  if not spellID then return false end
-  if IsPlayerSpell and IsPlayerSpell(spellID) then return true end
-  if IsSpellKnown and IsSpellKnown(spellID) then return true end
-  return false
-end
-
--- Only recipes for the player's own professions, and only ones not yet known.
-local function recipesStillNeeded(recipes)
-  local myProfs = Bagwise.Scanner and Bagwise.Scanner.professionNames
-  local needed = {}
-  if not myProfs then return needed end
-  for i = 1, #recipes do
-    local entry = recipes[i]
-    if myProfs[entry[RECIPE_ENTRY_PROFESSION]] and not isRecipeKnown(entry[RECIPE_ENTRY_SPELL]) then
-      needed[#needed + 1] = entry
-    end
-  end
-  return needed
-end
-
-local function renderRecipeHints(tooltip, recipes)
-  recipes = recipesStillNeeded(recipes)
-  local shown = math.min(#recipes, RECIPE_LINES_SHOWN)
-  for i = 1, shown do
-    local entry = recipes[i]
-    local skill = entry[RECIPE_ENTRY_SKILL]
-    local text = entry[RECIPE_ENTRY_NAME]
-    if skill and skill > 0 then text = text .. " (" .. skill .. ")" end
-    if i == shown and #recipes > shown then
-      text = text .. " +" .. (#recipes - shown)
-    end
-    tooltip:AddLine(text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
-  end
-end
-
 -- Classic Era uses GetQuestInfo; retail renamed it to GetTitleForQuestID.
 local getQuestTitle    = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo
 
@@ -412,20 +371,14 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local questIDs = Bagwise.Data.QuestItems
       and Bagwise.Data.QuestItems[itemID]
 
-  local isVendorReagentItem = Bagwise.Data.VendorReagents
-      and Bagwise.Data.VendorReagents[itemID]
-  local recipes = Bagwise.Data.ReagentRecipes and Bagwise.Data.ReagentRecipes[itemID]
+  local protectedNote = Bagwise.Data.ProtectedItems
+      and Bagwise.Data.ProtectedItems[itemID]
 
   if verdict then
     renderVerdict(tooltip, verdict, reason, headings)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
-    end
-    -- Beside a yellow hint (such as "Bank it") the recipe still helps. Never
-    -- beside a green: that item is on its way out.
-    if verdict == "yellow" and recipes and not isVendorReagentItem then
-      renderRecipeHints(tooltip, recipes)
     end
   else
     -- No verdict: show context rows (profession and/or quest).
@@ -435,9 +388,10 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
         and Bagwise.Data.VendorReagents[itemID]
     if profEntries and not isVendorReagent then
       renderProfessionDetails(tooltip, profEntries)
-      if recipes then renderRecipeHints(tooltip, recipes) end
     elseif questIDs and not isVendorReagent then
       renderQuestDetails(tooltip, questIDs)
+    elseif protectedNote then
+      tooltip:AddLine(protectedNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
   end
 

@@ -49,6 +49,21 @@ ITEM_OBJECTIVE = 3    # sub-index within objectives
 SOURCE_ITEM_ID = 11   # int: item provided by quest giver
 ZONE_OR_SORT = 17     # int: positive = AreaID, negative = QuestSortID
 REQUIRED_SOURCE_ITEMS = 21  # table: {itemID, ...}
+QUEST_FLAGS = 23      # bitmask: 4096 daily, 32768 weekly, 65536 monthly
+SPECIAL_FLAGS = 24    # bitmask: 1 = repeatable
+
+# A quest with any of these can be done again, so finishing it once says
+# nothing about whether its items are still wanted.
+FLAG_DAILY = 4096
+FLAG_WEEKLY = 32768
+FLAG_MONTHLY = 65536
+SPECIAL_REPEATABLE = 1
+
+
+def is_repeatable(quest_flags: int | None, special_flags: int | None) -> bool:
+    if quest_flags and quest_flags & (FLAG_DAILY | FLAG_WEEKLY | FLAG_MONTHLY):
+        return True
+    return bool(special_flags and special_flags & SPECIAL_REPEATABLE)
 
 
 # ---------------------------------------------------------------------------
@@ -309,10 +324,11 @@ QUEST_LINE_RE = re.compile(r'^(?:quest)?\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
-    __slots__ = ('name', 'level', 'zone', 'faction')
+    __slots__ = ('name', 'level', 'zone', 'faction', 'repeatable')
 
     def __init__(self, name: str | None, level: int | None, zone: str | None,
-                 faction: str | None = None):
+                 faction: str | None = None, repeatable: bool = False):
+        self.repeatable = repeatable
         self.name = name
         self.level = level
         self.zone = zone
@@ -363,7 +379,11 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
         if len(fields) >= REQUIRED_RACES:
             faction = faction_of(parse_int(fields[REQUIRED_RACES - 1]))
 
-        quest_meta[quest_id] = QuestMeta(name, level, zone, faction)
+        quest_flags = parse_int(fields[QUEST_FLAGS - 1]) if len(fields) >= QUEST_FLAGS else None
+        special_flags = parse_int(fields[SPECIAL_FLAGS - 1]) if len(fields) >= SPECIAL_FLAGS else None
+
+        quest_meta[quest_id] = QuestMeta(name, level, zone, faction,
+                                         is_repeatable(quest_flags, special_flags))
 
     return quests, quest_meta
 
@@ -430,6 +450,10 @@ def format_lua(item_quests: dict[int, set[int]],
         -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction}} for tooltips and
         --             faction filtering (faction is "A", "H" or omitted for both)
         --
+        -- RepeatableQuests: quest ID -> true for daily, weekly, monthly and
+        --             repeatable quests. Finishing one says nothing about
+        --             whether its items are still wanted.
+        --
         -- {len(item_quests)} items across {quest_count} quests.
 
         Bagwise = Bagwise or {{}}
@@ -476,7 +500,16 @@ def format_lua(item_quests: dict[int, set[int]],
 
     lines.append(FOOTER)
 
+    lines.append("Bagwise.Data.RepeatableQuests = {")
+    repeatable = [qid for qid in referenced_quests
+                  if quest_meta.get(qid) and quest_meta[qid].repeatable]
+    for qid in repeatable:
+        name = quest_meta[qid].name
+        lines.append(f"    [{qid}] = true,{' -- ' + name if name else ''}")
+    lines.append(FOOTER)
+
     print(f"  {info_count} quests with level/zone info for QuestInfo")
+    print(f"  {len(repeatable)} repeatable quests that use items")
     return "\n".join(lines)
 
 

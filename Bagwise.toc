@@ -2,7 +2,7 @@
 ## Title: Bagwise
 ## Notes: Corner dots on bag items showing what is safe to delete
 ## Author: lingonkvist
-## Version: 0.4.9
+## Version: 0.5.0
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator
@@ -23,9 +23,9 @@ data\quests.lua
 data\recipes.lua
 data\gating.lua
 data\vendor_reagents.lua
+data\protected_items.lua
 data\class_reagents.lua
 data\reagent_professions.lua
-data\reagent_recipes.lua
 data\mana_consumables.lua
 data\quest_items.lua
 Bagwise.lua

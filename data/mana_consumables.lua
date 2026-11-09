@@ -1,7 +1,7 @@
 -- Bagwise: consumables that restore mana and nothing else
 -- Rejuvenation-style items that also heal are left out on purpose.
--- Generated from wago.tools DB2 build 1.15.9.70576. Do not edit by hand.
--- 18 items.
+-- Generated from wago.tools DB2 build 1.60.1.70862. Do not edit by hand.
+-- 21 items.
 
 Bagwise      = Bagwise or {}
 Bagwise.Data = Bagwise.Data or {}
@@ -24,5 +24,8 @@ Bagwise.Data.ManaOnlyConsumables = {
   [18841] = true, -- Combat Mana Potion
   [23578] = true, -- Diet McWeaksauce
   [213564] = true, -- Scroll of Minor Evocation
-  [226402] = true, -- Revelation of Shamanistic Rage
+  [282013] = true, -- Restored Mana Potion
+  [287968] = true, -- Minor Mana Potion
+  [287969] = true, -- Lesser Mana Potion
+  [288897] = true, -- Superior Mana Potion
 }
