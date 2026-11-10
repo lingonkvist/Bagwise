@@ -18,16 +18,16 @@ end
 
 local NOTES = {
   very_low_item_level = function(n, you)
-    return "Very low item level (" .. n .. ", you are " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", you are " .. you
+    return "Very low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", low for level " .. you
   end,
   very_low_level_gear = function(n, you)
-    return "Very low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Requires level " .. n .. ", you are " .. you
+    return "Very low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Required level " .. n .. ", you are " .. you
   end,
   low_item_level = function(n, you)
-    return "Low item level (" .. n .. ", you are " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", you are " .. you
+    return "Low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", low for level " .. you
   end,
   low_level_gear = function(n, you)
-    return "Low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Requires level " .. n .. ", you are " .. you
+    return "Low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Required level " .. n .. ", you are " .. you
   end,
   quest_abandon = function()
     return "Quest is far below you, consider abandoning it", "Low-level quest", "Consider abandoning it"

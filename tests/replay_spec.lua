@@ -60,7 +60,10 @@ describe("Real inventories, other situations", function()
   end
 
   it("flags old soulbound gear once the level has moved on", function()
+    -- The Stitcher requires level 1 but has item level 24, so it is judged by 24.
     local results = Replay.Evaluate(Replay.Load(DIR .. "druid_18_horde.txt"), { level = 40 })
+    assert.are.equal("yellow", verdictOf(results, "The Stitcher"))
+    results = Replay.Evaluate(Replay.Load(DIR .. "druid_18_horde.txt"), { level = 50 })
     assert.are.equal("green", verdictOf(results, "The Stitcher"))
   end)
 end)

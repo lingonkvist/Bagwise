@@ -83,7 +83,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Very low item level (10, you are 32)", reason)
+    assert.are.equal("Very low item level (10 for level 32)", reason)
   end)
 
   it("yellow when reqLevel=0 but itemLevel is 10-19 below player", function()
@@ -99,7 +99,7 @@ describe("Story 1.3 fallback: itemLevel when reqLevel is 0", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Low item level (22, you are 32)", reason)
+    assert.are.equal("Low item level (22 for level 32)", reason)
   end)
 
   it("no dot when reqLevel=0 and itemLevel is close to player level", function()
@@ -1254,7 +1254,7 @@ describe("Level gap and item level", function()
   end)
 
   it("still flags gear whose requirement and item level are both well below", function()
-    local verdict = Bagwise.Verdict.Evaluate(gear(5, 9), state)
+    local verdict = Bagwise.Verdict.Evaluate(gear(5, 6), state)
     assert.are.equal("yellow", verdict)
   end)
 end)
@@ -1693,15 +1693,15 @@ describe("Low level gear that could be an upgrade", function()
   end)
 
   it("keeps its verdict when the worn piece is better in rarity and item level", function()
-    local item = gear({ quality = 2, itemLevel = 22,
+    local item = gear({ quality = 2, itemLevel = 18,
                         equippedInSlots = { { quality = 3, itemLevel = 35 } } })
     local verdict = Bagwise.Verdict.Evaluate(item, state)
     assert.are.equal("green", verdict)
   end)
 
   it("keeps its verdict when worn gear ties it on rarity and item level", function()
-    local item = gear({ quality = 2, itemLevel = 22,
-                        equippedInSlots = { { quality = 2, itemLevel = 22 } } })
+    local item = gear({ quality = 2, itemLevel = 18,
+                        equippedInSlots = { { quality = 2, itemLevel = 18 } } })
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state)))
   end)
 
@@ -1912,10 +1912,10 @@ describe("Yellow headings", function()
 
   it("defines each yellow once: reason, short heading, detail underneath", function()
     local cases = {
-      { { "low_item_level", 30, 50 },       "Low item level (30, you are 50)",           "Outleveled gear",     "Item level 30, you are 50" },
-      { { "low_level_gear", 30, 45 },       "Low level gear (needs 30, you are 45)",     "Outleveled gear",     "Requires level 30, you are 45" },
-      { { "very_low_level_gear", 10, 40 },  "Very low level gear (needs 10, you are 40)", "Outleveled gear",    "Requires level 10, you are 40" },
-      { { "very_low_item_level", 30, 60 },  "Very low item level (30, you are 60)",      "Outleveled gear",     "Item level 30, you are 60" },
+      { { "low_item_level", 30, 50 },       "Low item level (30 for level 50)",           "Outleveled gear",     "Item level 30, low for level 50" },
+      { { "low_level_gear", 30, 45 },       "Low level gear (needs 30, you are 45)",     "Outleveled gear",     "Required level 30, you are 45" },
+      { { "very_low_level_gear", 10, 40 },  "Very low level gear (needs 10, you are 40)", "Outleveled gear",    "Required level 10, you are 40" },
+      { { "very_low_item_level", 30, 60 },  "Very low item level (30 for level 60)",      "Outleveled gear",     "Item level 30, low for level 60" },
       { { "quest_abandon" },                "Quest is far below you, consider abandoning it", "Low-level quest", "Consider abandoning it" },
       { { "quest_not_worth" },              "Quest is far below you, probably not worth taking", "Low-level quest", "Probably not worth it" },
       { { "gray_worth", "4s 65c", false },  "Gray, but worth 4s 65c",                    "Gray item",           "Sells for 4s 65c" },
@@ -1950,7 +1950,7 @@ describe("Yellow headings", function()
     assert.are.equal("yellow", verdict)
     assert.are.equal("level_gap", rule)
     assert.are.equal("Outleveled gear", heading.title)
-    assert.are.equal("Requires level 30, you are 42", heading.detail)
+    assert.are.equal("Required level 30, you are 42", heading.detail)
     local _, _, _, _, _, flagged = Bagwise.Verdict.Evaluate({ id = 1, isFlagged = true }, state)
     assert.are.equal("Flagged by you", flagged.title)
   end)
@@ -2111,3 +2111,22 @@ describe("Enchanters and bound recipes", function()
     assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(recipe, state({ Mining = 50 }))))
   end)
 end)
+
+describe("Gear with a low required level but a real item level", function()
+  local state = { level = 27, professionNames = {}, professionsKnown = true }
+
+  it("requires 1 but item level 24 is only 3 below you, so no verdict", function()
+    local stitcher = { id = 7, isBound = true, isEquippable = true, quality = 2,
+      reqLevel = 1, itemLevel = 24, sellPrice = 100, count = 1 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(stitcher, state)))
+  end)
+
+  it("judges by item level when it is the higher number", function()
+    local item = { id = 8, isBound = true, isEquippable = true, quality = 2,
+      reqLevel = 1, itemLevel = 5, sellPrice = 100, count = 1 }
+    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+    assert.are.equal("green", verdict)
+    assert.are.equal("Very low item level (5 for level 27)", reason)
+  end)
+end)
+

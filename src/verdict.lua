@@ -71,15 +71,14 @@ local function evaluateLevelGap(item, state)
   -- it is not "low level".
   if item.itemLevel and item.itemLevel >= state.level then return nil end
 
-  local compareLevel, isItemLevel
-  if item.reqLevel and item.reqLevel > 0 then
-    compareLevel = item.reqLevel
-  elseif item.itemLevel and item.itemLevel > 0 then
-    compareLevel = item.itemLevel
-    isItemLevel = true
-  else
-    return nil
-  end
+  -- Judge by the higher of the two. Some items require level 1 but have an item
+  -- level of their own (The Stitcher: requires 1, item level 24), and the item
+  -- level is the truer picture. Gear is only outdated when both say so.
+  local requiredLevel = item.reqLevel or 0
+  local itemLevel = item.itemLevel or 0
+  local compareLevel = math.max(requiredLevel, itemLevel)
+  if compareLevel <= 0 then return nil end
+  local isItemLevel = itemLevel > requiredLevel
 
   local gap = state.level - compareLevel
   if gap < LEVEL_GAP_YELLOW then return nil end
