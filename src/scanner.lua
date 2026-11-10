@@ -403,27 +403,33 @@ end
 local RECIPE_CLASS_ID = 9
 local CONSUMABLE_CLASS_ID = 0
 local POTION_SUBCLASS_ID = 1
+local FOOD_SUBCLASS_ID = 5
 
 -- Does this potion restore health or mana? Utility potions (swim speed, free
 -- action) are never outleveled, so the potion rule needs a yes. The wording is
 -- English only: on other clients the answer stays "no" and nothing is flagged.
 local function readRestores(bag, slot)
-  if not (CreateFrame and UIParent) then return false end
+  -- returns restores (plain healing or mana text), givesBuff (a Well Fed style effect)
+  if not (CreateFrame and UIParent) then return false, false end
   if not skillTip then
     skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
   end
   skillTip:SetOwner(UIParent, "ANCHOR_NONE")
   skillTip:ClearLines()
   skillTip:SetBagItem(bag, slot)
+  local restores, givesBuff = false, false
   for line = 2, skillTip:NumLines() do
     local text = _G["BagwiseSkillTipTextLeft" .. line]
     local content = text and text:GetText()
     if content and content:find("Restores", 1, true)
         and (content:find("health", 1, true) or content:find("mana", 1, true)) then
-      return true
+      restores = true
+    end
+    if content and content:lower():find("well fed", 1, true) then
+      givesBuff = true
     end
   end
-  return false
+  return restores, givesBuff
 end
 
 --- Gather item data from the WoW API for one bag slot.
@@ -438,10 +444,15 @@ local function gatherItem(bag, slot, state)
   local item = buildItem(containerInfo.itemID, containerInfo.isBound,
     C_Container.GetContainerItemQuestInfo(bag, slot), state,
     containerInfo.stackCount, containerInfo.hasLoot)
+  if item then
+    item.link = containerInfo.hyperlink
+    item.bonusKey = Bagwise.Verdict.BonusKey(containerInfo.hyperlink)
+  end
   if item and item.classID == RECIPE_CLASS_ID then
     item.requiredSkill = readRequiredSkill(bag, slot)
-  elseif item and item.classID == CONSUMABLE_CLASS_ID and item.subClassID == POTION_SUBCLASS_ID then
-    item.restoresHealthOrMana = readRestores(bag, slot)
+  elseif item and item.classID == CONSUMABLE_CLASS_ID
+      and (item.subClassID == POTION_SUBCLASS_ID or item.subClassID == FOOD_SUBCLASS_ID) then
+    item.restoresHealthOrMana, item.givesBuff = readRestores(bag, slot)
   end
   return item
 end
@@ -488,14 +499,15 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.isFlagged)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
-      .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana)
+      .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana) .. ":" .. tostring(item.givesBuff)
       .. ":" .. equippedKey(item)
+      .. ":" .. tostring(item.bonusKey)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
-  local verdict, reason, detail, tag, rule = Bagwise.Verdict.Evaluate(item, state)
-  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule }
+  local verdict, reason, detail, tag, rule, heading = Bagwise.Verdict.Evaluate(item, state)
+  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule, heading = heading }
   verdictCache[cacheKey] = result
   return result
 end
@@ -596,9 +608,11 @@ local function scanAllSlots()
       slotResults[entry.key] = {}
     else
       local original = slotResults[entry.key]
+      local reason, heading = Bagwise.Verdict.PoorQualityReason(entry.value, true, entry.verdict == "yellow")
       slotResults[entry.key] = {
         verdict = entry.verdict,
-        reason = Bagwise.Verdict.PoorQualityReason(entry.value, true, entry.verdict == "yellow"),
+        reason = reason,
+        heading = heading,
         tag = Bagwise.Verdict.POOR_QUALITY_TAG,
         detail = original.detail,
         rule = original.rule,
@@ -948,7 +962,7 @@ function Bagwise.Scanner.CollectInventory()
               and Bagwise.Data.VendorReagents[itemID] ~= nil or false,
           isClassReagent = Bagwise.Data.ClassReagents
               and Bagwise.Data.ClassReagents[itemID] ~= nil or false,
-          equippedInSlots = isEquippable and equippedInSlotsFor(equipSlot) or nil,
+          equippedInSlots = equipSlot and EQUIP_SLOTS[equipSlot] and equippedInSlotsFor(equipSlot) or nil,
           isKept = Bagwise.Overrides.IsKept(itemID),
           isFlagged = Bagwise.Overrides.IsFlagged(itemID),
           lootable = containerInfo.hasLoot and true or false,
@@ -966,10 +980,11 @@ end
 -- Not soulbound and not a quest starter: nothing has been picked up.
 -- @param itemID number
 -- @return table|nil  { verdict, reason, detail }, or nil until the client has the item
-function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot)
+function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot, link)
   local state = getPlayerState()
   local item = buildItem(itemID, false, nil, state, nil, opensForLoot)
   if not item then return nil end
+  item.bonusKey = Bagwise.Verdict.BonusKey(link)
   return evaluateCached(item, state, professionCacheKey(state))
 end
 

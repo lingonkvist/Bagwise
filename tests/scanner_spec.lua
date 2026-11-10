@@ -6,7 +6,9 @@ _G.Bagwise = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/progress.lua")
+dofile("src/notes.lua")
 dofile("src/verdict.lua")
+dofile("src/bank.lua")
 dofile("src/makeroom.lua")
 Bagwise.Data = { ReagentProfessions = {}, VendorReagents = {}, ClassReagents = {}, QuestItems = {}, QuestInfo = {} }
 Bagwise.Overrides = { IsKept = function() return false end, IsFlagged = function() return false end }

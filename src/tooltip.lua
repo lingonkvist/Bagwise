@@ -118,6 +118,7 @@ local LOOT_TAKE_LINE = "Worth a slot, more than your junk"
 local LOOT_CONSIDER_LINE = "Consider taking it"
 local LOOT_LEAVE_REASON = "Worth less than your junk"
 local LOOT_NOROOM_REASON = "Needs a slot, nothing safe to delete"
+local LOOT_NOROOM_HEADING = { title = "Make room by hand", detail = "Nothing to delete" }
 
 -- Name the junk the loot lost to, so the comparison is visible:
 -- "Worth less than your cheapest gray (Odd Bauble, 8s)", item and coins coloured.
@@ -125,7 +126,7 @@ local function lootLeaveReason()
   local summary = Bagwise.Scanner.MakeRoomSummary and Bagwise.Scanner.MakeRoomSummary()
   if not (summary and summary.cheapestJunkValue) then return LOOT_LEAVE_REASON end
   local kind = (summary.cheapestJunkQuality or 0) == 0 and "gray" or "junk"
-  local junk = Bagwise.Verdict.FormatMoneyColored(summary.cheapestJunkValue)
+  local junk = Bagwise.Verdict.FormatMoney(summary.cheapestJunkValue)
   if summary.cheapestJunkName then
     junk = Bagwise.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality) .. ", " .. junk
   end
@@ -318,12 +319,20 @@ local function dotEscape(verdict)
   return "|T" .. DOT_TEXTURES[verdict] .. ":" .. DOT_ESCAPE_SIZE .. ":" .. DOT_ESCAPE_SIZE .. "|t"
 end
 
-local function renderVerdict(tooltip, verdict, reason, headings, keepWhole)
+local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, specific)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
-  tooltip:AddLine(dotEscape(verdict) .. " " .. headings[verdict],
-    color.r, color.g, color.b)
+  -- A yellow that comes with its own heading (the rule's words, 3-4 of them) is
+  -- named by what was found with the detail underneath; anything else keeps the
+  -- generic heading and its reason.
+  local heading = headings[verdict]
+  if verdict == "yellow" and specific then
+    heading, reason = specific.title, specific.detail
+  end
+
+  tooltip:AddLine(dotEscape(verdict) .. " " .. heading, color.r, color.g, color.b)
+  if not reason then return end
 
   -- Break long reasons at the last comma before the wrap threshold so
   -- multi-profession lists don't make the tooltip wider than the item's own.
@@ -356,7 +365,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   if isLootOwner(tooltip:GetOwner()) then
     -- Checked before the bag lookup: a loot row's ID could otherwise match a
     -- backpack slot holding the same item.
-    result = Bagwise.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip))
+    result = Bagwise.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip), link)
     headings = LOOT_HEADINGS
   else
     local bag, slot = bagSlotOf(tooltip)
@@ -372,6 +381,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   end
   local verdict = result and result.verdict
   local reason = result and result.reason
+  local specificHeading = result and result.heading
   local lootSlot = isLootOwner(tooltip:GetOwner()) and lootSlotOf(tooltip:GetOwner())
   local lootDecision = lootSlot and Bagwise.Scanner.LootDecision
       and Bagwise.Scanner.LootDecision(lootSlot)
@@ -395,6 +405,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   elseif lootDecision == "noroom" then
     if verdict then lootNote = LOOT_NOROOM_REASON else
       verdict, reason = "yellow", LOOT_NOROOM_REASON
+      specificHeading = LOOT_NOROOM_HEADING
     end
   end
 
@@ -408,7 +419,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       and Bagwise.Data.ProtectedItems[itemID]
 
   if verdict then
-    renderVerdict(tooltip, verdict, reason, headings, keepWhole)
+    renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)

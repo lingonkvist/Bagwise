@@ -5,3 +5,7 @@ ignore:
   - tools
   - README.md
   - .luacheckrc
+  - .github
+  - .vscode
+  - .venv
+  - .gitignore

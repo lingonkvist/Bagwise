@@ -197,6 +197,12 @@ local COMMAND_HANDLERS = {
           .. entry.blockedBy)
       end
     end
+    for _, line in ipairs(Bagwise.Verdict.SellAtVendorFacts(item)) do
+      print("  " .. line)
+    end
+    if item.link then
+      print("  link fields: " .. tostring(item.link:match("item:([^|]*)")))
+    end
     if #(explained.protections or {}) > 0 then
       print("  protected as: " .. table.concat(explained.protections, ", "))
     end

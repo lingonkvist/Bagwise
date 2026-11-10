@@ -1,19 +1,19 @@
 # Bagwise
 
-Corner dots on your bag items that show what is safe to delete. Never deletes anything.
+Colored dots on your bag items that show what to delete, vendor or keep. Never deletes anything.
 
 ## The problem
 
-Bags fill up with items you are not sure about. A quest item with no quest left. A reagent for a profession you do not have. Armor your class cannot wear. None of it is grey, so junk addons ignore it, and you hesitate to delete it yourself because nothing on the item tells you.
+Bags fill up with items you are not sure about. A quest item with no quest left. A reagent for a profession you do not have. Armor your class cannot wear. A green you could sell, but is it worth a trip to the auction house? None of it is gray, so junk addons ignore it, and nothing on the item tells you what to do.
 
 ## What it does
 
-Bagwise puts a small dot in the corner of an item when it has a clear answer.
+Bagwise checks every item against your quests, professions, class, level and what it sells for, and puts a small dot in the corner when it has a clear answer.
 
 | Dot | Meaning |
 |---|---|
-| Green | Safe to get rid of. The tooltip says whether to vendor it or delete it, and why. |
-| Yellow | Worth a second look. |
+| Green | Safe to delete, or safe to vendor when it has a sell price. The tooltip says which, and why. |
+| Yellow | Worth a second look. The tooltip says what to look at. |
 | None | No signal. Bagwise does not know, or you still need the item. |
 
 Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it.
@@ -31,6 +31,7 @@ Green:
 - White armor you have outgrown, because you wear green or better in that slot.
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
+- Tradable green gear that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
 
 Yellow:
 - Bound gear 10 to 19 levels below you.
@@ -39,10 +40,20 @@ Yellow:
 - A gray that is worth some silver (the cheapest one only).
 - Things you open: clams, lockboxes and bags of loot.
 - Recipes for a profession you do not have, and recipes or reagents far above your skill ("Bank it").
-- Food, drink, potions and bandages made for a much lower level.
+- Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them.
+- Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
 - Mana potions, if your class has no mana.
 - Quest items for a quest far below your level.
 - Anything you flag yourself.
+
+## Auction prices
+
+Bagwise ships with auction price data for Forever, so it can tell vendor trash from gear that is worth listing. It never reads the auction house in game and never needs a scan.
+
+- Prices come from the Blizzard auction API, taken from the middle of all auction houses, so one odd listing does not move them.
+- Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
+- The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees.
+- The data is refreshed with each release. `tools/build_auction_prices.py` rebuilds it, and a weekly workflow opens a pull request with new prices.
 
 ## What never gets a dot
 
@@ -54,6 +65,10 @@ Anything that could still matter:
 - Containers, gems, recipes, keys and ammo (recipes can be yellow, never green).
 - Consumables, other than the yellow cases above.
 - Anything you have told Bagwise to keep.
+
+## In the bank
+
+Dots work in the bank and the warband bank too. People bank things on purpose, so a verdict only stays as it is when it holds for any character. Anything that depends on your professions, class or quests is at most yellow, "Bank it" hints are dropped because the item is already there, and vendor suggestions are not shown.
 
 ## Making room for loot
 
@@ -96,8 +111,10 @@ Troubleshooting:
 
 ## Development
 
-- Tests: `python3 -I tests/run_tests.py` (needs `lupa`).
+- Tests: `python3 -I tests/run_tests.py` (needs `lupa`). `node tools/check_globals.js` catches stray globals, and CI runs both.
+- Data: `tools/build_auction_prices.py` (needs `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET`) and `tools/build_reagent_professions.py` regenerate the files in `data/`. Both have a `--selftest`.
 - `src/verdict.lua` decides, and is pure. It never calls the game.
+- `src/notes.lua` holds the words behind every yellow. `src/bank.lua` turns a verdict into what the bank shows.
 - `src/safety.lua` holds the protections. A rule can propose a green, and a protection can veto it.
 - `src/scanner.lua` is the only module that reads the game and caches verdicts.
 - `src/overlay.lua` paints dots and glows. `src/tooltip.lua` adds hover text.

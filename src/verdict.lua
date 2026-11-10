@@ -48,6 +48,15 @@ local function couldBeUpgrade(item)
   return false
 end
 
+local note = Bagwise.Notes.Get
+Bagwise.Verdict.Note = note
+
+--- A yellow verdict for a rule to return: verdict, reason, detail, tag, heading.
+local function yellow(key, ...)
+  local reason, heading = note(key, ...)
+  return "yellow", reason, nil, nil, heading
+end
+
 local function evaluateLevelGap(item, state)
   if not (item.isBound and item.isEquippable) then return nil end
   if couldBeUpgrade(item) then return nil end
@@ -77,21 +86,21 @@ local function evaluateLevelGap(item, state)
 
   if gap >= LEVEL_GAP_GREEN and canBeGreen then
     if isItemLevel then
-      return "green", "Very low item level (" .. compareLevel .. ")", nil, vendorTagFor(item)
+      return "green", (note("very_low_item_level", compareLevel, state.level)), nil, vendorTagFor(item)
     end
-    return "green", "Very low level gear", nil, vendorTagFor(item)
+    return "green", (note("very_low_level_gear", compareLevel, state.level)), nil, vendorTagFor(item)
   end
   if gap >= LEVEL_GAP_GREEN then
     if isItemLevel then
-      return "yellow", "Very low item level (" .. compareLevel .. ")"
+      return yellow("very_low_item_level", compareLevel, state.level)
     end
-    return "yellow", "Very low level gear"
+    return yellow("very_low_level_gear", compareLevel, state.level)
   end
 
   if isItemLevel then
-    return "yellow", "Low item level (" .. compareLevel .. ")"
+    return yellow("low_item_level", compareLevel, state.level)
   end
-  return "yellow", "Low level gear"
+  return yellow("low_level_gear", compareLevel, state.level)
 end
 
 -- QuestInfo field indices (data/quest_items.lua is generated).
@@ -203,7 +212,9 @@ local function evaluateClassReagent(item, state)
   local source = classReagent.verdict == "green" and "vendor" or "world drop"
   local classString = table.concat(classList, ", ")
 
-  return classReagent.verdict, classString .. " only (" .. source .. ")"
+  local whole = classString .. " only (" .. source .. ")"
+  if classReagent.verdict == "yellow" then return yellow("wrong_class_reagent", whole) end
+  return classReagent.verdict, whole
 end
 
 -- An open quest far below the player: its item is only held for a quest that
@@ -223,10 +234,8 @@ local function evaluateTrivialQuestItem(item, state)
     if not level or level <= 0 or level + QUEST_TRIVIAL_GAP > (state.level or 1) then return nil end
   end
   local label = #open == 1 and questLabel(open[1], nil) or nil
-  if item.onOpenQuest then
-    return "yellow", "Quest is far below you, consider abandoning it", label
-  end
-  return "yellow", "Quest is far below you, probably not worth taking", label
+  local verdict, reason, _, _, heading = yellow(item.onOpenQuest and "quest_abandon" or "quest_not_worth")
+  return verdict, reason, label, nil, heading
 end
 
 local function evaluateQuestObjective(item)
@@ -290,8 +299,7 @@ function Bagwise.Verdict.FormatMoney(copper)
   return table.concat(parts, " ")
 end
 
--- Colour codes for tooltips: Blizzard's coin colours and item rarity colours.
-local COIN_COLORS = { gold = "|cffffd100", silver = "|cffc7c7cf", copper = "|cffeda55f" }
+-- Colour code for item rarity names in tooltips.
 local QUALITY_HEX = {
   [0] = "|cff9d9d9d", [1] = "|cffffffff", [2] = "|cff1eff00",
   [3] = "|cff0070dd", [4] = "|cffa335ee", [5] = "|cffff8000",
@@ -304,19 +312,6 @@ function Bagwise.Verdict.ColoredName(name, quality)
   return hex .. name .. "|r"
 end
 
---- Like FormatMoney, with the g, s and c in their coin colours.
-function Bagwise.Verdict.FormatMoneyColored(copper)
-  copper = math.floor(copper or 0)
-  local gold = math.floor(copper / COPPER_PER_GOLD)
-  local silver = math.floor((copper % COPPER_PER_GOLD) / COPPER_PER_SILVER)
-  local rest = copper % COPPER_PER_SILVER
-  local parts = {}
-  if gold > 0 then parts[#parts + 1] = gold .. COIN_COLORS.gold .. "g|r" end
-  if silver > 0 then parts[#parts + 1] = silver .. COIN_COLORS.silver .. "s|r" end
-  if rest > 0 or #parts == 0 then parts[#parts + 1] = rest .. COIN_COLORS.copper .. "c|r" end
-  return table.concat(parts, " ")
-end
-
 --- The reason line for a gray. When other grays were silenced, the one that
 -- keeps its dot says it is the cheapest, so the single dot makes sense.
 -- @param value     number   what the stack sells for, in copper
@@ -325,8 +320,7 @@ end
 --        the dot is yellow and the reason warns that it is worth something
 function Bagwise.Verdict.PoorQualityReason(value, isCheapestOfSeveral, isWorthSilver)
   if isWorthSilver then
-    local label = isCheapestOfSeveral and "Cheapest gray" or "Gray"
-    return label .. ", but worth " .. Bagwise.Verdict.FormatMoney(value)
+    return note("gray_worth", Bagwise.Verdict.FormatMoney(value), isCheapestOfSeveral)
   end
   local label = isCheapestOfSeveral and "Cheapest gray" or "Poor quality"
   if value == 0 then return label .. ", no vendor value" end
@@ -347,7 +341,8 @@ local function evaluatePoorQuality(item, state)
 
   local value = stackValue(item)
   if value >= grayThreshold(state) then
-    return "yellow", Bagwise.Verdict.PoorQualityReason(value, false, true), nil, POOR_QUALITY_TAG
+    local reason, heading = Bagwise.Verdict.PoorQualityReason(value, false, true)
+    return "yellow", reason, nil, POOR_QUALITY_TAG, heading
   end
   return "green", Bagwise.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
 end
@@ -422,8 +417,7 @@ local function evaluateNoRecipeUse(item, state)
   -- worth the vendor trip, so it only gets a yellow.
   local value = stackValue(item)
   if value >= valueThreshold(state) then
-    return "yellow", "Not used for any quest or recipe, sells for "
-        .. Bagwise.Verdict.FormatMoney(value)
+    return yellow("no_known_use", Bagwise.Verdict.FormatMoney(value))
   end
 
   return "green", "Not used for any quest or recipe"
@@ -441,8 +435,6 @@ local RECIPE_PROFESSIONS = {
 }
 -- How many skill points short before something counts as "a while away".
 local BANK_SKILL_GAP = 50
--- Hints that tell you to bank an item. Pointless once it is in the bank.
-Bagwise.Verdict.BANK_IT_PREFIX = "Bank it"
 -- A recipe you cannot learn yet gets the bank hint once it is this far out of
 -- reach. A profession you have stopped leveling has nothing "close", so for
 -- it any shortfall counts (see Bagwise.Progress).
@@ -457,32 +449,58 @@ local function evaluateRecipe(item, state)
   if state.professionsKnown == false or not state.professionNames then return nil end
 
   if not state.professionNames[profession] then
-    return "yellow", "You don't have this profession. May sell on AH"
+    return yellow("not_your_profession")
   end
 
   local rank = state.professionRanks and state.professionRanks[profession]
   local idle = state.professionIdle and state.professionIdle[profession]
   local skillGap = idle and RECIPE_IDLE_SKILL_GAP or RECIPE_SKILL_GAP
   if rank and item.requiredSkill and item.requiredSkill > rank + skillGap then
-    return "yellow", "Bank it, needs " .. profession .. " " .. item.requiredSkill
+    return yellow("bank_skill", profession, item.requiredSkill)
   end
   if item.reqLevel and item.reqLevel > (state.level or 1) + RECIPE_LEVEL_GAP then
-    return "yellow", "Bank it, needs level " .. item.reqLevel
+    return yellow("bank_level", item.reqLevel)
   end
   return nil
+end
+
+-- Where a reagent is used, direct and through what it is turned into: copper
+-- bars go into bronze bars, which smithing and engineering use far higher up.
+-- ReagentChains (generated) holds the downstream uses; entries are merged per
+-- profession into { name, minSkill, maxSkill }.
+local function reagentUses(itemID)
+  local direct = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[itemID]
+  if not direct then return nil end
+  local chains = Bagwise.Data.ReagentChains and Bagwise.Data.ReagentChains[itemID]
+  local merged, order = {}, {}
+  local function add(name, minSkill, maxSkill)
+    local use = merged[name]
+    if not use then
+      use = { name = name, minSkill = minSkill, maxSkill = maxSkill }
+      merged[name] = use
+      order[#order + 1] = use
+      return
+    end
+    if minSkill and (not use.minSkill or minSkill < use.minSkill) then use.minSkill = minSkill end
+    if maxSkill and (not use.maxSkill or maxSkill > use.maxSkill) then use.maxSkill = maxSkill end
+  end
+  for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4]) end
+  if chains then
+    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3]) end
+  end
+  return order
 end
 
 -- A reagent the player's own professions will not use for a good while: every
 -- profession of theirs that uses it starts needing it far above their skill.
 local function evaluateDistantReagent(item, state)
-  local entries = Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[item.id]
+  local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
 
   local nearest -- the smallest gap to a profession of theirs
   for i = 1, #entries do
-    local name, minSkill = entries[i][1], entries[i][3]
+    local name, minSkill = entries[i].name, entries[i].minSkill
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not minSkill then return nil end
@@ -493,21 +511,23 @@ local function evaluateDistantReagent(item, state)
     end
   end
   if not nearest then return nil end
-  return "yellow", "Bank it, used from " .. nearest.name .. " " .. nearest.minSkill
+  return yellow("bank_used_from", nearest.name, nearest.minSkill)
 end
 
 -- A reagent every one of your professions that uses it has left behind: the
 -- best recipe that needs it is far below your skill. Only a hint, since an
 -- alt or a low recipe may still want it.
 local function evaluateOutleveledReagent(item, state)
-  local entries = Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[item.id]
+  -- Without the downstream uses we cannot tell a finished material from an
+  -- ingredient of something still in demand, so the rule stays silent.
+  if not Bagwise.Data.ReagentChains then return nil end
+  local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
 
   local newest -- the profession whose recipes are closest behind you
   for i = 1, #entries do
-    local name, maxSkill = entries[i][1], entries[i][4]
+    local name, maxSkill = entries[i].name, entries[i].maxSkill
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not maxSkill then return nil end
@@ -518,14 +538,14 @@ local function evaluateOutleveledReagent(item, state)
     end
   end
   if not newest then return nil end
-  return "yellow", "Outleveled, " .. newest.name .. " recipes use it up to " .. newest.maxSkill
+  return yellow("outleveled_reagent", newest.name, newest.maxSkill)
 end
 
 -- Something you right-click to open (clams, bags of loot). It takes a slot now
 -- and what is inside often stacks, so opening it usually frees room.
 local function evaluateOpenable(item)
   if not item.hasLoot then return nil end
-  return "yellow", "Open it, the contents may stack"
+  return yellow("open_it")
 end
 
 -- Food, drink, potions and bandages made for a much lower level than yours
@@ -533,6 +553,8 @@ end
 local CONSUMABLE_CLASS = 0
 local OUTLEVELED_SUBCLASSES = { [1] = true, [5] = true, [7] = true } -- potion, food and drink, bandage
 local OUTLEVELED_GAP = 20
+local CONSUMABLE_NOUNS = { [1] = "potion", [5] = "food", [7] = "bandage" }
+local FOOD_SUBCLASS = 5
 local POTION_SUBCLASS = 1
 
 local CLASS_PLURALS_FOR_POTIONS = { WARRIOR = "Warriors", ROGUE = "Rogues" }
@@ -559,7 +581,7 @@ end
 local function evaluateManaPotion(item, state)
   if not isManaOnly(item.id) then return nil end
   if not CLASSES_WITHOUT_MANA[state.playerClass or ""] then return nil end
-  return "yellow", CLASS_PLURALS_FOR_POTIONS[state.playerClass] .. " have no mana. May sell on AH"
+  return yellow("no_mana", CLASS_PLURALS_FOR_POTIONS[state.playerClass])
 end
 
 local function evaluateOutleveledConsumable(item, state)
@@ -568,10 +590,14 @@ local function evaluateOutleveledConsumable(item, state)
   -- Utility potions (swimming speed, water walking, free action) stay useful
   -- at any level. Only a potion known to restore health or mana can be outleveled.
   if item.subClassID == POTION_SUBCLASS and item.restoresHealthOrMana ~= true then return nil end
+  -- Food that gives a buff (Well Fed) or whose tooltip we could not read as plain
+  -- healing is not flagged: its effect can still beat what you carry.
+  if item.subClassID == FOOD_SUBCLASS
+      and (item.restoresHealthOrMana ~= true or item.givesBuff == true) then return nil end
   local reqLevel = item.reqLevel
   if not reqLevel or reqLevel <= 0 then return nil end
   if reqLevel + OUTLEVELED_GAP > (state.level or 1) then return nil end
-  return "yellow", "Outleveled, a level " .. reqLevel .. " item"
+  return yellow("low_level_consumable", CONSUMABLE_NOUNS[item.subClassID], reqLevel, state.level or 1)
 end
 
 local COMMON_QUALITY = 1
@@ -674,6 +700,153 @@ end
 --   quest rules may override "quest_item": finishing the quests lifts it
 --   the reagent rules decide by profession or class themselves
 -- Anything not listed is protected from that rule.
+-- Tradeable green gear that the auction house pays about the vendor price for:
+-- selling it to a vendor loses nothing. The price data (data/auction_prices.lua)
+-- is a ceiling per item, so the call is only made when even that is close to the
+-- vendor price. After the auction house's 5% cut, a higher price is worth a look.
+-- Every check above this rule still runs first, and the upgrade check holds.
+local EQUIPMENT_CLASSES = { [2] = true, [4] = true }
+local UNCOMMON = 2
+-- How far above the vendor price the AH ceiling may sit and still read as "about
+-- the same". The margin shrinks as the price grows: a few copper does not
+-- justify a repost, but a quarter of a gold does. Each step: below `below`
+-- copper of vendor price, the ceiling may be `factor` times it.
+local AH_VENDOR_STEPS = {
+  { below = 500,  factor = 2.0 },
+  { below = 2000, factor = 1.35 },
+  { below = 5000, factor = 1.2 },
+}
+local AH_VENDOR_LAST_FACTOR = 1.1
+local AH_VENDOR_SLACK = 150 -- or this many copper above it, for tiny prices
+
+local function sellLimit(vendorPrice)
+  local factor = AH_VENDOR_LAST_FACTOR
+  for i = 1, #AH_VENDOR_STEPS do
+    if vendorPrice < AH_VENDOR_STEPS[i].below then
+      factor = AH_VENDOR_STEPS[i].factor
+      break
+    end
+  end
+  return math.max(vendorPrice * factor, vendorPrice + AH_VENDOR_SLACK)
+end
+
+--- The bonus ids of an item link as "12744" or "12727-12800" (sorted), or nil
+-- when it has none or the link is not in the shape we expect. Links read
+-- itemID:enchant:gem1..gem4:suffix:unique:linkLevel:spec:modifiersMask:context:
+-- numBonusIDs:bonus1... so the count is the 13th field.
+local BONUS_COUNT_FIELD = 13
+function Bagwise.Verdict.BonusKey(link)
+  if type(link) ~= "string" then return nil end
+  local body = link:match("item:([^|]*)")
+  if not body then return nil end
+  local fields, position = {}, 1
+  while true do
+    local colon = body:find(":", position, true)
+    fields[#fields + 1] = body:sub(position, colon and colon - 1 or #body)
+    if not colon then break end
+    position = colon + 1
+  end
+  local count = tonumber(fields[BONUS_COUNT_FIELD])
+  if not count or count < 1 then return nil end
+  local ids = {}
+  for i = 1, count do
+    local id = tonumber(fields[BONUS_COUNT_FIELD + i])
+    if not id then return nil end
+    ids[#ids + 1] = id
+  end
+  table.sort(ids)
+  return table.concat(ids, "-")
+end
+
+--- The auction ceiling for this very item. Random-suffix gear is one item id
+-- with very different prices, so when the data lists versions of the item,
+-- only the player's own version counts: a version the data has no price for
+-- gives nothing (it may be the rare, expensive one), never the item's price.
+-- @return number|nil ceiling, string source ("version", "item" or "unknown")
+local function ceilingFor(item)
+  local data = Bagwise.Data or {}
+  local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
+  if versions then
+    local own = item.bonusKey and versions[item.bonusKey]
+    if own then return own, "version" end
+    return nil, "unknown"
+  end
+  local prices = data.AuctionPriceCeiling
+  return prices and prices[item.id], "item"
+end
+
+--- Everything the sell-at-vendor rule looks at, in one place: the rule and
+-- /bagwise why both read this, so they cannot disagree.
+-- @return table|nil nil for items the rule never considers (not gear);
+--   otherwise { passes = boolean, ceiling, limit, notes = { lines } }
+local function checkSellAtVendor(item)
+  if not EQUIPMENT_CLASSES[item.classID] then return nil end
+  local money = Bagwise.Verdict.FormatMoney
+  local check = { passes = false, notes = {} }
+  local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
+
+  if item.quality ~= UNCOMMON then
+    note_("only green gear is considered (this is quality " .. tostring(item.quality) .. ")")
+    return check
+  end
+  if item.isBound then
+    note_("soulbound, so it is not sold at auction")
+    return check
+  end
+  if not item.sellPrice or item.sellPrice <= 0 then
+    note_("no vendor price")
+    return check
+  end
+
+  local ceiling, source = ceilingFor(item)
+  if not ceiling then
+    if source == "unknown" then
+      note_("this version has no auction price on file (bonus "
+          .. tostring(item.bonusKey) .. "), so no verdict")
+    else
+      note_("no auction price on file (vendor " .. money(item.sellPrice) .. ")")
+    end
+    return check
+  end
+
+  local limit = sellLimit(item.sellPrice)
+  check.ceiling, check.limit = ceiling, limit
+  local within = ceiling <= limit
+  note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
+      .. (source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")" or " (whole item)")
+      .. ", limit " .. money(limit) .. (within and " (within)" or " (auction pays too much)"))
+
+  if not item.equippedInSlots then
+    note_("worn gear in this slot could not be read, so no verdict")
+    return check
+  end
+  if couldBeUpgrade(item) then
+    local worn = {}
+    for i = 1, #item.equippedInSlots do
+      worn[#worn + 1] = "quality " .. item.equippedInSlots[i].quality .. " ilvl " .. item.equippedInSlots[i].itemLevel
+    end
+    note_("could be an upgrade (this: quality " .. tostring(item.quality)
+        .. " ilvl " .. tostring(item.itemLevel) .. "; worn: " .. table.concat(worn, ", ") .. ")")
+    return check
+  end
+  check.passes = within
+  return check
+end
+
+local function evaluateSellAtVendor(item)
+  local check = checkSellAtVendor(item)
+  if not (check and check.passes) then return nil end
+  local money = Bagwise.Verdict.FormatMoney
+  return "green", "Vendor " .. money(item.sellPrice) .. ", auction up to " .. money(check.ceiling), nil, vendorTagFor(item)
+end
+
+--- The facts behind the sell-at-vendor rule for one item, as short lines for
+-- /bagwise why. Empty for non-gear.
+function Bagwise.Verdict.SellAtVendorFacts(item)
+  local check = checkSellAtVendor(item)
+  return check and check.notes or {}
+end
+
 local RULES = {
   { name = "unwearable_white",   evaluate = evaluateUnwearableWhite },
   { name = "level_gap",          evaluate = evaluateLevelGap },
@@ -693,17 +866,18 @@ local RULES = {
   { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent },
   { name = "poor_quality",       evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse },
+  { name = "sell_at_vendor",     evaluate = evaluateSellAtVendor },
 }
 
 --- Run one rule and apply the safety check to a green.
--- @return verdict, reason, detail, tag, blockedBy
+-- @return verdict, reason, detail, tag, blockedBy, heading
 local function runRule(rule, item, state)
-  local verdict, reason, detail, tag = rule.evaluate(item, state)
+  local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "green" then
     local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
-    if blocker then return verdict, reason, detail, tag, blocker end
+    if blocker then return verdict, reason, detail, tag, blocker, heading end
   end
-  return verdict, reason, detail, tag, nil
+  return verdict, reason, detail, tag, nil, heading
 end
 
 local CONSUMABLE_CLASS_ID = 0
@@ -717,14 +891,17 @@ local CONSUMABLE_CLASS_ID = 0
 -- Scrolls may earn their own rules later.
 function Bagwise.Verdict.Evaluate(item, state)
   if item.isKept then return nil, nil, nil end
-  if item.isFlagged then return "yellow", "Flagged by you", nil end
+  if item.isFlagged then
+    local verdict, reason, _, _, heading = yellow("flagged")
+    return verdict, reason, nil, nil, nil, heading
+  end
   if item.classID == CONSUMABLE_CLASS_ID then
-    local verdict, reason = evaluateOpenable(item)
-    if verdict then return verdict, reason, nil, nil, "openable" end
-    verdict, reason = evaluateManaPotion(item, state)
-    if verdict then return verdict, reason, nil, nil, "mana_potion" end
-    verdict, reason = evaluateOutleveledConsumable(item, state)
-    return verdict, reason, nil, nil, verdict and "outleveled_consumable" or nil
+    local verdict, reason, _, _, heading = evaluateOpenable(item)
+    if verdict then return verdict, reason, nil, nil, "openable", heading end
+    verdict, reason, _, _, heading = evaluateManaPotion(item, state)
+    if verdict then return verdict, reason, nil, nil, "mana_potion", heading end
+    verdict, reason, _, _, heading = evaluateOutleveledConsumable(item, state)
+    return verdict, reason, nil, nil, verdict and "outleveled_consumable" or nil, heading
   end
 
   -- A blocked green is dropped and the next rule gets its turn. A yellow is
@@ -732,54 +909,16 @@ function Bagwise.Verdict.Evaluate(item, state)
   -- beats it. Otherwise the first yellow stands.
   local hint
   for i = 1, #RULES do
-    local verdict, reason, detail, tag, blockedBy = runRule(RULES[i], item, state)
+    local verdict, reason, detail, tag, blockedBy, heading = runRule(RULES[i], item, state)
     if verdict == "green" and not blockedBy then
       return verdict, reason, detail, tag, RULES[i].name
     end
     if verdict == "yellow" and not hint then
-      hint = { verdict, reason, detail, tag, RULES[i].name }
+      hint = { verdict, reason, detail, tag, RULES[i].name, heading }
     end
   end
-  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5] end
+  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6] end
   return nil, nil, nil
-end
-
--- What a verdict means once the item is in the bank. People bank things on
--- purpose, often for another character, so a verdict only stays as it is
--- when it holds for any character; one that depends on this character's
--- professions, class or quests is capped at a yellow reminder; and one that
--- only says what to do with an item that is not banked yet is dropped. An
--- unknown rule gets the cautious treatment.
-local BANK_KEEPS = {
-  level_gap = true,     -- soulbound, so it cannot go to an alt
-  poor_quality = true,
-  no_recipe_use = true, -- nothing uses it, whoever you play
-  openable = true,
-}
-local BANK_DROPS = {
-  trivial_quest_item = true, -- you cannot abandon a quest from the bank
-}
-
---- Turn a verdict result into what the bank should show.
--- The warband bank exists to share items between your characters, so there
--- even soulbound-looking gear may be meant for an alt: nothing is kept there
--- that depends on the item being bound.
--- @param result table|nil  { verdict, reason, detail, tag, rule }
--- @param isWarband boolean|nil  the slot is in the warband bank
--- @return table|nil  a fresh table (results are shared between slots), or
---   the same nil/empty result when there is nothing to show
-function Bagwise.Verdict.ForBank(result, isWarband)
-  if not result or not result.verdict then return result end
-  local reason = result.reason or ""
-  if reason:sub(1, #Bagwise.Verdict.BANK_IT_PREFIX) == Bagwise.Verdict.BANK_IT_PREFIX then
-    return {}
-  end
-  if BANK_DROPS[result.rule] then return {} end
-  if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
-    return result
-  end
-  return { verdict = "yellow", reason = result.reason, detail = result.detail,
-           tag = result.tag, rule = result.rule }
 end
 
 --- Every rule that had something to say about an item, including greens that
@@ -795,11 +934,4 @@ function Bagwise.Verdict.Trace(item, state)
     end
   end
   return trace
-end
-
---- Names of the rules, in priority order.
-function Bagwise.Verdict.RuleNames()
-  local names = {}
-  for i = 1, #RULES do names[i] = RULES[i].name end
-  return names
 end

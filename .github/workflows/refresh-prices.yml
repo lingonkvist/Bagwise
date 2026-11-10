@@ -1,0 +1,38 @@
+name: Refresh auction house data
+on:
+  schedule:
+    - cron: '17 5 * * 1'   # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the auction price list
+        env:
+          BNET_CLIENT_ID: ${{ secrets.BNET_CLIENT_ID }}
+          BNET_CLIENT_SECRET: ${{ secrets.BNET_CLIENT_SECRET }}
+        run: python3 -I tools/build_auction_prices.py
+      - name: Open a pull request if the list changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- data/auction_prices.lua; then
+            echo "No change."
+            exit 0
+          fi
+          branch="data/auction-prices-$(date -u +%Y%m%d)"
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add data/auction_prices.lua
+          git commit -m "Refresh auction house prices"
+          git push origin "$branch"
+          gh pr create --title "Refresh auction house prices" \
+            --body "Weekly refresh from the Blizzard auction house API. Check the item count in the file header before merging." \
+            --base "${{ github.event.repository.default_branch }}"

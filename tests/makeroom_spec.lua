@@ -2,7 +2,9 @@
 
 dofile("src/bags.lua")
 dofile("src/safety.lua")
+dofile("src/notes.lua")
 dofile("src/verdict.lua")
+dofile("src/bank.lua")
 dofile("src/makeroom.lua")
 
 local function junk(key, bag, slot, value)

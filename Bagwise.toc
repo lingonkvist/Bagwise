@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Bagwise
-## Notes: Corner dots on bag items showing what is safe to delete
+## Notes: Colored dots that mark what is safe to delete in your bags and bank
 ## Author: lingonkvist
-## Version: 0.5.1
+## Version: 0.5.2
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator, Bagnon
@@ -11,22 +11,22 @@
 src\bags.lua
 src\safety.lua
 src\progress.lua
+src\notes.lua
 src\verdict.lua
+src\bank.lua
 src\makeroom.lua
 src\scanner.lua
 src\overlay.lua
 src\tooltip.lua
-src\menu.lua
 src\overrides.lua
 src\dump.lua
 src\commands.lua
-data\quests.lua
-data\recipes.lua
-data\gating.lua
 data\vendor_reagents.lua
 data\protected_items.lua
 data\class_reagents.lua
 data\reagent_professions.lua
+data\reagent_chains.lua
 data\mana_consumables.lua
+data\auction_prices.lua
 data\quest_items.lua
 Bagwise.lua

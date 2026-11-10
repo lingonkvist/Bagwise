@@ -5,9 +5,30 @@ local passed = 0
 local failed = 0
 local errors = {}
 
+-- A describe block may set data tables (Bagwise.Data.X = ...) to build its
+-- scenario. They are put back when the block ends, so what one block sets up
+-- can never leak into the next one and results do not depend on their order.
+local function snapshotData()
+  local data = Bagwise and Bagwise.Data
+  if type(data) ~= "table" then return nil end
+  local copy = {}
+  for key, value in pairs(data) do copy[key] = value end
+  return data, copy
+end
+
+local function restoreData(data, copy)
+  if not data or Bagwise.Data ~= data then return end
+  for key in pairs(data) do
+    if copy[key] == nil then data[key] = nil end
+  end
+  for key, value in pairs(copy) do data[key] = value end
+end
+
 function describe(name, fn)
   current_describe = name
+  local data, copy = snapshotData()
   fn()
+  restoreData(data, copy)
 end
 
 function it(name, fn)

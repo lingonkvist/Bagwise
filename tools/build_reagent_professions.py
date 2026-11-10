@@ -35,7 +35,7 @@ DB2_CSV = WAGO_BASE + "/db2/{table}/csv?build={build}"
 BUILDS_API = WAGO_BASE + "/api/builds"
 
 # DB2 tables we need.
-TABLES = ["SpellReagents", "SkillLineAbility", "SkillLine", "ItemSparse"]
+TABLES = ["SpellReagents", "SkillLineAbility", "SkillLine", "ItemSparse", "SpellEffect"]
 
 # Crafting skill lines whose recipes consume reagents.
 # Gathering-only skills (Herbalism 182, Skinning 393) and non-crafting
@@ -355,6 +355,121 @@ def parse_item_sparse(rows):
     return result
 
 
+# Spell effects that create an item (CREATE_ITEM, CREATE_ITEM_2).
+CREATE_ITEM_EFFECTS = {24, 157}
+
+CHAINS_OUTPUT = "data/reagent_chains.lua"
+
+
+def parse_spell_products(rows):
+    """Return {spellID: itemID} for spells that create an item."""
+    result = {}
+    for row in rows:
+        if int_or(csv_get(row, "Effect")) not in CREATE_ITEM_EFFECTS:
+            continue
+        spell_id = int_or(csv_get(row, "SpellID"))
+        item_id = int_or(csv_get(row, "EffectItemType"))
+        if spell_id > 0 and item_id > 0:
+            result[spell_id] = item_id
+    return result
+
+
+def build_chains(spell_reagents, abilities, prof_names, products):
+    """
+    Downstream uses of a reagent through what it is turned into.
+
+    A recipe that consumes item I and creates item P passes every use of P on
+    to I: copper bar -> bronze bar -> the smithing and engineering recipes that
+    use bronze bars. Returns {itemID: {profName: [minSkill, maxSkill]}} holding
+    only uses reached through at least one intermediate (direct uses stay in
+    ReagentProfessions). Cycles (transmutes both ways) are handled by iterating
+    to a fixed point.
+    """
+    direct = build_reagent_map(spell_reagents, abilities, prof_names)
+    # makes[I] = items made from I
+    makes = {}
+    for spell_id, reagents in spell_reagents.items():
+        product = products.get(spell_id)
+        if not product or spell_id not in abilities:
+            continue
+        for item_id, _qty in reagents:
+            if item_id != product:
+                makes.setdefault(item_id, set()).add(product)
+
+    reach = {}  # itemID -> {prof: [min, max]} through intermediates
+    changed = True
+    while changed:
+        changed = False
+        for item_id, outputs in makes.items():
+            for product in outputs:
+                uses = {}
+                for prof, entry in direct.get(product, {}).items():
+                    uses[prof] = [entry["min"], entry["max"]]
+                for prof, span in reach.get(product, {}).items():
+                    if prof in uses:
+                        uses[prof] = [min(uses[prof][0], span[0]), max(uses[prof][1], span[1])]
+                    else:
+                        uses[prof] = list(span)
+                mine = reach.setdefault(item_id, {})
+                for prof, span in uses.items():
+                    if prof not in mine:
+                        mine[prof] = list(span)
+                        changed = True
+                    else:
+                        lo = min(mine[prof][0], span[0])
+                        hi = max(mine[prof][1], span[1])
+                        if [lo, hi] != mine[prof]:
+                            mine[prof] = [lo, hi]
+                            changed = True
+    return reach
+
+
+def generate_chains_lua(chains, build_version):
+    out = [
+        "-- Bagwise: reagent uses through what a reagent is made into.",
+        "-- Copper Bar is smelted into Bronze Bar, which smithing uses far above",
+        "-- what copper recipes do. Used so a material is never called outleveled",
+        "-- while something made from it is still in demand.",
+        f"-- Generated from wago.tools DB2 build {build_version}. Do not edit by hand.",
+        "",
+        "Bagwise                      = Bagwise or {}",
+        "Bagwise.Data                 = Bagwise.Data or {}",
+        "",
+        "-- Format: [itemID] = { { profession, min_level, max_level }, ... }",
+        "Bagwise.Data.ReagentChains = {",
+    ]
+    for item_id in sorted(chains):
+        parts = ", ".join('{ "%s", %d, %d }' % (p, span[0], span[1])
+                          for p, span in sorted(chains[item_id].items()))
+        out.append(f"  [{item_id}] = {{ {parts} }},")
+    out.append("}")
+    out.append("")
+    return "\n".join(out)
+
+
+def selftest():
+    """Copper bar is smelted into bronze bar, which smithing uses higher up."""
+    # item ids: 98 ore, 99 copper bar, 101 tin bar, 200 bronze bar, 300 and 301 smithing items
+    reagents = {
+        1: [(98, 1)],              # ore -> copper bar
+        2: [(99, 1), (101, 1)],    # copper bar + tin bar -> bronze bar
+        3: [(200, 1)],             # bronze bar -> item 300
+        4: [(300, 1)],             # item 300 -> item 301
+    }
+    abilities = {
+        1: (186, 1, 1, 0), 2: (186, 65, 65, 0),
+        3: (164, 85, 85, 0), 4: (164, 155, 155, 0),
+    }
+    products = {1: 99, 2: 200, 3: 300, 4: 301}
+    names = {186: "Mining", 164: "Blacksmithing"}
+    chains = build_chains(reagents, abilities, names, products)
+    assert chains[99]["Blacksmithing"] == [85, 155], chains
+    assert chains[200]["Blacksmithing"] == [155, 155], chains
+    assert chains[98]["Mining"] == [65, 65] and chains[98]["Blacksmithing"] == [85, 155], chains
+    assert 301 not in chains and 300 in chains, chains
+    print("selftest ok")
+
+
 # ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
@@ -481,7 +596,7 @@ def generate_lua(reagent_data, item_names, build_version):
 # ---------------------------------------------------------------------------
 
 
-def verify_against_existing(reagent_data, existing_path):
+def verify_known_reagents(reagent_data):
     """
     Spot-check a few known reagents from the old file.  Prints warnings
     for anything suspicious but never blocks the build.
@@ -490,7 +605,7 @@ def verify_against_existing(reagent_data, existing_path):
     checks = {
         765:  ("Alchemy", 5),     # Silverleaf: 5 alchemy recipes
         2589: ("Tailoring", None), # Linen Cloth: used in Tailoring
-        2841: ("Mining", None),    # Bronze Bar: smelting
+        2841: ("Blacksmithing", None), # Bronze Bar: smithing (it is made by smelting, not used up by it)
         4338: ("Tailoring", None), # Mageweave Cloth
     }
     missing = []
@@ -542,7 +657,11 @@ def main():
         help="Cache downloaded CSVs here (keyed by build). "
              "Reuses them on subsequent runs.",
     )
+    ap.add_argument("--selftest", action="store_true", help="Run the offline check and exit.")
     args = ap.parse_args()
+    if args.selftest:
+        selftest()
+        return
 
     # Resolve build.
     build = args.build or resolve_build(args.expansion)
@@ -599,7 +718,16 @@ def main():
         print("  Skill data may be unreliable for this build.")
 
     # Verify against known data points.
-    verify_against_existing(reagent_data, args.output)
+    verify_known_reagents(reagent_data)
+
+    # Chains: what each reagent is turned into, and where that is used.
+    products = parse_spell_products(tables["SpellEffect"])
+    chains = build_chains(spell_reagents, abilities, prof_names, products)
+    print(f"  {len(chains)} reagents with downstream uses")
+    chains_path = os.path.join(os.path.dirname(os.path.abspath(args.output)), "reagent_chains.lua")
+    with open(chains_path, "w", encoding="utf-8") as fh:
+        fh.write(generate_chains_lua(chains, build))
+    print(f"Wrote {chains_path}")
 
     # Generate.
     print(f"\nWriting {args.output}...")

@@ -5,7 +5,9 @@
 Bagwise = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
+dofile("src/notes.lua")
 dofile("src/verdict.lua")
+dofile("src/bank.lua")
 dofile("src/makeroom.lua")
 for _, file in ipairs({ "reagent_professions", "vendor_reagents", "class_reagents", "quest_items" }) do
   dofile("data/" .. file .. ".lua")

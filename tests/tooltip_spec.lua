@@ -24,7 +24,9 @@ _G.C_QuestLog = {
 _G.Bagwise = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
+dofile("src/notes.lua")
 dofile("src/verdict.lua")
+dofile("src/bank.lua")
 dofile("src/tooltip.lua")
 
 -- buttonBagID is optional. When given, the owner button reports its own bag
@@ -888,7 +890,7 @@ describe("tooltip in the loot window", function()
 
   it("explains the X on an item that already has its own verdict", function()
     setup()
-    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+    installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
     Bagwise.Scanner.LootDecision = function() return "leave" end
     Bagwise.Scanner.MakeRoomSummary = function()
       return { cheapestJunkValue = 800, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
@@ -901,12 +903,12 @@ describe("tooltip in the loot window", function()
 
     assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
     assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
-      .. "8|cffc7c7cfs|r)", tt.lines[3].text)
+      .. "8s)", tt.lines[3].text)
   end)
 
   it("says a must-take item has no room even when it has its own verdict", function()
     setup()
-    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+    installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
     Bagwise.Scanner.LootDecision = function() return "noroom" end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
@@ -945,7 +947,7 @@ describe("tooltip in the loot window", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
-      .. "1|cffc7c7cfs|r 17|cffeda55fc|r)", tt.lines[2].text)
+      .. "1s 17c)", tt.lines[2].text)
   end)
 
   it("a skipped gray does not repeat its own price", function()
@@ -984,9 +986,34 @@ describe("tooltip in the loot window", function()
     assert.is_truthy(tt.lines[2].text:find("Worth less than your cheapest gray", 1, true))
   end)
 
-  it("keeps the yellow heading as is", function()
+  it("names a recognised yellow by what was found, detail underneath", function()
     setup()
-    installScanner({ verdict = "yellow", reason = "Flagged by you" })
+    installScanner({ verdict = "yellow", reason = "Outleveled, Mining recipes use it up to 125",
+      heading = { title = "Outleveled reagent", detail = "Mining recipes use it up to 125" } })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Outleveled reagent$"))
+    assert.are.equal("Mining recipes use it up to 125", tt.lines[2].text)
+  end)
+
+  it("shows only the heading when a yellow has no detail", function()
+    setup()
+    installScanner({ verdict = "yellow", reason = "Flagged by you", heading = { title = "Flagged by you" } })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Flagged by you$"))
+    assert.are.equal(1, #tt.lines)
+  end)
+
+  it("keeps the generic yellow heading for an unlisted reason", function()
+    setup()
+    installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
