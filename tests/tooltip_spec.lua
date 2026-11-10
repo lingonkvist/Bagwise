@@ -139,7 +139,7 @@ describe("tooltip basic output", function()
     Bagwise.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Shamans can't wear mail until 40",
-                 tag = Bagwise.Verdict.VENDOR_TAG }
+                 sellable = true }
       end,
     }
 

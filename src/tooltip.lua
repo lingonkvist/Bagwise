@@ -375,7 +375,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     end
     result = Bagwise.Scanner.GetResult(bag, slot)
     headings = BAG_HEADINGS
-    if result and result.tag == Bagwise.Verdict.VENDOR_TAG then
+    if result and result.sellable then
       headings = BAG_HEADINGS_VENDOR
     end
   end

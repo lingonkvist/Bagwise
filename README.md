@@ -31,7 +31,7 @@ Green:
 - White armor you have outgrown, because you wear green or better in that slot.
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
-- Tradable green gear that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
+- Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
 
 Yellow:
 - Bound gear 10 to 19 levels below you.
@@ -39,7 +39,7 @@ Yellow:
 - Unused trade goods that sell for a fair price.
 - A gray that is worth some silver (the cheapest one only).
 - Things you open: clams, lockboxes and bags of loot.
-- Recipes for a profession you do not have, and recipes or reagents far above your skill ("Bank it").
+- Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it").
 - Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them.
 - Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
 - Mana potions, if your class has no mana.
@@ -51,6 +51,7 @@ Yellow:
 Bagwise ships with auction price data for Forever, so it can tell vendor trash from gear that is worth listing. It never reads the auction house in game and never needs a scan.
 
 - Prices come from the Blizzard auction API, taken from the middle of all auction houses, so one odd listing does not move them.
+- Enchanters are never told to vendor green gear, since it can be disenchanted.
 - Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
 - The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees.
 - The data is refreshed with each release. `tools/build_auction_prices.py` rebuilds it, and a weekly workflow opens a pull request with new prices.

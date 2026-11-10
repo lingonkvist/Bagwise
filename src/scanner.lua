@@ -507,7 +507,8 @@ local function evaluateCached(item, state, profKey)
   if cached then return cached end
 
   local verdict, reason, detail, tag, rule, heading = Bagwise.Verdict.Evaluate(item, state)
-  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule, heading = heading }
+  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
+                   heading = heading, sellable = Bagwise.Verdict.Sellable(item, verdict) }
   verdictCache[cacheKey] = result
   return result
 end
@@ -616,6 +617,7 @@ local function scanAllSlots()
         tag = Bagwise.Verdict.POOR_QUALITY_TAG,
         detail = original.detail,
         rule = original.rule,
+        sellable = original.sellable,
       }
     end
   end
@@ -1030,6 +1032,7 @@ function Bagwise.Scanner.Explain(itemID)
     trace = Bagwise.Verdict.Trace(item, state),
     protections = Bagwise.Safety.Protections(item),
     faction = state.faction,
+    state = state,
     quests = quests,
     recipeProfessions = professionNamesFor(itemID),
   }

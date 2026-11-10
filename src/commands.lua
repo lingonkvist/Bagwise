@@ -197,7 +197,7 @@ local COMMAND_HANDLERS = {
           .. entry.blockedBy)
       end
     end
-    for _, line in ipairs(Bagwise.Verdict.SellAtVendorFacts(item)) do
+    for _, line in ipairs(Bagwise.Verdict.SellAtVendorFacts(item, explained.state)) do
       print("  " .. line)
     end
     if item.link then

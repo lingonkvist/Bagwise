@@ -7,15 +7,19 @@ Bagwise.Verdict = {}
 local LEVEL_GAP_YELLOW = 10
 local LEVEL_GAP_GREEN = 20
 local RARE_QUALITY = 3
+local UNCOMMON_QUALITY = 2
 
--- Marks a green the player can sell instead of destroy (the tooltip says
--- "Safe to vendor"). Only set when the item actually has a vendor price.
-Bagwise.Verdict.VENDOR_TAG = "vendor"
-local VENDOR_TAG = Bagwise.Verdict.VENDOR_TAG
+--- Can the player sell this instead of destroying it? Any green on something a
+-- vendor will buy. The tooltip then says "Safe to vendor" rather than "Safe to
+-- delete", so the two always read the same way whichever rule made the green.
+function Bagwise.Verdict.Sellable(item, verdict)
+  return verdict == "green" and (item.sellPrice or 0) > 0
+end
 
-local function vendorTagFor(item)
-  if (item.sellPrice or 0) > 0 then return VENDOR_TAG end
-  return nil
+-- An Enchanter can turn green and better gear into materials, so for them such
+-- gear is never plain vendor trash, whatever a vendor or the auction house pays.
+local function hasEnchanting(state)
+  return state ~= nil and state.professionNames ~= nil and state.professionNames["Enchanting"] == true
 end
 
 local function needsAnyOf(lookupTable, keys)
@@ -83,12 +87,13 @@ local function evaluateLevelGap(item, state)
   -- Rare and better gear can sell well or be disenchanted, so it is a hint
   -- at most, never a "safe".
   local canBeGreen = (item.quality or 0) < RARE_QUALITY
+  if (item.quality or 0) >= UNCOMMON_QUALITY and hasEnchanting(state) then canBeGreen = false end
 
   if gap >= LEVEL_GAP_GREEN and canBeGreen then
     if isItemLevel then
-      return "green", (note("very_low_item_level", compareLevel, state.level)), nil, vendorTagFor(item)
+      return "green", (note("very_low_item_level", compareLevel, state.level))
     end
-    return "green", (note("very_low_level_gear", compareLevel, state.level)), nil, vendorTagFor(item)
+    return "green", (note("very_low_level_gear", compareLevel, state.level))
   end
   if gap >= LEVEL_GAP_GREEN then
     if isItemLevel then
@@ -433,7 +438,10 @@ local RECIPE_PROFESSIONS = {
   [4] = "Blacksmithing", [5] = "Cooking", [6] = "Alchemy",
   [7] = "First Aid", [8] = "Enchanting", [9] = "Fishing",
 }
--- How many skill points short before something counts as "a while away".
+-- How many skill points short before a reagent counts as "a while away". It is
+-- wider than RECIPE_SKILL_GAP below on purpose: a reagent is used by many recipes
+-- at many levels, so one ingredient stays useful for longer than a single
+-- recipe you cannot learn yet.
 local BANK_SKILL_GAP = 50
 -- A recipe you cannot learn yet gets the bank hint once it is this far out of
 -- reach. A profession you have stopped leveling has nothing "close", so for
@@ -449,6 +457,8 @@ local function evaluateRecipe(item, state)
   if state.professionsKnown == false or not state.professionNames then return nil end
 
   if not state.professionNames[profession] then
+    -- A bound recipe cannot be sold, so there is nothing to suggest.
+    if item.isBound then return nil end
     return yellow("not_your_profession")
   end
 
@@ -468,10 +478,16 @@ end
 -- bars go into bronze bars, which smithing and engineering use far higher up.
 -- ReagentChains (generated) holds the downstream uses; entries are merged per
 -- profession into { name, minSkill, maxSkill }.
+-- Both reagent rules ask for the same merge, so it is kept per data table. A
+-- different table (new data, or a test swapping it) misses and is rebuilt.
+local reagentUseMemo = setmetatable({}, { __mode = "k" })
+
 local function reagentUses(itemID)
   local direct = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[itemID]
   if not direct then return nil end
   local chains = Bagwise.Data.ReagentChains and Bagwise.Data.ReagentChains[itemID]
+  local memo = reagentUseMemo[direct]
+  if memo and memo.chains == chains then return memo.order end
   local merged, order = {}, {}
   local function add(name, minSkill, maxSkill)
     local use = merged[name]
@@ -488,6 +504,7 @@ local function reagentUses(itemID)
   if chains then
     for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3]) end
   end
+  reagentUseMemo[direct] = { chains = chains, order = order }
   return order
 end
 
@@ -601,7 +618,6 @@ local function evaluateOutleveledConsumable(item, state)
 end
 
 local COMMON_QUALITY = 1
-local UNCOMMON_QUALITY = 2
 local ARMOR_CLASS_ID = 4
 
 -- Armor and shield types by class. A number is the player level at which the
@@ -664,7 +680,7 @@ local function evaluateUnwearableWhite(item, state)
     if (state.level or 1) >= rule then return nil end
     reason = reason .. " until " .. rule
   end
-  return "green", reason, nil, vendorTagFor(item)
+  return "green", reason
 end
 
 -- A white piece of armor you have already out-geared. Every slot it could go
@@ -691,7 +707,7 @@ local function evaluateOutgearedWhite(item, state)
     if equipped[i].quality < UNCOMMON_QUALITY then return nil end
   end
 
-  return "green", "Worse than your equipped gear", nil, vendorTagFor(item)
+  return "green", "Worse than your equipped gear"
 end
 
 -- Every rule, in priority order (first one with a verdict wins). A rule only
@@ -706,7 +722,6 @@ end
 -- vendor price. After the auction house's 5% cut, a higher price is worth a look.
 -- Every check above this rule still runs first, and the upgrade check holds.
 local EQUIPMENT_CLASSES = { [2] = true, [4] = true }
-local UNCOMMON = 2
 -- How far above the vendor price the AH ceiling may sit and still read as "about
 -- the same". The margin shrinks as the price grows: a few copper does not
 -- justify a repost, but a quarter of a gold does. Each step: below `below`
@@ -779,18 +794,22 @@ end
 -- /bagwise why both read this, so they cannot disagree.
 -- @return table|nil nil for items the rule never considers (not gear);
 --   otherwise { passes = boolean, ceiling, limit, notes = { lines } }
-local function checkSellAtVendor(item)
+local function checkSellAtVendor(item, state)
   if not EQUIPMENT_CLASSES[item.classID] then return nil end
   local money = Bagwise.Verdict.FormatMoney
   local check = { passes = false, notes = {} }
   local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
 
-  if item.quality ~= UNCOMMON then
+  if item.quality ~= UNCOMMON_QUALITY then
     note_("only green gear is considered (this is quality " .. tostring(item.quality) .. ")")
     return check
   end
   if item.isBound then
     note_("soulbound, so it is not sold at auction")
+    return check
+  end
+  if hasEnchanting(state) then
+    note_("you have Enchanting, so green gear may be worth disenchanting")
     return check
   end
   if not item.sellPrice or item.sellPrice <= 0 then
@@ -833,17 +852,17 @@ local function checkSellAtVendor(item)
   return check
 end
 
-local function evaluateSellAtVendor(item)
-  local check = checkSellAtVendor(item)
+local function evaluateSellAtVendor(item, state)
+  local check = checkSellAtVendor(item, state)
   if not (check and check.passes) then return nil end
   local money = Bagwise.Verdict.FormatMoney
-  return "green", "Vendor " .. money(item.sellPrice) .. ", auction up to " .. money(check.ceiling), nil, vendorTagFor(item)
+  return "green", "Vendor " .. money(item.sellPrice) .. ", auction up to " .. money(check.ceiling)
 end
 
 --- The facts behind the sell-at-vendor rule for one item, as short lines for
 -- /bagwise why. Empty for non-gear.
-function Bagwise.Verdict.SellAtVendorFacts(item)
-  local check = checkSellAtVendor(item)
+function Bagwise.Verdict.SellAtVendorFacts(item, state)
+  local check = checkSellAtVendor(item, state)
   return check and check.notes or {}
 end
 

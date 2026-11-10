@@ -31,8 +31,10 @@ function Bagwise.Verdict.ForBank(result, isWarband)
   if not result or not result.verdict then return result end
   if result.heading and result.heading.title == Bagwise.Notes.BANK_IT_TITLE then return {} end
   if BANK_DROPS[result.rule] then return {} end
+  -- Nobody needs a vendor suggestion for something already banked.
   if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
-    return result
+    return { verdict = result.verdict, reason = result.reason, detail = result.detail,
+             tag = result.tag, rule = result.rule, heading = result.heading, sellable = false }
   end
   return { verdict = "yellow", reason = result.reason, detail = result.detail,
            tag = result.tag, rule = result.rule, heading = result.heading }

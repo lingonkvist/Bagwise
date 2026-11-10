@@ -1218,18 +1218,20 @@ describe("Reason wording", function()
     assert.are.equal("Rogues can't wear mail", reason)
   end)
 
-  it("white gear that sells is tagged for vendoring, one that does not sell is not", function()
+  it("a green is sellable when a vendor buys it, and only then", function()
     local item = {
       id = 9001, quality = 1, isEquippable = true, classID = 4, subClassID = 3,
       itemLevel = 10, sellPrice = 120, count = 1,
     }
-    local _, _, _, tag = Bagwise.Verdict.Evaluate(item, state)
-    assert.are.equal(Bagwise.Verdict.VENDOR_TAG, tag)
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
+    assert.are.equal("green", verdict)
+    assert.is_truthy(Bagwise.Verdict.Sellable(item, verdict))
 
     item.sellPrice = 0
-    local verdict, _, _, noTag = Bagwise.Verdict.Evaluate(item, state)
+    verdict = Bagwise.Verdict.Evaluate(item, state)
     assert.are.equal("green", verdict)
-    assert.is_nil(noTag)
+    assert.is_truthy(not Bagwise.Verdict.Sellable(item, verdict))
+    assert.is_truthy(not Bagwise.Verdict.Sellable({ sellPrice = 50 }, "yellow"))
   end)
 
   it("the gray that keeps its dot says it is the cheapest", function()
@@ -1288,9 +1290,10 @@ describe("Level gap: rare gear and vendor wording", function()
   end
 
   it("is green and tagged for vendoring when ordinary gear is far below", function()
-    local verdict, _, _, tag = Bagwise.Verdict.Evaluate(gear(2), state)
+    local item = gear(2)
+    local verdict = Bagwise.Verdict.Evaluate(item, state)
     assert.are.equal("green", verdict)
-    assert.are.equal(Bagwise.Verdict.VENDOR_TAG, tag)
+    assert.is_truthy(Bagwise.Verdict.Sellable(item, verdict))
   end)
 
   it("is only yellow for rare and better gear, however far below", function()
@@ -1815,13 +1818,13 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     restore()
     assert.are.equal("green", verdict)
     assert.are.equal("Vendor 3s, auction up to 4s", reason)
-    assert.are.equal(Bagwise.Verdict.VENDOR_TAG, tag) -- the tooltip then says "Safe to vendor"
+    assert.is_nil(tag)
     assert.are.equal("sell_at_vendor", rule)
   end)
 
   it("is not shown in the bank", function()
     local bank = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Vendor 3s, auction up to 4s",
-      tag = Bagwise.Verdict.VENDOR_TAG, rule = "sell_at_vendor" })
+      sellable = true, rule = "sell_at_vendor" })
     assert.is_nil(bank.verdict)
   end)
 
@@ -2073,5 +2076,38 @@ describe("Auction price per version of an item", function()
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(plain, state)))
     Bagwise.Data.AuctionPriceCeiling = nil
     Bagwise.Data.AuctionVariantCeiling = nil
+  end)
+end)
+
+describe("Enchanters and bound recipes", function()
+  local function state(professions)
+    local names = {}
+    for name in pairs(professions) do names[name] = true end
+    return { level = 40, professionNames = names, professionRanks = professions,
+             professionSkillLines = {}, professionsKnown = true }
+  end
+  local greenBoe = { id = 41002, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
+    reqLevel = 18, sellPrice = 300, count = 1, isBound = false,
+    equippedInSlots = { { quality = 2, itemLevel = 25 } } }
+
+  it("green gear to vendor is left alone for an Enchanter", function()
+    Bagwise.Data.AuctionPriceCeiling = { [41002] = 400 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(greenBoe, state({}))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(greenBoe, state({ Enchanting = 100 }))))
+    Bagwise.Data.AuctionPriceCeiling = nil
+  end)
+
+  it("a bound green far below you is only yellow for an Enchanter", function()
+    local item = { id = 41003, isBound = true, isEquippable = true, quality = 2, reqLevel = 10,
+      itemLevel = 12, sellPrice = 100, count = 1 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state({}))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(item, state({ Enchanting = 100 }))))
+  end)
+
+  it("a bound recipe for another profession gets no auction hint", function()
+    local recipe = { id = 9002, classID = 9, subClassID = 6, quality = 1, isBound = true }
+    assert.is_nil((Bagwise.Verdict.Evaluate(recipe, state({ Mining = 50 }))))
+    recipe.isBound = false
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(recipe, state({ Mining = 50 }))))
   end)
 end)
