@@ -1,13 +1,12 @@
 -- Bagwise: what a verdict means once the item is in the bank.
-
+--
+-- People bank things on purpose, often for another character, so a verdict
+-- only stays as it is when it holds for any character; one that depends on this
+-- character's professions, class or quests is capped at a yellow reminder; and
+-- one that only says what to do with an item that is not banked yet is dropped.
+-- An unknown rule gets the cautious treatment.
 Bagwise = Bagwise or {}
 
--- What a verdict means once the item is in the bank. People bank things on
--- purpose, often for another character, so a verdict only stays as it is
--- when it holds for any character; one that depends on this character's
--- professions, class or quests is capped at a yellow reminder; and one that
--- only says what to do with an item that is not banked yet is dropped. An
--- unknown rule gets the cautious treatment.
 local BANK_KEEPS = {
   level_gap = true,     -- soulbound, so it cannot go to an alt
   poor_quality = true,
@@ -36,7 +35,10 @@ function Bagwise.Verdict.ForBank(result, isWarband)
     return { verdict = result.verdict, reason = result.reason, detail = result.detail,
              tag = result.tag, rule = result.rule, heading = result.heading, sellable = false }
   end
+  -- A green has no heading of its own, so the yellow is named by the same
+  -- words the bag shows under "Safe to delete": "Quest completed", and so on.
   return { verdict = "yellow", reason = result.reason, detail = result.detail,
-           tag = result.tag, rule = result.rule, heading = result.heading }
+           tag = result.tag, rule = result.rule,
+           heading = result.heading or { title = result.reason } }
 end
 

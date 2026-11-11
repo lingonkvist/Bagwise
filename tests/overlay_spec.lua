@@ -107,6 +107,24 @@ describe("Ellesmere Bags adapter", function()
     _G.EllesmereUI = nil
   end)
 
+  it("hides the glow when the marked slot is emptied and the bag addon never redraws it", function()
+    local button = makeButton(0, 3)
+    installEllesmere({ button })
+    installScanner({ ["0:3"] = { verdict = "green", glow = true } })
+    Bagwise.Overlay.UpdateAll()
+    assert.is_truthy(button.dots[2].shown)
+
+    -- The junk is deleted: the slot has no result, and the addon does not paint it.
+    installEllesmere({})
+    installScanner({})
+    Bagwise.Overlay.UpdateAll()
+    for i = 2, #button.dots do
+      assert.are.equal(false, button.dots[i].shown)
+      assert.are.equal(false, button.dots[i].group.playing)
+    end
+    _G.EllesmereUI = nil
+  end)
+
   it("hides a quiet verdict's dot", function()
     local button = makeButton(0, 3)
     installEllesmere({ button })
@@ -354,6 +372,26 @@ describe("Baganator adapter", function()
   it("skips an item with no location, such as another character's", function()
     installBaganator()
     assert.is_truthy(not paint({ itemLink = "item:111" }))
+    tearDown()
+  end)
+
+  it("takes a delete glow off a button that now shows an empty or foreign slot", function()
+    installBaganator()
+    installScanner({ ["0:3"] = { verdict = "green", glow = true } })
+    local button = makeButton(0, 3)
+    local function dotOf(button_)
+      local dot = makeDotTexture()
+      dot.GetParent = function() return button_ end
+      return dot
+    end
+    onUpdate(dotOf(button), { itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
+    assert.is_truthy(button.dots[1].shown) -- glow layers were made on the button
+
+    -- The slot is emptied: Baganator redraws the button with a link the real slot does not hold.
+    onUpdate(dotOf(button), { itemLocation = { bagID = 0, slotIndex = 4 }, itemLink = "item:111" })
+    for i = 1, #button.dots do
+      assert.are.equal(false, button.dots[i].shown)
+    end
     tearDown()
   end)
 end)

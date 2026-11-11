@@ -14,6 +14,21 @@ for _, file in ipairs(DATA_FILES) do
 end
 local Data = Bagwise.Data
 
+-- Price data is kept per market ("eu.Horde"). A data file made before that has
+-- the three tables at the top, and counts as one market.
+local function markets()
+  local found = {}
+  if Data.AuctionMarkets then
+    for name, market in pairs(Data.AuctionMarkets) do
+      found[#found + 1] = { name = name, Ceiling = market.Ceiling, Variant = market.Variant, AboveCap = market.AboveCap }
+    end
+  else
+    found[1] = { name = "(single table)", Ceiling = Data.AuctionPriceCeiling,
+      Variant = Data.AuctionVariantCeiling, AboveCap = Data.AuctionAboveCap }
+  end
+  return found
+end
+
 local function count(tbl)
   local n = 0
   for _ in pairs(tbl or {}) do n = n + 1 end
@@ -28,7 +43,9 @@ describe("Data files: sizes", function()
     assert.is_truthy(count(Data.VendorReagents) >= 10)
     assert.is_truthy(count(Data.ClassReagents) >= 5)
     assert.is_truthy(count(Data.ManaOnlyConsumables) >= 5)
-    assert.is_truthy(count(Data.AuctionPriceCeiling) >= 100)
+    for _, market in ipairs(markets()) do
+      assert.is_truthy(count(market.Ceiling) >= 100)
+    end
   end)
 end)
 
@@ -60,18 +77,31 @@ describe("Data files: shape", function()
   end)
 
   it("auction ceilings are positive numbers", function()
-    for id, ceiling in pairs(Data.AuctionPriceCeiling) do
-      assert.are.equal("number", type(id))
-      assert.is_truthy(type(ceiling) == "number" and ceiling > 0)
+    for _, market in ipairs(markets()) do
+      for id, ceiling in pairs(market.Ceiling) do
+        assert.are.equal("number", type(id))
+        assert.is_truthy(type(ceiling) == "number" and ceiling > 0)
+      end
+    end
+  end)
+
+  it("every market is a region and a faction, with its three tables", function()
+    for name, market in pairs(Data.AuctionMarkets or {}) do
+      assert.is_truthy(name:match("^%l%l%.%u%l+$") ~= nil)
+      assert.are.equal("table", type(market.Ceiling))
+      assert.are.equal("table", type(market.Variant))
+      assert.are.equal("table", type(market.AboveCap))
     end
   end)
 
   it("auction versions are keyed by sorted bonus ids with positive ceilings", function()
-    for id, versions in pairs(Data.AuctionVariantCeiling or {}) do
-      assert.are.equal("number", type(id))
-      for key, ceiling in pairs(versions) do
-        assert.is_truthy(type(key) == "string" and key:match("^%d+[%d%-]*$") ~= nil)
-        assert.is_truthy(type(ceiling) == "number" and ceiling > 0)
+    for _, market in ipairs(markets()) do
+      for id, versions in pairs(market.Variant or {}) do
+        assert.are.equal("number", type(id))
+        for key, ceiling in pairs(versions) do
+          assert.is_truthy(type(key) == "string" and key:match("^%d+[%d%-]*$") ~= nil)
+          assert.is_truthy(type(ceiling) == "number" and ceiling > 0)
+        end
       end
     end
   end)
@@ -93,3 +123,25 @@ describe("Data files: shape", function()
     assert.is_truthy(missing <= count(Data.QuestInfo) * 0.01)
   end)
 end)
+
+describe("Data files: auction prices above the cap", function()
+  it("an item over the cap has no price, and every mark is true", function()
+    -- The table is absent in data made before it existed, which is fine.
+    for _, market in ipairs(markets()) do
+      for id, flag in pairs(market.AboveCap or {}) do
+        assert.are.equal("number", type(id))
+        assert.are.equal(true, flag)
+        assert.is_nil(market.Ceiling[id])
+      end
+    end
+  end)
+end)
+
+describe("Data files: auction price date", function()
+  it("is a YYYY-MM-DD day when the data has one", function()
+    if Data.AuctionPricesDate then
+      assert.is_truthy(Data.AuctionPricesDate:match("^%d%d%d%d%-%d%d%-%d%d$"))
+    end
+  end)
+end)
+

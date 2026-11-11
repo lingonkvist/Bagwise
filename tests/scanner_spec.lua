@@ -512,3 +512,39 @@ describe("Scanner: potions outleveled", function()
     assert.is_nil(resultFor("Use: Increases swim speed by 50% for 30 sec.").verdict)
   end)
 end)
+
+describe("Scanner: deleting while the loot window is open", function()
+  it("moves the mark to the next cheapest junk after the marked one is deleted", function()
+    setUp({ [0] = { { id = 300 }, { id = 400 }, { id = 100, count = 20 } } }, { [0] = 0 },
+      { { id = 500, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow) -- the cheapest, Torn Rag
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 2).glow)
+
+    -- The player deletes it, then takes nothing yet: the slot is empty, and
+    -- the loot still has no room because the stack there is full.
+    bags[0][1] = false
+    freeByBag[0] = 1
+    Bagwise.Scanner.ClearCache()
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 1))
+    assert.are.equal(false, Bagwise.Scanner.MakeRoomSummary().active) -- one free slot now fits the loot
+  end)
+
+  it("marks the next cheapest when two pieces of loot need room and one slot is freed", function()
+    setUp({ [0] = { { id = 300 }, { id = 400 }, { id = 100, count = 20 } } }, { [0] = 0 },
+      { { id = 500, qty = 1 }, { id = 500, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow)
+
+    bags[0][1] = false
+    freeByBag[0] = 1
+    Bagwise.Scanner.ScanAll()
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 1))
+    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow)
+    assert.is_nil(Bagwise.Scanner.GetResult(0, 3) and Bagwise.Scanner.GetResult(0, 3).glow)
+  end)
+end)

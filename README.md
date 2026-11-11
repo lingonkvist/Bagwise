@@ -31,7 +31,9 @@ Green:
 - White armor you have outgrown, because you wear green or better in that slot.
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
-- Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
+- Tradable items that are otherwise green (finished quest items, unused trade goods, vendor and class reagents, white gear you cannot use) lose the dot when the auction pays clearly more than a vendor.
+- When the auction check takes a green away, the tooltip says why in one blue line, for example `Vendor 5c, auction about 8s`, so a missing dot is not a mystery.
+- Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction about 3s`.
 
 Yellow:
 - Bound gear 10 to 19 levels below you.
@@ -40,7 +42,7 @@ Yellow:
 - A gray that is worth some silver (the cheapest one only).
 - Things you open: clams, lockboxes and bags of loot.
 - Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it").
-- Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them.
+- Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them. The hint appears as soon as you pass the best recipe that needs the item, directly or through what it is turned into.
 - Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
 - Mana potions, if your class has no mana.
 - Quest items for a quest far below your level.
@@ -50,7 +52,9 @@ Yellow:
 
 Bagwise ships with auction price data for Forever, so it can tell vendor trash from gear that is worth listing. It never reads the auction house in game and never needs a scan.
 
-- Prices come from the Blizzard auction API, taken from the middle of all auction houses, so one odd listing does not move them.
+- Prices come from the Blizzard auction API and are kept per region and faction. A Horde player on EU is judged by EU Horde listings only, never by US or Alliance ones. The price used is the cheap end of each auction house (the 25th percentile), since the cheapest listings sell first, and the middle of the houses in your market, so one odd listing or house does not move it. Gear with random versions is judged by its own version, nearer the pricey end.
+- If Bagwise cannot tell your region or faction, tradable items get no green at all.
+- Ordinary auctions and commodities (stackable materials) are both read. Items that sell for more than the price cap get no price but are marked as above it, so "worth a lot" is told apart from "nobody lists it".
 - Enchanters are never told to vendor green gear, since it can be disenchanted.
 - Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
 - The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees.

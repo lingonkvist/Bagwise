@@ -76,3 +76,18 @@ describe("Commands.SplitInput", function()
     assert.are.equal("", (Bagwise.Commands.SplitInput(nil)))
   end)
 end)
+
+describe("Commands.PriceAgeDays", function()
+  local noon = os.time({ year = 2026, month = 11, day = 20, hour = 12 })
+
+  it("counts whole days from the date in the price data", function()
+    assert.are.equal(10, Bagwise.Commands.PriceAgeDays("2026-11-10", noon))
+    assert.are.equal(0, Bagwise.Commands.PriceAgeDays("2026-11-20", noon))
+  end)
+
+  it("gives nothing for a missing or odd date", function()
+    assert.is_nil(Bagwise.Commands.PriceAgeDays(nil, noon))
+    assert.is_nil(Bagwise.Commands.PriceAgeDays("last week", noon))
+  end)
+end)
+

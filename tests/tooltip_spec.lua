@@ -224,6 +224,30 @@ describe("tooltip basic output", function()
     assert.are.equal(0, #tt.lines)
   end)
 
+  it("explains the missing dot when the auction pays more: no verdict, one price row", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function() return { auctionNote = "Vendor 5c, auction about 8s" } end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:16645:...|h[Page 1]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Vendor 5c, auction about 8s", tt.lines[1].text)
+    assert.are.equal(0.40, tt.lines[1].r)
+  end)
+
+  it("a price note goes with a yellow verdict too, after its detail", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "yellow", reason = "Flagged", auctionNote = "Vendor 5c, auction about 8s" }
+      end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:16646:...|h[Page 2]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal("Vendor 5c, auction about 8s", tt.lines[#tt.lines].text)
+  end)
+
   it("shows profession info even when scan result is nil", function()
     Bagwise.Data = Bagwise.Data or {}
     Bagwise.Data.ReagentProfessions = {

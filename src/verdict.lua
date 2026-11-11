@@ -7,6 +7,9 @@ Bagwise.Verdict = {}
 local LEVEL_GAP_YELLOW = 10
 local LEVEL_GAP_GREEN = 20
 local RARE_QUALITY = 3
+-- bindType values from GetItemInfo.
+local BIND_ON_PICKUP = 1
+local BIND_QUEST = 4
 local UNCOMMON_QUALITY = 2
 
 --- Can the player sell this instead of destroying it? Any green on something a
@@ -442,6 +445,10 @@ local RECIPE_PROFESSIONS = {
 -- at many levels, so one ingredient stays useful for longer than a single
 -- recipe you cannot learn yet.
 local BANK_SKILL_GAP = 50
+-- A reagent is "outleveled" as soon as you are past the best recipe that needs
+-- it, counting what it is turned into: past that skill every one of them is
+-- gray, so nothing you make from it is still a skill-up.
+local OUTLEVELED_SKILL_GAP = 0
 -- A recipe you cannot learn yet gets the bank hint once it is this far out of
 -- reach. A profession you have stopped leveling has nothing "close", so for
 -- it any shortfall counts (see Bagwise.Progress).
@@ -547,7 +554,7 @@ local function evaluateOutleveledReagent(item, state)
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not maxSkill then return nil end
-      if rank <= maxSkill + BANK_SKILL_GAP then return nil end
+      if rank <= maxSkill + OUTLEVELED_SKILL_GAP then return nil end
       if not newest or maxSkill > newest.maxSkill then
         newest = { name = name, maxSkill = maxSkill }
       end
@@ -855,7 +862,7 @@ local function evaluateSellAtVendor(item, state)
   local check = checkSellAtVendor(item, state)
   if not (check and check.passes) then return nil end
   local money = Bagwise.Verdict.FormatMoney
-  return "green", "Vendor " .. money(item.sellPrice) .. ", auction up to " .. money(check.ceiling)
+  return "green", "Vendor " .. money(item.sellPrice) .. ", auction about " .. money(check.ceiling)
 end
 
 --- The facts behind the sell-at-vendor rule for one item, as short lines for
@@ -866,34 +873,67 @@ function Bagwise.Verdict.SellAtVendorFacts(item, state)
 end
 
 local RULES = {
-  { name = "unwearable_white",   evaluate = evaluateUnwearableWhite },
+  { name = "unwearable_white",   evaluate = evaluateUnwearableWhite, checksAuction = true },
   { name = "level_gap",          evaluate = evaluateLevelGap },
-  { name = "outgeared_white",    evaluate = evaluateOutgearedWhite },
-  { name = "quest_starter_done", evaluate = evaluateCompletedQuestStarter,
+  { name = "outgeared_white",    evaluate = evaluateOutgearedWhite, checksAuction = true },
+  { name = "quest_starter_done", evaluate = evaluateCompletedQuestStarter, checksAuction = true,
     overrides = { quest_item = true } },
-  { name = "quest_objective_done", evaluate = evaluateQuestObjective,
+  { name = "quest_objective_done", evaluate = evaluateQuestObjective, checksAuction = true,
     overrides = { quest_item = true } },
   { name = "trivial_quest_item", evaluate = evaluateTrivialQuestItem },
-  { name = "vendor_reagent",     evaluate = evaluateVendorReagent,
+  { name = "vendor_reagent",     evaluate = evaluateVendorReagent, checksAuction = true,
     overrides = { vendor_reagent = true, recipe_reagent = true } },
-  { name = "class_reagent",      evaluate = evaluateClassReagent,
+  { name = "class_reagent",      evaluate = evaluateClassReagent, checksAuction = true,
     overrides = { spell_reagent = true, recipe_reagent = true } },
   { name = "openable",           evaluate = evaluateOpenable },
   { name = "recipe",             evaluate = evaluateRecipe },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
   { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent },
   { name = "poor_quality",       evaluate = evaluatePoorQuality },
-  { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse },
+  { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse, checksAuction = true },
   { name = "sell_at_vendor",     evaluate = evaluateSellAtVendor },
 }
 
+--- Why a green must not stand because the auction house may pay more than a
+-- vendor. Only for items that can be traded at all: a soulbound or quest-bound
+-- item cannot be listed. Where the data has no price for an item, nobody lists
+-- it often enough to matter, so the green stands. A version the data does not
+-- know (it may be the pricey one) is silenced, as in the sell rule.
+-- @return string|nil the reason it is blocked, for /bagwise why
+-- @return string|nil a short "Vendor 5c, auction about 8s" for the tooltip, only
+--   when the block is about the price (not an unknown version or market)
+local function auctionBlocker(item)
+  if item.isBound or item.bindType == BIND_ON_PICKUP or item.bindType == BIND_QUEST then
+    return nil
+  end
+  if Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
+    return "no auction prices for your region and faction"
+  end
+  local ceiling, source = ceilingFor(item)
+  if source == "unknown" then
+    return "this version may sell for more at auction"
+  end
+  local vendor = item.sellPrice or 0
+  if not ceiling or ceiling <= sellLimit(vendor) then return nil end
+  local money = Bagwise.Verdict.FormatMoney
+  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
+  local reason = "it may be worth more at auction (" .. vendorText .. ", auction about " .. money(ceiling) .. ")"
+  -- The same facts for the tooltip, which tells the player why there is no dot.
+  local note = vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction about " .. money(ceiling)
+  return reason, note
+end
+
 --- Run one rule and apply the safety check to a green.
--- @return verdict, reason, detail, tag, blockedBy, heading
+-- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "green" then
     local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
     if blocker then return verdict, reason, detail, tag, blocker, heading end
+    if rule.checksAuction then
+      local pricey, note = auctionBlocker(item)
+      if pricey then return verdict, reason, detail, tag, pricey, heading, note end
+    end
   end
   return verdict, reason, detail, tag, nil, heading
 end
@@ -907,6 +947,9 @@ local CONSUMABLE_CLASS_ID = 0
 -- are used up in play, so "you don't need this" is never safe to say. Some
 -- are also vendor reagents (water, milk) and would otherwise read as green.
 -- Scrolls may earn their own rules later.
+-- The seventh value is a "Vendor 5c, auction about 8s" note, set when a green was
+-- dropped because the auction pays clearly more: the player sees no green dot,
+-- and the tooltip uses the note to say why there is none.
 function Bagwise.Verdict.Evaluate(item, state)
   if item.isKept then return nil, nil, nil end
   if item.isFlagged then
@@ -925,18 +968,19 @@ function Bagwise.Verdict.Evaluate(item, state)
   -- A blocked green is dropped and the next rule gets its turn. A yellow is
   -- only a hint, so it waits: a later rule's green (already vetted by Safety)
   -- beats it. Otherwise the first yellow stands.
-  local hint
+  local hint, auctionNote
   for i = 1, #RULES do
-    local verdict, reason, detail, tag, blockedBy, heading = runRule(RULES[i], item, state)
+    local verdict, reason, detail, tag, blockedBy, heading, note = runRule(RULES[i], item, state)
     if verdict == "green" and not blockedBy then
       return verdict, reason, detail, tag, RULES[i].name
     end
+    if note and not auctionNote then auctionNote = note end
     if verdict == "yellow" and not hint then
       hint = { verdict, reason, detail, tag, RULES[i].name, heading }
     end
   end
-  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6] end
-  return nil, nil, nil
+  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6], auctionNote end
+  return nil, nil, nil, nil, nil, nil, auctionNote
 end
 
 --- Every rule that had something to say about an item, including greens that

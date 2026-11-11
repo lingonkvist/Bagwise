@@ -1569,8 +1569,11 @@ describe("Outleveled reagents", function()
 
   it("stays silent while something made from it is still in demand", function()
     Bagwise.Data.ReagentChains[2589] = { { "Tailoring", 40, 225 } }
-    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 250 }))))
+    local silent = Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 225 }))
+    local past = Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 226 }))
     Bagwise.Data.ReagentChains[2589] = nil
+    assert.is_nil(silent)
+    assert.are.equal("yellow", past)
   end)
 
   it("stays silent when the downstream data is not loaded", function()
@@ -1581,8 +1584,24 @@ describe("Outleveled reagents", function()
   end)
 
   it("stays silent while a recipe of yours still uses it", function()
-    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 150 }))))
-    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 175 }))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 100 }))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 125 }))))
+  end)
+
+  it("is yellow the moment you are past the best recipe, not 50 points later", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 126 }))))
+  end)
+
+  it("counts what it is turned into: Rough Stone at Blacksmithing 126 with products up to 115", function()
+    Bagwise.Data.ReagentProfessions[2835] = { { "Blacksmithing", 4, 15, 45 }, { "Engineering", 1, 20, 20 }, { "Mining", 1, 20, 20 } }
+    Bagwise.Data.ReagentChains[2835] = { { "Blacksmithing", 65, 115 }, { "Enchanting", 130, 130 }, { "Engineering", 25, 90 } }
+    local stone = { id = 2835, classID = 7, subClassID = 7, quality = 1, sellPrice = 10, count = 5 }
+    local mining = state({ Mining = 115, Blacksmithing = 126 })
+    local verdict, reason = Bagwise.Verdict.Evaluate(stone, mining)
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Outleveled, Blacksmithing recipes use it up to 115", reason)
+    assert.is_nil((Bagwise.Verdict.Evaluate(stone, state({ Mining = 115, Blacksmithing = 100 }))))
+    Bagwise.Data.ReagentProfessions[2835], Bagwise.Data.ReagentChains[2835] = nil, nil
   end)
 
   it("stays silent when one of your professions still uses it", function()
@@ -1767,6 +1786,20 @@ describe("Verdicts in the bank", function()
     assert.are.equal("yellow", result.verdict)
   end)
 
+  it("a green capped to yellow keeps the bag's words as its heading", function()
+    local result = forBank("quest_objective_done", "green", "Quest completed")
+    assert.are.equal("yellow", result.verdict)
+    assert.are.equal("Quest completed", result.heading.title)
+    assert.is_nil(result.heading.detail)
+  end)
+
+  it("a yellow that already has a heading keeps it", function()
+    local heading = { title = "Not your profession", detail = "Try the auction house" }
+    local result = Bagwise.Verdict.ForBank({ verdict = "yellow", reason = "Whatever", rule = "recipe",
+      heading = heading })
+    assert.are.equal(heading, result.heading)
+  end)
+
   it("leaves silence alone and never edits the shared result", function()
     assert.is_nil(Bagwise.Verdict.ForBank(nil))
     local shared = { verdict = "green", reason = "Why", rule = "vendor_reagent" }
@@ -1817,13 +1850,13 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     local verdict, reason, _, tag, rule = Bagwise.Verdict.Evaluate(greenBoe(), state)
     restore()
     assert.are.equal("green", verdict)
-    assert.are.equal("Vendor 3s, auction up to 4s", reason)
+    assert.are.equal("Vendor 3s, auction about 4s", reason)
     assert.is_nil(tag)
     assert.are.equal("sell_at_vendor", rule)
   end)
 
   it("is not shown in the bank", function()
-    local bank = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Vendor 3s, auction up to 4s",
+    local bank = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Vendor 3s, auction about 4s",
       sellable = true, rule = "sell_at_vendor" })
     assert.is_nil(bank.verdict)
   end)
@@ -2127,6 +2160,127 @@ describe("Gear with a low required level but a real item level", function()
     local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
     assert.are.equal("green", verdict)
     assert.are.equal("Very low item level (5 for level 27)", reason)
+  end)
+end)
+
+describe("Tradable items the auction house may value more than a vendor", function()
+  local state = { level = 30, professionNames = {}, professionsKnown = true }
+  local function manual(overrides)
+    local item = { id = 16645, classID = 12, quality = 1, count = 1, sellPrice = 5, isBound = false,
+      bindType = 0, questItemQuestIDs = { 7 }, allQuestObjectivesCompleted = true }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  it("a finished quest item stays green when the auction pays about the vendor price", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 20 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual(), state)))
+  end)
+
+  it("a finished quest item that auctions for much more gets no verdict", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 300 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(manual(), state)))
+    local trace = Bagwise.Verdict.Trace(manual(), state)
+    assert.are.equal("quest_objective_done", trace[1].rule)
+    assert.is_truthy(trace[1].blockedBy:find("auction about 3s", 1, true))
+  end)
+
+  it("a dropped green hands back a note with both prices for the tooltip", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
+    local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual(), state)
+    assert.is_nil(verdict)
+    assert.are.equal("Vendor 5c, auction about 8s", note)
+  end)
+
+  it("a manual that auctions for about the vendor price has no note", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 20 }
+    local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual(), state)
+    assert.are.equal("green", verdict)
+    assert.is_nil(note)
+  end)
+
+  it("an item with no vendor price says so in the note", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
+    local _, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual({ sellPrice = 0 }), state)
+    assert.are.equal("No vendor price, auction about 8s", note)
+  end)
+
+  it("an unknown market gives no price note, since there is no price to show", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
+    Bagwise.Data.AuctionMarketMissing = true
+    local _, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual(), state)
+    Bagwise.Data.AuctionMarketMissing = nil
+    assert.is_nil(note)
+  end)
+
+  it("a finished quest item gets no green when the player's market is unknown", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 20 }
+    Bagwise.Data.AuctionMarketMissing = true
+    local verdict = Bagwise.Verdict.Evaluate(manual(), state)
+    local trace = Bagwise.Verdict.Trace(manual(), state)
+    Bagwise.Data.AuctionMarketMissing = nil
+    assert.is_nil(verdict)
+    assert.is_truthy(trace[1].blockedBy:find("your region and faction", 1, true))
+  end)
+
+  it("an item that cannot be listed stays green even when the market is unknown", function()
+    Bagwise.Data.AuctionMarketMissing = true
+    local verdict = Bagwise.Verdict.Evaluate(manual({ isBound = true }), state)
+    Bagwise.Data.AuctionMarketMissing = nil
+    assert.are.equal("green", verdict)
+  end)
+
+  it("a soulbound or quest-bound item cannot be listed, so the price is ignored", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 300 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual({ isBound = true }), state)))
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual({ bindType = 4 }), state)))
+  end)
+
+  it("an item the auction has no price for stays green", function()
+    Bagwise.Data.AuctionPriceCeiling = { [99999] = 300 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual(), state)))
+  end)
+
+  it("an item with no vendor price is held back once the auction pays real money", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 500 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(manual({ sellPrice = 0 }), state)))
+  end)
+
+  it("a version the data does not know is silenced", function()
+    Bagwise.Data.AuctionPriceCeiling = {}
+    Bagwise.Data.AuctionVariantCeiling = { [16645] = { ["1111"] = 10 } }
+    assert.is_nil((Bagwise.Verdict.Evaluate(manual({ bonusKey = "2222" }), state)))
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual({ bonusKey = "1111" }), state)))
+  end)
+
+  it("an unused trade good worth more at auction than at a vendor is not green", function()
+    Bagwise.Data.ReagentProfessions = {}
+    local good = { id = 777, classID = 7, subClassID = 9, quality = 1, count = 1, sellPrice = 10, isBound = false }
+    Bagwise.Data.AuctionPriceCeiling = {}
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(good, state)))
+    Bagwise.Data.AuctionPriceCeiling = { [777] = 400 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(good, state)))
+  end)
+
+  it("a vendor reagent for a profession you lack is not green when the auction pays more", function()
+    Bagwise.Data.VendorReagents = { [3371] = {} }
+    Bagwise.Data.ReagentProfessions = { [3371] = { { "Alchemy", 1, 1, 100 } } }
+    local vial = { id = 3371, classID = 7, quality = 1, count = 1, sellPrice = 2, isBound = false }
+    Bagwise.Data.AuctionPriceCeiling = {}
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(vial, state)))
+    Bagwise.Data.AuctionPriceCeiling = { [3371] = 200 }
+    assert.is_nil((Bagwise.Verdict.Evaluate(vial, state)))
+  end)
+
+  it("a blue is never green, whatever the data says", function()
+    Bagwise.Data.AuctionPriceCeiling = { [41100] = 100 }
+    local blue = { id = 41100, classID = 4, subClassID = 2, quality = 3, itemLevel = 12, reqLevel = 10,
+      sellPrice = 500, count = 1, isBound = false, isEquippable = true,
+      equippedInSlots = { { quality = 3, itemLevel = 30 } } }
+    for _, bound in ipairs({ false, true }) do
+      blue.isBound = bound
+      assert.is_truthy((Bagwise.Verdict.Evaluate(blue, state)) ~= "green")
+    end
   end)
 end)
 

@@ -424,7 +424,15 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     if result and result.detail then
       tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
+    if result and result.auctionNote then
+      tooltip:AddLine(result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    end
   else
+    -- An item that would have been green but sells for more at auction: say so,
+    -- so the missing dot is not a mystery. One row, leaving room for one more.
+    if result and result.auctionNote then
+      tooltip:AddLine(result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    end
     -- No verdict: show context rows (profession and/or quest).
     -- Design doc 4.3: never more than 2 detail rows total.
     -- Skip all detail rows for vendor reagents (cheap, repurchasable).

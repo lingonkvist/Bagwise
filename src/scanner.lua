@@ -506,9 +506,10 @@ local function evaluateCached(item, state, profKey)
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
-  local verdict, reason, detail, tag, rule, heading = Bagwise.Verdict.Evaluate(item, state)
+  local verdict, reason, detail, tag, rule, heading, auctionNote = Bagwise.Verdict.Evaluate(item, state)
   local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
-                   heading = heading, sellable = Bagwise.Verdict.Sellable(item, verdict) }
+                   heading = heading, sellable = Bagwise.Verdict.Sellable(item, verdict),
+                   auctionNote = auctionNote }
   verdictCache[cacheKey] = result
   return result
 end

@@ -2,7 +2,7 @@
 ## Title: Bagwise
 ## Notes: Colored dots that mark what is safe to delete in your bags and bank
 ## Author: lingonkvist
-## Version: 0.5.4
+## Version: 0.5.5
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator, Bagnon
@@ -12,6 +12,7 @@ src\bags.lua
 src\safety.lua
 src\progress.lua
 src\notes.lua
+src\market.lua
 src\verdict.lua
 src\bank.lua
 src\makeroom.lua

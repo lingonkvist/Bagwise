@@ -117,6 +117,17 @@ local function onPlayerLogin(self)
     bagFrame:HookScript("OnShow", rescanAll)
   end
 
+  -- Auction prices are kept per region and faction. Without both, the
+  -- addon cannot tell what a tradable item sells for, and says nothing.
+  local function read(call, ...)
+    local ok, value = pcall(call, ...)
+    return ok and value or nil
+  end
+  Bagwise.Market.Select(
+    Bagwise.Market.RegionOf(GetNormalizedRealmName and read(GetNormalizedRealmName),
+      GetCurrentRegion and read(GetCurrentRegion)),
+    UnitFactionGroup and read(UnitFactionGroup, "player"))
+
   Bagwise.Tooltip.Init()
   Bagwise.Commands.Init()
   Bagwise.Overlay.Init() -- <-- Registers the Baganator corner widget

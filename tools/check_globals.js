@@ -20,7 +20,7 @@ const WOW = new Set(("Baganator Bagnon C_AddOns C_Container C_Item C_QuestLog C_
   "ChatFontNormal CloseAllBags ContainerFrame1 ContainerFrameCombinedBags CreateFrame EUI_Bags " +
   "EllesmereUI Enum GameTooltip GetAddOnMetadata GetBagName GetBuildInfo GetInventoryItemLink " +
   "GetItemInfo GetItemInfoInstant GetLootSlotInfo GetLootSlotLink GetNumLootItems GetNumSkillLines " +
-  "GetProfessionInfo GetProfessions GetRealmName GetServerTime GetSkillLineInfo IsAnyBagOpen " +
+  "GetProfessionInfo GetProfessions GetCurrentRegion GetNormalizedRealmName GetRealmName GetServerTime GetSkillLineInfo IsAnyBagOpen " +
   "ITEM_OPENABLE ITEM_QUALITY_COLORS LOOTFRAME_NUMBUTTONS LootFrame LootSlotHasItem NUM_BAG_SLOTS " +
   "NUM_CONTAINER_FRAMES NUM_REAGENTBAG_SLOTS OpenAllBags SlashCmdList TooltipDataProcessor UIParent " +
   "UISpecialFrames UnitClass UnitFactionGroup UnitLevel UnitName UnitRace hooksecurefunc time tinsert").split(" "));

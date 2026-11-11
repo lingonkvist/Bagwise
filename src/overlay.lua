@@ -107,11 +107,13 @@ local function makeGlow(button)
   return { layers = layers, groups = groups }
 end
 
---- Show or hide the delete glow on an item button.
-local function applyGlow(button, on)
+--- Show or hide the delete glow on an item button. bagID and slotID say which
+-- slot the glow is for, so it can be found and hidden when that slot changes.
+local function applyGlow(button, on, bagID, slotID)
   local glow = glowByButton[button]
   if not on then
     if glow then
+      glow.on = false
       for i, layer in ipairs(glow.layers) do
         if glow.groups[i] then glow.groups[i]:Stop() end
         layer:Hide()
@@ -123,6 +125,7 @@ local function applyGlow(button, on)
     glow = makeGlow(button)
     glowByButton[button] = glow
   end
+  glow.on, glow.bag, glow.slot = true, bagID, slotID
   for i, layer in ipairs(glow.layers) do
     layer:Show()
     local group = glow.groups[i]
@@ -165,7 +168,7 @@ local function paintButton(button, bagID, slotID)
   if result or dotsByButton[button] then
     applyDot(getButtonDot(button), result)
   end
-  applyGlow(button, result and result.glow and not result.quiet)
+  applyGlow(button, result and result.glow and not result.quiet, bagID, slotID)
 end
 
 -- Blizzard's item template reads the bag from the button's parent frame.
@@ -273,18 +276,24 @@ local function initBaganator()
   -- onUpdate: called by Baganator whenever an item button is refreshed.
   -- details.itemLocation contains the bagID and slotIndex.
   local function onUpdate(dot, details)
-    if not details.itemLocation then return false end
+    -- A button that shows something we do not judge (another character's item,
+    -- an empty slot) must not keep a delete glow from what it showed before.
+    local button = dot.GetParent and dot:GetParent()
+    local function noGlow()
+      if button and button.CreateTexture then applyGlow(button, false) end
+      return false
+    end
+    if not details.itemLocation then return noGlow() end
 
     local bagID = details.itemLocation.bagID
     local slotID = details.itemLocation.slotIndex
 
-    if not bagID or not slotID then return false end
-    if not showsLiveItem(details, bagID, slotID) then return false end
+    if not bagID or not slotID then return noGlow() end
+    if not showsLiveItem(details, bagID, slotID) then return noGlow() end
 
     local result = Bagwise.Scanner.GetResult(bagID, slotID)
-    local button = dot.GetParent and dot:GetParent()
     if button and button.CreateTexture then
-      applyGlow(button, result and result.glow and not result.quiet)
+      applyGlow(button, result and result.glow and not result.quiet, bagID, slotID)
     end
     return applyDot(dot, result)
   end
@@ -522,7 +531,21 @@ function Bagwise.Overlay.Init()
   hookBagnonUpdates()
 end
 
+-- Hide any delete glow whose slot is no longer marked. A bag addon only tells us
+-- about buttons it redraws, and an emptied slot (the junk was just deleted) may
+-- not be redrawn at all, so the glow would stay on the empty slot.
+local function clearStaleGlows()
+  if not (Bagwise.Scanner and Bagwise.Scanner.GetResult) then return end
+  for button, glow in pairs(glowByButton) do
+    if glow.on then
+      local result = glow.bag and Bagwise.Scanner.GetResult(glow.bag, glow.slot)
+      if not (result and result.glow and not result.quiet) then applyGlow(button, false) end
+    end
+  end
+end
+
 function Bagwise.Overlay.UpdateAll()
+  clearStaleGlows()
   updateBlizzard()
   paintEllesmere()
   repaintBagnon()

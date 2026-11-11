@@ -437,8 +437,14 @@ FOOTER = "}\n"
 
 def format_lua(item_quests: dict[int, set[int]],
                quest_meta: dict[int, QuestMeta],
-               source_filename: str = "classicQuestDB.lua") -> str:
-    """Format the item->questIDs map and quest info as Lua tables."""
+               source_filename: str = "classicQuestDB.lua",
+               comments: bool = False) -> str:
+    """Format the item->questIDs map and quest info as Lua tables.
+
+    comments adds a quest-name note after every line. They help when reading the
+    file but the game ignores them and they are about 40% of its size, so they
+    are off unless asked for (--comments).
+    """
     quest_count = len({qid for qids in item_quests.values() for qid in qids})
 
     # Notice the 'f' prefix on the string, and the double braces {{ }} for Lua tables!
@@ -473,7 +479,7 @@ def format_lua(item_quests: dict[int, set[int]],
                 names.append(meta.name)
         if len(quest_ids) > 3:
             names.append(f"+{len(quest_ids) - 3} more")
-        comment = " -- " + "; ".join(names) if names else ""
+        comment = " -- " + "; ".join(names) if names and comments else ""
 
         lines.append(f"    [{item_id}] = {{ {quest_list} }},{comment}")
 
@@ -493,7 +499,7 @@ def format_lua(item_quests: dict[int, set[int]],
         zone_str = f'"{meta.zone}"' if meta.zone else "nil"
         escaped_name = meta.name.replace('\\', '\\\\').replace('"', '\\"') if meta.name else None
         name_str = f'"{escaped_name}"' if escaped_name else "nil"
-        name_comment = f" -- {meta.name}" if meta.name else ""
+        name_comment = f" -- {meta.name}" if meta.name and comments else ""
         faction_str = f', "{meta.faction}"' if meta.faction else ""
         lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str}{faction_str} }},{name_comment}")
         info_count += 1
@@ -505,7 +511,7 @@ def format_lua(item_quests: dict[int, set[int]],
                   if quest_meta.get(qid) and quest_meta[qid].repeatable]
     for qid in repeatable:
         name = quest_meta[qid].name
-        lines.append(f"    [{qid}] = true,{' -- ' + name if name else ''}")
+        lines.append(f"    [{qid}] = true,{' -- ' + name if name and comments else ''}")
     lines.append(FOOTER)
 
     print(f"  {info_count} quests with level/zone info for QuestInfo")
@@ -532,6 +538,12 @@ def main():
         default=None,
         help="Output path (default: data/quest_items.lua relative to the "
              "project root)",
+    )
+    parser.add_argument(
+        "--comments",
+        action="store_true",
+        help="Add the quest name as a comment on every line (about 40%% bigger, "
+             "no effect in game)",
     )
     args = parser.parse_args()
 
@@ -566,7 +578,7 @@ def main():
     print(f"  {unique_quests} quests reference items")
 
     # Passing the actual filename to the formatter here!
-    lua_output = format_lua(item_quests, quest_meta, source_path.name)
+    lua_output = format_lua(item_quests, quest_meta, source_path.name, args.comments)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(lua_output, encoding="utf-8")
     print(f"\nWrote {output_path}")
