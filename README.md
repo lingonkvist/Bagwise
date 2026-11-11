@@ -44,8 +44,11 @@ Yellow:
 - Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it").
 - Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them. The hint appears as soon as you pass the best recipe that needs the item, directly or through what it is turned into.
 - Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
-- Mana potions, if your class has no mana.
-- Quest items for a quest far below your level.
+- Mana potions and drinks, if your class has no mana.
+- Crafting materials that drop (no vendor sells them) and that none of your professions use. It waits until both primary profession slots are taken, and stays quiet for anything Cooking, First Aid or Fishing uses (anyone can learn those) and for characters with only gathering professions. The tooltip shows the vendor and auction prices when there is one on file. The bank does not show it.
+- Library books, with who to hand them in to (Garion Wendell in Stormwind, Owen Thadd in Undercity). A deleted book cannot be looted again.
+- Blood Shards on a Horde character: trade 4 to Mangletooth for a buff.
+- Quest items for a quest far below your level, and a hint to bank items that only quests you cannot accept for another 10 levels or more want. It goes by the level you need to accept the quest, not the quest's own level, so a level 60 quest that opens at level 30 is left alone, and so is any quest without data. Items for a Darkmoon Faire or holiday quest get the same hint at any level, naming the event (`Darkmoon Faire: [60] Vibrant Plumes`), since those quests can only be done while the event runs. Bagwise cannot see whether the event is on. Neither shows while the quest is in your log, and the bank does not show the second. Repeatable quests do not count, since they want the item at any level.
 - Anything you flag yourself.
 
 ## Auction prices
@@ -58,6 +61,7 @@ Bagwise ships with auction price data for Forever, so it can tell vendor trash f
 - Enchanters are never told to vendor green gear, since it can be disenchanted.
 - Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
 - The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees.
+- A few copper never decide it, so both prices are rounded first, towards "just vendor it": the vendor price up to the next half silver (3s 24c counts as 3s 50c, 3s 70c as 4s) and the auction price down to whole silver (7s 78c counts as 7s). Tooltips still show the real prices.
 - The data is refreshed with each release. `tools/build_auction_prices.py` rebuilds it, and a weekly workflow opens a pull request with new prices.
 
 ## What never gets a dot
@@ -117,7 +121,7 @@ Troubleshooting:
 ## Development
 
 - Tests: `python3 -I tests/run_tests.py` (needs `lupa`). `node tools/check_globals.js` catches stray globals, and CI runs both.
-- Data: `tools/build_auction_prices.py` (needs `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET`) and `tools/build_reagent_professions.py` regenerate the files in `data/`. Both have a `--selftest`.
+- Data: `tools/build_auction_prices.py` (needs `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET`) and `tools/build_reagent_professions.py` regenerate the files in `data/`. Both have a `--selftest`. `tools/build_library_books.py` rebuilds the library book list from the quest data, and `tools/build_quest_availability.py --source <foreverQuestDB.lua>` when quests open and which events offer them (use the same Questie export as `build_quest_items.py`).
 - `src/verdict.lua` decides, and is pure. It never calls the game.
 - `src/notes.lua` holds the words behind every yellow. `src/bank.lua` turns a verdict into what the bank shows.
 - `src/safety.lua` holds the protections. A rule can propose a green, and a protection can veto it.

@@ -19,6 +19,8 @@ jobs:
           python3 -I tools/build_auction_prices.py --selftest
           python3 -I tools/build_reagent_professions.py --selftest
           python3 -I tools/audit_trade_goods.py --selftest
+          python3 -I tools/build_library_books.py --selftest
+          python3 -I tools/build_quest_availability.py --selftest
       - name: Globals (typos and missing locals)
         run: |
           npm install --prefix "$RUNNER_TEMP/lp" luaparse@0.3.1

@@ -235,7 +235,10 @@ local function evaluateTrivialQuestItem(item, state)
   local open = item.openQuestIDs or item.questItemQuestIDs
   if #open == 0 then return nil end
   local info = Bagwise.Data.QuestInfo
+  local repeatable = Bagwise.Data.RepeatableQuests
   for i = 1, #open do
+    -- A repeatable quest keeps wanting the item at any level (Blood Shards).
+    if repeatable and repeatable[open[i]] then return nil end
     local entry = info and info[open[i]]
     local level = entry and entry[QUEST_INFO_LEVEL]
     if not level or level <= 0 or level + QUEST_TRIVIAL_GAP > (state.level or 1) then return nil end
@@ -243,6 +246,73 @@ local function evaluateTrivialQuestItem(item, state)
   local label = #open == 1 and questLabel(open[1], nil) or nil
   local verdict, reason, _, _, heading = yellow(item.onOpenQuest and "quest_abandon" or "quest_not_worth")
   return verdict, reason, label, nil, heading
+end
+
+-- An item only wanted by quests the player cannot do for a long while, so it
+-- can wait in the bank. Two kinds of quest qualify:
+--   far off: nobody is on a level 60 quest at level 30. This goes by the level
+--     you must be to ACCEPT the quest (data/quest_availability.lua), never the
+--     quest's own level: a level 60 war effort quest opens at level 1.
+--   event: a Darkmoon Faire or holiday quest can only be done while the event
+--     runs, whatever your level. Bagwise cannot tell if the event is on, so it
+--     only names the event.
+-- Every open quest must be one of the two; a quest in your log, one within
+-- reach or one with no data keeps the item in your bags. A plain material is
+-- left alone when a recipe uses it, since it may be wanted sooner.
+local QUEST_DISTANT_GAP = 10
+
+local function evaluateDistantQuestItem(item, state)
+  if item.onOpenQuest then return nil end
+  local required = Bagwise.Data.QuestRequiredLevels
+  local events = Bagwise.Data.QuestEvents
+  if not (required or events) then return nil end
+  local quests = item.openQuestIDs
+  if not (quests and #quests > 0) then
+    if not item.startsQuestID or item.startsQuestCompleted then return nil end
+    quests = { item.startsQuestID }
+  end
+  if isOrdinaryItem(item) then
+    if item.isEquippable then return nil end
+    local data = Bagwise.Data
+    if data.ReagentProfessions and data.ReagentProfessions[item.id] then return nil end
+    if data.VendorReagents and data.VendorReagents[item.id] then return nil end
+  end
+
+  local nearestLevel, nearestQuest, eventName, eventQuest
+  for i = 1, #quests do
+    local quest = quests[i]
+    local event = events and events[quest]
+    if event then
+      if not eventName then eventName, eventQuest = event, quest end
+    else
+      local level = required and required[quest]
+      if not level or level <= (state.level or 1) + QUEST_DISTANT_GAP then return nil end
+      if not nearestLevel or level < nearestLevel then nearestLevel, nearestQuest = level, quest end
+    end
+  end
+  if nearestLevel then
+    return yellow("bank_quest", nearestLevel, questLabel(nearestQuest, nil))
+  end
+  return yellow("bank_event", eventName, questLabel(eventQuest, nil))
+end
+
+-- Items worth a word that no quest or recipe rule can say. Library books are
+-- handed in one by one for rewards, and the game will not give a deleted one
+-- back. Blood Shards are a currency for repeatable buffs. Both are only a hint.
+local BLOOD_SHARD_ID = 5075
+
+local function evaluateItemHint(item, state)
+  local books = Bagwise.Data.LibraryBooks
+  if books and books[item.id] then
+    -- A book whose quest is done can no longer be handed in.
+    if item.startsQuestCompleted or item.allQuestObjectivesCompleted then return nil end
+    return yellow("library_book", state.faction)
+  end
+  -- Mangletooth is a Horde NPC, so an Alliance character has no use for it.
+  if item.id == BLOOD_SHARD_ID and state.faction ~= "Alliance" then
+    return yellow("shard_buff")
+  end
+  return nil
 end
 
 local function evaluateQuestObjective(item)
@@ -564,6 +634,61 @@ local function evaluateOutleveledReagent(item, state)
   return yellow("outleveled_reagent", newest.name, newest.maxSkill)
 end
 
+-- Can this be listed at the auction house? Not once it is soulbound or bound to
+-- a quest.
+local function isTradeable(item)
+  return not (item.isBound or item.bindType == BIND_ON_PICKUP or item.bindType == BIND_QUEST)
+end
+
+-- The primary professions: a character holds two, so with both taken a
+-- reagent for any other profession is not coming into use.
+local PRIMARY_PROFESSIONS = {
+  Alchemy = true, Blacksmithing = true, Enchanting = true, Engineering = true,
+  Herbalism = true, Leatherworking = true, Mining = true, Skinning = true,
+  Tailoring = true,
+}
+local GATHERING_PROFESSIONS = { Herbalism = true, Mining = true, Skinning = true }
+local PRIMARY_PROFESSION_SLOTS = 2
+
+--- How many primary professions the player has, and how many of them craft.
+local function primaryProfessions(state)
+  local total, crafting = 0, 0
+  for name in pairs(state.professionNames) do
+    if PRIMARY_PROFESSIONS[name] then
+      total = total + 1
+      if not GATHERING_PROFESSIONS[name] then crafting = crafting + 1 end
+    end
+  end
+  return total, crafting
+end
+
+-- A crafting material that drops (no vendor sells it) and that none of your
+-- professions use, directly or through what it becomes. It may still sell, so
+-- the hint comes with the vendor and auction prices. Three things keep it quiet:
+-- a free primary slot (you may still pick a profession that uses it), a use by
+-- Cooking, First Aid or Fishing (anyone can learn those any time), and a bag of
+-- only gathering professions (everything gathered is meant to be sold).
+local function evaluateOtherProfessionReagent(item, state)
+  if item.classID ~= TRADE_GOODS_CLASS_ID then return nil end
+  local entries = reagentUses(item.id)
+  if not entries or state.professionsKnown == false or not state.professionNames then return nil end
+  if not isTradeable(item) then return nil end
+  if item.questItemQuestIDs and not item.allQuestObjectivesCompleted then return nil end
+  local data = Bagwise.Data
+  if data.VendorReagents and data.VendorReagents[item.id] then return nil end
+  if data.ClassReagents and data.ClassReagents[item.id] then return nil end
+  local total, crafting = primaryProfessions(state)
+  if total < PRIMARY_PROFESSION_SLOTS or crafting == 0 then return nil end
+
+  local professions = {}
+  for i = 1, #entries do
+    local name = entries[i].name
+    if state.professionNames[name] or not PRIMARY_PROFESSIONS[name] then return nil end
+    professions[#professions + 1] = name
+  end
+  return yellow("other_profession_reagent", professions)
+end
+
 -- Something you right-click to open (clams, bags of loot). It takes a slot now
 -- and what is inside often stacks, so opening it usually frees room.
 local function evaluateOpenable(item)
@@ -582,7 +707,7 @@ local POTION_SUBCLASS = 1
 
 local CLASS_PLURALS_FOR_POTIONS = { WARRIOR = "Warriors", ROGUE = "Rogues" }
 
--- Mana potions are no use to a class with no mana. The IDs are listed instead
+-- Mana potions and drinks are no use to a class with no mana. The IDs are listed instead
 -- of matched by name, so it works in every language.
 local MANA_POTIONS = {
   [2455] = true,  -- Minor Mana Potion
@@ -601,8 +726,10 @@ local function isManaOnly(itemID)
   return MANA_POTIONS[itemID] or (generated and generated[itemID]) or false
 end
 
-local function evaluateManaPotion(item, state)
-  if not isManaOnly(item.id) then return nil end
+-- Drinks work through an aura, so the generated list misses them. The scanner
+-- reads the tooltip instead and says when an item restores mana and nothing else.
+local function evaluateManaConsumable(item, state)
+  if not (isManaOnly(item.id) or item.restoresManaOnly == true) then return nil end
   if not CLASSES_WITHOUT_MANA[state.playerClass or ""] then return nil end
   return yellow("no_mana", CLASS_PLURALS_FOR_POTIONS[state.playerClass])
 end
@@ -740,15 +867,33 @@ local AH_VENDOR_STEPS = {
 local AH_VENDOR_LAST_FACTOR = 1.1
 local AH_VENDOR_SLACK = 150 -- or this many copper above it, for tiny prices
 
+-- A few copper never decide between a vendor and the auction house, so both
+-- prices are rounded before they are compared, always towards "just vendor it":
+-- the vendor price up to the next half silver (3s 24c counts as 3s 50c, 3s 70c
+-- as 4s) and the auction price down to whole silver (7s 78c counts as 7s). Under
+-- a silver the auction price is left alone, or it would round down to nothing.
+local VENDOR_ROUND_UP_COPPER = 50
+local AUCTION_ROUND_DOWN_COPPER = 100
+
+local function roundedVendor(vendorPrice)
+  return math.ceil(vendorPrice / VENDOR_ROUND_UP_COPPER) * VENDOR_ROUND_UP_COPPER
+end
+
+local function roundedAuction(auctionPrice)
+  if auctionPrice < AUCTION_ROUND_DOWN_COPPER then return auctionPrice end
+  return math.floor(auctionPrice / AUCTION_ROUND_DOWN_COPPER) * AUCTION_ROUND_DOWN_COPPER
+end
+
 local function sellLimit(vendorPrice)
+  local vendor = roundedVendor(vendorPrice)
   local factor = AH_VENDOR_LAST_FACTOR
   for i = 1, #AH_VENDOR_STEPS do
-    if vendorPrice < AH_VENDOR_STEPS[i].below then
+    if vendor < AH_VENDOR_STEPS[i].below then
       factor = AH_VENDOR_STEPS[i].factor
       break
     end
   end
-  return math.max(vendorPrice * factor, vendorPrice + AH_VENDOR_SLACK)
+  return math.max(vendor * factor, vendor + AH_VENDOR_SLACK)
 end
 
 --- The bonus ids of an item link as "12744" or "12727-12800" (sorted), or nil
@@ -836,10 +981,13 @@ local function checkSellAtVendor(item, state)
 
   local limit = sellLimit(item.sellPrice)
   check.ceiling, check.limit = ceiling, limit
-  local within = ceiling <= limit
+  local compared = roundedAuction(ceiling)
+  local within = compared <= limit
   note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
       .. (source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")" or " (whole item)")
-      .. ", limit " .. money(limit) .. (within and " (within)" or " (auction pays too much)"))
+      .. ", limit " .. money(limit) .. " (vendor counted as " .. money(roundedVendor(item.sellPrice))
+      .. ", auction as " .. money(compared) .. ")"
+      .. (within and " (within)" or " (auction pays too much)"))
 
   if not item.equippedInSlots then
     note_("worn gear in this slot could not be read, so no verdict")
@@ -880,7 +1028,9 @@ local RULES = {
     overrides = { quest_item = true } },
   { name = "quest_objective_done", evaluate = evaluateQuestObjective, checksAuction = true,
     overrides = { quest_item = true } },
+  { name = "item_hint",          evaluate = evaluateItemHint },
   { name = "trivial_quest_item", evaluate = evaluateTrivialQuestItem },
+  { name = "distant_quest_item", evaluate = evaluateDistantQuestItem },
   { name = "vendor_reagent",     evaluate = evaluateVendorReagent, checksAuction = true,
     overrides = { vendor_reagent = true, recipe_reagent = true } },
   { name = "class_reagent",      evaluate = evaluateClassReagent, checksAuction = true,
@@ -889,7 +1039,8 @@ local RULES = {
   { name = "recipe",             evaluate = evaluateRecipe },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
   { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent },
-  { name = "poor_quality",       evaluate = evaluatePoorQuality },
+  { name = "other_profession_reagent", evaluate = evaluateOtherProfessionReagent, showsAuctionPrice = true },
+  { name = "poor_quality",      evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse, checksAuction = true },
   { name = "sell_at_vendor",     evaluate = evaluateSellAtVendor },
 }
@@ -902,10 +1053,16 @@ local RULES = {
 -- @return string|nil the reason it is blocked, for /bagwise why
 -- @return string|nil a short "Vendor 5c, auction about 8s" for the tooltip, only
 --   when the block is about the price (not an unknown version or market)
+--- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
+local function priceNote(item, ceiling)
+  local money = Bagwise.Verdict.FormatMoney
+  local vendor = item.sellPrice or 0
+  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
+  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction about " .. money(ceiling)
+end
+
 local function auctionBlocker(item)
-  if item.isBound or item.bindType == BIND_ON_PICKUP or item.bindType == BIND_QUEST then
-    return nil
-  end
+  if not isTradeable(item) then return nil end
   if Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
     return "no auction prices for your region and faction"
   end
@@ -914,19 +1071,28 @@ local function auctionBlocker(item)
     return "this version may sell for more at auction"
   end
   local vendor = item.sellPrice or 0
-  if not ceiling or ceiling <= sellLimit(vendor) then return nil end
-  local money = Bagwise.Verdict.FormatMoney
-  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
-  local reason = "it may be worth more at auction (" .. vendorText .. ", auction about " .. money(ceiling) .. ")"
+  if not ceiling or roundedAuction(ceiling) <= sellLimit(vendor) then return nil end
   -- The same facts for the tooltip, which tells the player why there is no dot.
-  local note = vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction about " .. money(ceiling)
-  return reason, note
+  local note = priceNote(item, ceiling)
+  return "it may be worth more at auction (" .. note:sub(1, 1):lower() .. note:sub(2) .. ")", note
+end
+
+--- The price line for a hint that suggests selling at the auction house, when
+-- the data has a price for the item. Never blocks anything.
+local function auctionPriceLine(item)
+  if not isTradeable(item) or (Bagwise.Data and Bagwise.Data.AuctionMarketMissing) then return nil end
+  local ceiling, source = ceilingFor(item)
+  if not ceiling or source == "unknown" then return nil end
+  return priceNote(item, ceiling)
 end
 
 --- Run one rule and apply the safety check to a green.
 -- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
+  if verdict == "yellow" and rule.showsAuctionPrice then
+    return verdict, reason, detail, tag, nil, heading, auctionPriceLine(item)
+  end
   if verdict == "green" then
     local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
     if blocker then return verdict, reason, detail, tag, blocker, heading end
@@ -957,10 +1123,12 @@ function Bagwise.Verdict.Evaluate(item, state)
     return verdict, reason, nil, nil, nil, heading
   end
   if item.classID == CONSUMABLE_CLASS_ID then
-    local verdict, reason, _, _, heading = evaluateOpenable(item)
+    local verdict, reason, _, _, heading = evaluateItemHint(item, state)
+    if verdict then return verdict, reason, nil, nil, "item_hint", heading end
+    verdict, reason, _, _, heading = evaluateOpenable(item)
     if verdict then return verdict, reason, nil, nil, "openable", heading end
-    verdict, reason, _, _, heading = evaluateManaPotion(item, state)
-    if verdict then return verdict, reason, nil, nil, "mana_potion", heading end
+    verdict, reason, _, _, heading = evaluateManaConsumable(item, state)
+    if verdict then return verdict, reason, nil, nil, "mana_consumable", heading end
     verdict, reason, _, _, heading = evaluateOutleveledConsumable(item, state)
     return verdict, reason, nil, nil, verdict and "outleveled_consumable" or nil, heading
   end

@@ -7,7 +7,7 @@
 Bagwise = nil
 local DATA_FILES = {
   "reagent_professions", "reagent_chains", "vendor_reagents", "class_reagents",
-  "quest_items", "mana_consumables", "protected_items", "auction_prices",
+  "quest_items", "mana_consumables", "protected_items", "auction_prices", "library_books", "quest_availability",
 }
 for _, file in ipairs(DATA_FILES) do
   dofile("data/" .. file .. ".lua")
@@ -43,6 +43,7 @@ describe("Data files: sizes", function()
     assert.is_truthy(count(Data.VendorReagents) >= 10)
     assert.is_truthy(count(Data.ClassReagents) >= 5)
     assert.is_truthy(count(Data.ManaOnlyConsumables) >= 5)
+    assert.is_truthy(count(Data.LibraryBooks) >= 30)
     for _, market in ipairs(markets()) do
       assert.is_truthy(count(market.Ceiling) >= 100)
     end
@@ -74,6 +75,41 @@ describe("Data files: shape", function()
         assert.is_truthy(row[2] <= row[3])
       end
     end
+  end)
+
+  it("library books are item IDs that the quest data also knows", function()
+    for id, flag in pairs(Data.LibraryBooks) do
+      assert.are.equal("number", type(id))
+      assert.are.equal(true, flag)
+      assert.is_truthy(Data.QuestItems[id] ~= nil)
+    end
+  end)
+
+  it("required levels are whole levels for quests the quest data describes", function()
+    local count = 0
+    for id, level in pairs(Data.QuestRequiredLevels) do
+      count = count + 1
+      assert.are.equal("number", type(id))
+      assert.is_truthy(level >= 11 and level <= 70)
+      assert.is_truthy(Data.QuestInfo[id] ~= nil)
+    end
+    assert.is_truthy(count >= 500)
+  end)
+
+  it("Vibrant Plumes opens at level 30 although the quest is level 60, and is a Faire quest", function()
+    assert.are.equal(60, Data.QuestInfo[7902][1])
+    assert.are.equal(30, Data.QuestRequiredLevels[7902])
+    assert.are.equal("Darkmoon Faire", Data.QuestEvents[7902])
+  end)
+
+  it("event quests are named and known to the quest data", function()
+    local count = 0
+    for id, name in pairs(Data.QuestEvents) do
+      count = count + 1
+      assert.are.equal("string", type(name))
+      assert.is_truthy(Data.QuestInfo[id] ~= nil)
+    end
+    assert.is_truthy(count >= 50)
   end)
 
   it("auction ceilings are positive numbers", function()

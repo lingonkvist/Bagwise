@@ -16,6 +16,7 @@ local BANK_KEEPS = {
 local BANK_DROPS = {
   sell_at_vendor = true,     -- a vendor suggestion is not needed in the bank
   trivial_quest_item = true, -- you cannot abandon a quest from the bank
+  other_profession_reagent = true, -- the bank is where mats for another character wait
 }
 
 --- Turn a verdict result into what the bank should show.

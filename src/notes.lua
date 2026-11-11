@@ -54,6 +54,13 @@ local NOTES = {
   bank_used_from = function(profession, skill)
     return "Bank it, used from " .. profession .. " " .. skill, BANK_IT, "Used from " .. profession .. " " .. skill
   end,
+  bank_quest = function(level, label)
+    return "Bank it, quest needs level " .. level, BANK_IT, label or ("Needs level " .. level)
+  end,
+  bank_event = function(event, label)
+    return "Bank it, for a " .. event .. " quest", BANK_IT,
+        label and (capitalize(event) .. ": " .. label) or capitalize(event)
+  end,
   outleveled_reagent = function(profession, maxSkill)
     local rest = profession .. " recipes use it up to " .. maxSkill
     return "Outleveled, " .. rest, "Outleveled reagent", capitalize(rest)
@@ -70,6 +77,30 @@ local NOTES = {
   end,
   wrong_class_reagent = function(whole)
     return whole, "Wrong class reagent", whole
+  end,
+  other_profession_reagent = function(professions)
+    local list
+    if #professions > 3 then
+      list = #professions .. " professions"
+    else
+      list = table.concat(professions, ", ")
+    end
+    return "Only used by professions you don't have. May sell at the auction house",
+        "Not your profession", "Used by " .. list
+  end,
+  library_book = function(faction)
+    local where = "the librarian in Stormwind or Undercity"
+    local short = "Stormwind or Undercity"
+    if faction == "Alliance" then
+      where, short = "Garion Wendell in Stormwind", "Garion Wendell, Stormwind"
+    elseif faction == "Horde" then
+      where, short = "Owen Thadd in Undercity", "Owen Thadd, Undercity"
+    end
+    return "Library book, hand it in to " .. where, "Library book", "Hand in to " .. short
+  end,
+  shard_buff = function()
+    return "Trade 4 of these to Mangletooth for a buff in the Barrens", "Trade for a buff",
+        "Mangletooth, Camp Taurajo"
   end,
   flagged = function()
     return "Flagged by you", "Flagged by you", nil

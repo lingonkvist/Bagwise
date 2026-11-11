@@ -511,6 +511,17 @@ describe("Scanner: potions outleveled", function()
   it("leaves a utility potion alone", function()
     assert.is_nil(resultFor("Use: Increases swim speed by 50% for 30 sec.").verdict)
   end)
+
+  it("tells a warrior that a drink is no use to them", function()
+    local result = resultFor("Use: Restores 835 mana over 30 sec. Must remain seated while drinking.")
+    assert.are.equal("yellow", result.verdict)
+    assert.is_truthy(result.reason:find("have no mana", 1, true))
+  end)
+
+  it("does not call something that also heals a drink", function()
+    local result = resultFor("Use: Restores 400 health and 400 mana.")
+    assert.is_truthy(not (result.reason or ""):find("have no mana", 1, true))
+  end)
 end)
 
 describe("Scanner: deleting while the loot window is open", function()

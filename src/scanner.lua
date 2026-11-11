@@ -409,8 +409,9 @@ local FOOD_SUBCLASS_ID = 5
 -- action) are never outleveled, so the potion rule needs a yes. The wording is
 -- English only: on other clients the answer stays "no" and nothing is flagged.
 local function readRestores(bag, slot)
-  -- returns restores (plain healing or mana text), givesBuff (a Well Fed style effect)
-  if not (CreateFrame and UIParent) then return false, false end
+  -- returns restores (plain healing or mana text), givesBuff (a Well Fed style
+  -- effect) and manaOnly (restores mana and no health: a drink or mana potion)
+  if not (CreateFrame and UIParent) then return false, false, false end
   if not skillTip then
     skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
   end
@@ -418,18 +419,20 @@ local function readRestores(bag, slot)
   skillTip:ClearLines()
   skillTip:SetBagItem(bag, slot)
   local restores, givesBuff = false, false
+  local restoresHealth, restoresMana = false, false
   for line = 2, skillTip:NumLines() do
     local text = _G["BagwiseSkillTipTextLeft" .. line]
     local content = text and text:GetText()
-    if content and content:find("Restores", 1, true)
-        and (content:find("health", 1, true) or content:find("mana", 1, true)) then
-      restores = true
+    if content and content:find("Restores", 1, true) then
+      if content:find("health", 1, true) then restoresHealth = true end
+      if content:find("mana", 1, true) then restoresMana = true end
+      if restoresHealth or restoresMana then restores = true end
     end
     if content and content:lower():find("well fed", 1, true) then
       givesBuff = true
     end
   end
-  return restores, givesBuff
+  return restores, givesBuff, restoresMana and not restoresHealth
 end
 
 --- Gather item data from the WoW API for one bag slot.
@@ -452,7 +455,7 @@ local function gatherItem(bag, slot, state)
     item.requiredSkill = readRequiredSkill(bag, slot)
   elseif item and item.classID == CONSUMABLE_CLASS_ID
       and (item.subClassID == POTION_SUBCLASS_ID or item.subClassID == FOOD_SUBCLASS_ID) then
-    item.restoresHealthOrMana, item.givesBuff = readRestores(bag, slot)
+    item.restoresHealthOrMana, item.givesBuff, item.restoresManaOnly = readRestores(bag, slot)
   end
   return item
 end
@@ -500,6 +503,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
       .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana) .. ":" .. tostring(item.givesBuff)
+      .. ":" .. tostring(item.restoresManaOnly)
       .. ":" .. equippedKey(item)
       .. ":" .. tostring(item.bonusKey)
       .. ":" .. profKey
