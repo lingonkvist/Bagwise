@@ -67,6 +67,7 @@ local function setUp(layout, free, lootWindow)
   _G.GetNumLootItems = function() return #loot end
   _G.GetLootSlotLink = function(slot) return "|Hitem:" .. loot[slot].id .. "|h" end
   _G.GetLootSlotInfo = function(slot) return nil, nil, loot[slot].qty end
+  dofile("src/live.lua")
   dofile("src/scanner.lua")
 end
 

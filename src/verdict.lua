@@ -865,7 +865,7 @@ local AH_VENDOR_STEPS = {
   { below = 5000, factor = 1.2 },
 }
 local AH_VENDOR_LAST_FACTOR = 1.1
-local AH_VENDOR_SLACK = 150 -- or this many copper above it, for tiny prices
+local AH_VENDOR_SLACK = 400 -- or this many copper above it: two lost deposits, the cut and some time
 
 -- A few copper never decide between a vendor and the auction house, so both
 -- prices are rounded before they are compared, always towards "just vendor it":
@@ -929,7 +929,7 @@ end
 -- only the player's own version counts: a version the data has no price for
 -- gives nothing (it may be the rare, expensive one), never the item's price.
 -- @return number|nil ceiling, string source ("version", "item" or "unknown")
-local function ceilingFor(item)
+local function snapshotCeilingFor(item)
   local data = Bagwise.Data or {}
   local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
   if versions then
@@ -939,6 +939,34 @@ local function ceilingFor(item)
   end
   local prices = data.AuctionPriceCeiling
   return prices and prices[item.id], "item"
+end
+
+-- A fresh price from the player's own auction house (item.livePrice, set by the
+-- scanner only when Auctionator saw the item in the last few days). It is the
+-- lowest listing, so one cheap listing can make an item look worth less than it
+-- is. The snapshot is the check: a live price far below the snapshot's cheap end
+-- is not trusted, and the careful snapshot rules decide instead.
+local LIVE_LOWBALL_FRACTION = 0.5
+
+--- The live price to use for this item, or nil.
+-- @return number|nil price, string|nil why it was not used (for /bagwise why)
+local function liveCeiling(item)
+  local live = item.livePrice
+  if type(live) ~= "number" or live <= 0 then return nil end
+  local snapshot, source = snapshotCeilingFor(item)
+  if snapshot and source ~= "unknown" and live < snapshot * LIVE_LOWBALL_FRACTION then
+    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
+        .. " is far below the snapshot (" .. Bagwise.Verdict.FormatMoney(snapshot)
+        .. "), so it may be a lowball and is ignored"
+  end
+  return live
+end
+
+-- @return number|nil ceiling, string source ("live", "version", "item" or "unknown")
+local function ceilingFor(item)
+  local live = liveCeiling(item)
+  if live then return live, "live" end
+  return snapshotCeilingFor(item)
 end
 
 --- Everything the sell-at-vendor rule looks at, in one place: the rule and
@@ -951,16 +979,25 @@ local function checkSellAtVendor(item, state)
   local check = { passes = false, notes = {} }
   local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
 
-  if item.quality ~= UNCOMMON_QUALITY then
-    note_("only green gear is considered (this is quality " .. tostring(item.quality) .. ")")
+  local ceiling, source = ceilingFor(item)
+  local _, ignored = liveCeiling(item)
+  if ignored then note_(ignored) end
+
+  -- Green gear is judged on the snapshot. With a fresh live price the price is
+  -- known, so white and blue gear can be judged too (epics never are).
+  local quality = item.quality
+  local considered = quality == UNCOMMON_QUALITY
+      or (source == "live" and (quality == COMMON_QUALITY or quality == RARE_QUALITY))
+  if not considered then
+    note_("only green gear is considered without a live price (this is quality " .. tostring(quality) .. ")")
     return check
   end
   if item.isBound then
     note_("soulbound, so it is not sold at auction")
     return check
   end
-  if hasEnchanting(state) then
-    note_("you have Enchanting, so green gear may be worth disenchanting")
+  if quality >= UNCOMMON_QUALITY and hasEnchanting(state) then
+    note_("you have Enchanting, so this gear may be worth disenchanting")
     return check
   end
   if not item.sellPrice or item.sellPrice <= 0 then
@@ -968,7 +1005,6 @@ local function checkSellAtVendor(item, state)
     return check
   end
 
-  local ceiling, source = ceilingFor(item)
   if not ceiling then
     if source == "unknown" then
       note_("this version has no auction price on file (bonus "
@@ -980,11 +1016,13 @@ local function checkSellAtVendor(item, state)
   end
 
   local limit = sellLimit(item.sellPrice)
-  check.ceiling, check.limit = ceiling, limit
+  check.ceiling, check.limit, check.source = ceiling, limit, source
   local compared = roundedAuction(ceiling)
   local within = compared <= limit
   note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
-      .. (source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")" or " (whole item)")
+      .. (source == "live" and " (live price from Auctionator)"
+          or source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")"
+          or " (whole item)")
       .. ", limit " .. money(limit) .. " (vendor counted as " .. money(roundedVendor(item.sellPrice))
       .. ", auction as " .. money(compared) .. ")"
       .. (within and " (within)" or " (auction pays too much)"))
@@ -1010,7 +1048,8 @@ local function evaluateSellAtVendor(item, state)
   local check = checkSellAtVendor(item, state)
   if not (check and check.passes) then return nil end
   local money = Bagwise.Verdict.FormatMoney
-  return "green", "Vendor " .. money(item.sellPrice) .. ", auction about " .. money(check.ceiling)
+  return "green", "Vendor " .. money(item.sellPrice) .. ", auction "
+      .. (check.source == "live" and "about " or "up to ") .. money(check.ceiling)
 end
 
 --- The facts behind the sell-at-vendor rule for one item, as short lines for
@@ -1054,36 +1093,40 @@ local RULES = {
 -- @return string|nil a short "Vendor 5c, auction about 8s" for the tooltip, only
 --   when the block is about the price (not an unknown version or market)
 --- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
-local function priceNote(item, ceiling)
+local function priceNote(item, ceiling, source)
   local money = Bagwise.Verdict.FormatMoney
   local vendor = item.sellPrice or 0
   local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
-  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction about " .. money(ceiling)
+  -- A live price is the real price now ("about"); the snapshot is a cheap-end
+  -- ceiling ("up to").
+  return vendorText:sub(1, 1):upper() .. vendorText:sub(2)
+      .. (source == "live" and ", auction about " or ", auction up to ") .. money(ceiling)
 end
 
 local function auctionBlocker(item)
   if not isTradeable(item) then return nil end
-  if Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
+  local ceiling, source = ceilingFor(item)
+  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
     return "no auction prices for your region and faction"
   end
-  local ceiling, source = ceilingFor(item)
   if source == "unknown" then
     return "this version may sell for more at auction"
   end
   local vendor = item.sellPrice or 0
   if not ceiling or roundedAuction(ceiling) <= sellLimit(vendor) then return nil end
   -- The same facts for the tooltip, which tells the player why there is no dot.
-  local note = priceNote(item, ceiling)
+  local note = priceNote(item, ceiling, source)
   return "it may be worth more at auction (" .. note:sub(1, 1):lower() .. note:sub(2) .. ")", note
 end
 
 --- The price line for a hint that suggests selling at the auction house, when
 -- the data has a price for the item. Never blocks anything.
 local function auctionPriceLine(item)
-  if not isTradeable(item) or (Bagwise.Data and Bagwise.Data.AuctionMarketMissing) then return nil end
+  if not isTradeable(item) then return nil end
   local ceiling, source = ceilingFor(item)
+  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end
-  return priceNote(item, ceiling)
+  return priceNote(item, ceiling, source)
 end
 
 --- Run one rule and apply the safety check to a green.

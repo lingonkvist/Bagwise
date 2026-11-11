@@ -9,6 +9,7 @@ dofile("data/class_reagents.lua")
 dofile("data/quest_items.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
+dofile("src/live.lua")
 dofile("src/verdict.lua")
 dofile("src/bank.lua")
 
@@ -1850,23 +1851,23 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     local verdict, reason, _, tag, rule = Bagwise.Verdict.Evaluate(greenBoe(), state)
     restore()
     assert.are.equal("green", verdict)
-    assert.are.equal("Vendor 3s, auction about 4s", reason)
+    assert.are.equal("Vendor 3s, auction up to 4s", reason)
     assert.is_nil(tag)
     assert.are.equal("sell_at_vendor", rule)
   end)
 
   it("is not shown in the bank", function()
-    local bank = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Vendor 3s, auction about 4s",
+    local bank = Bagwise.Verdict.ForBank({ verdict = "green", reason = "Vendor 3s, auction up to 4s",
       sellable = true, rule = "sell_at_vendor" })
     assert.is_nil(bank.verdict)
   end)
 
-  it("still green at twice the vendor price, silent above it", function()
-    setPrices({ [41001] = 600 })
+  it("still green up to the limit, silent above it", function()
+    setPrices({ [41001] = 700 })
     local atLimit = Bagwise.Verdict.Evaluate(greenBoe(), state)
-    Bagwise.Data.AuctionPriceCeiling[41001] = 699 -- counts as 6s, whole silver down
+    Bagwise.Data.AuctionPriceCeiling[41001] = 799 -- counts as 7s, whole silver down
     local justAbove = Bagwise.Verdict.Evaluate(greenBoe(), state)
-    Bagwise.Data.AuctionPriceCeiling[41001] = 700
+    Bagwise.Data.AuctionPriceCeiling[41001] = 800
     local above = Bagwise.Verdict.Evaluate(greenBoe(), state)
     restore()
     assert.are.equal("green", atLimit)
@@ -1883,16 +1884,17 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     end
     -- The auction price counts in whole silver, rounded down, so the first
     -- ceiling that fails is the next silver above the limit.
-    assert.is_truthy(passes(400, 899));   assert.is_truthy(not passes(400, 900))     -- 2.0 times
-    assert.is_truthy(passes(1000, 1399)); assert.is_truthy(not passes(1000, 1400))   -- 1.35 times
+    assert.is_truthy(passes(500, 899)); assert.is_truthy(passes(500, 999)); assert.is_truthy(not passes(500, 1000)) -- 5s vendor, 8s auction counts
+    assert.is_truthy(passes(400, 899));   assert.is_truthy(not passes(400, 900))     -- 2.0 times, same as the flat 4s
+    assert.is_truthy(passes(1000, 1499)); assert.is_truthy(not passes(1000, 1500))   -- the flat 4s beats 1.35 times
     assert.is_truthy(passes(3000, 3699)); assert.is_truthy(not passes(3000, 3700))   -- 1.2 times
     assert.is_truthy(passes(10000, 11099)); assert.is_truthy(not passes(10000, 11100)) -- 1.1 times
   end)
 
-  it("tiny prices get a little slack", function()
-    setPrices({ [41001] = 240 })
+  it("low prices get a flat margin of 4s", function()
+    setPrices({ [41001] = 499 })
     local verdict = Bagwise.Verdict.Evaluate(greenBoe({ sellPrice = 90 }), state)
-    Bagwise.Data.AuctionPriceCeiling[41001] = 300
+    Bagwise.Data.AuctionPriceCeiling[41001] = 600
     local above = Bagwise.Verdict.Evaluate(greenBoe({ sellPrice = 90 }), state)
     restore()
     assert.are.equal("green", verdict)
@@ -2189,18 +2191,18 @@ describe("Tradable items the auction house may value more than a vendor", functi
   end)
 
   it("a finished quest item that auctions for much more gets no verdict", function()
-    Bagwise.Data.AuctionPriceCeiling = { [16645] = 300 }
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
     assert.is_nil((Bagwise.Verdict.Evaluate(manual(), state)))
     local trace = Bagwise.Verdict.Trace(manual(), state)
     assert.are.equal("quest_objective_done", trace[1].rule)
-    assert.is_truthy(trace[1].blockedBy:find("auction about 3s", 1, true))
+    assert.is_truthy(trace[1].blockedBy:find("auction up to 8s", 1, true))
   end)
 
   it("a dropped green hands back a note with both prices for the tooltip", function()
     Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
     local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual(), state)
     assert.is_nil(verdict)
-    assert.are.equal("Vendor 5c, auction about 8s", note)
+    assert.are.equal("Vendor 5c, auction up to 8s", note)
   end)
 
   it("a manual that auctions for about the vendor price has no note", function()
@@ -2213,7 +2215,7 @@ describe("Tradable items the auction house may value more than a vendor", functi
   it("an item with no vendor price says so in the note", function()
     Bagwise.Data.AuctionPriceCeiling = { [16645] = 800 }
     local _, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(manual({ sellPrice = 0 }), state)
-    assert.are.equal("No vendor price, auction about 8s", note)
+    assert.are.equal("No vendor price, auction up to 8s", note)
   end)
 
   it("an unknown market gives no price note, since there is no price to show", function()
@@ -2269,7 +2271,7 @@ describe("Tradable items the auction house may value more than a vendor", functi
     local good = { id = 777, classID = 7, subClassID = 9, quality = 1, count = 1, sellPrice = 10, isBound = false }
     Bagwise.Data.AuctionPriceCeiling = {}
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(good, state)))
-    Bagwise.Data.AuctionPriceCeiling = { [777] = 400 }
+    Bagwise.Data.AuctionPriceCeiling = { [777] = 800 }
     assert.is_nil((Bagwise.Verdict.Evaluate(good, state)))
   end)
 
@@ -2279,7 +2281,7 @@ describe("Tradable items the auction house may value more than a vendor", functi
     local vial = { id = 3371, classID = 7, quality = 1, count = 1, sellPrice = 2, isBound = false }
     Bagwise.Data.AuctionPriceCeiling = {}
     assert.are.equal("green", (Bagwise.Verdict.Evaluate(vial, state)))
-    Bagwise.Data.AuctionPriceCeiling = { [3371] = 300 }
+    Bagwise.Data.AuctionPriceCeiling = { [3371] = 800 }
     assert.is_nil((Bagwise.Verdict.Evaluate(vial, state)))
   end)
 
@@ -2320,12 +2322,12 @@ describe("Rounding in the vendor or auction check", function()
 
   it("crafted pants for 5s 77c are vendor trash next to a 7s 78c auction price", function()
     assert.is_truthy(isGreen(577, 778))
-    assert.is_truthy(isGreen(577, 899)) -- 6s counts as 6s, limit 8s 10c, 8s 99c counts as 8s
-    assert.is_truthy(not isGreen(577, 900))
+    assert.is_truthy(isGreen(577, 1099)) -- 6s counts as 6s, limit 10s, 10s 99c counts as 10s
+    assert.is_truthy(not isGreen(577, 1100))
   end)
 
   it("counts the auction price down to whole silver", function()
-    assert.is_truthy(isGreen(1000, 1399)); assert.is_truthy(not isGreen(1000, 1400))
+    assert.is_truthy(isGreen(1000, 1499)); assert.is_truthy(not isGreen(1000, 1500))
   end)
 
   it("tells /bagwise why the real prices and what they were counted as", function()
@@ -2335,7 +2337,7 @@ describe("Rounding in the vendor or auction check", function()
     Bagwise.Data.AuctionPriceCeiling = saved
     assert.is_truthy(facts:find("vendor 5s 77c", 1, true))
     assert.is_truthy(facts:find("auction ceiling 7s 78c", 1, true))
-    assert.is_truthy(facts:find("limit 8s 10c", 1, true))
+    assert.is_truthy(facts:find("limit 10s", 1, true))
     assert.is_truthy(facts:find("vendor counted as 6s, auction as 7s", 1, true))
   end)
 
@@ -2350,12 +2352,12 @@ describe("Rounding in the vendor or auction check", function()
   it("the tooltip note for a dropped green still shows the real prices", function()
     local savedReagents, savedPrices = Bagwise.Data.ReagentProfessions, Bagwise.Data.AuctionPriceCeiling
     Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.AuctionPriceCeiling = { [777] = 399 }
+    Bagwise.Data.AuctionPriceCeiling = { [777] = 899 }
     local good = { id = 777, classID = 7, subClassID = 9, quality = 1, count = 1, sellPrice = 100, isBound = false }
     local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(good, state)
     Bagwise.Data.ReagentProfessions, Bagwise.Data.AuctionPriceCeiling = savedReagents, savedPrices
     assert.is_nil(verdict)
-    assert.are.equal("Vendor 1s, auction about 3s 99c", note)
+    assert.are.equal("Vendor 1s, auction up to 8s 99c", note)
   end)
 end)
 
@@ -2533,7 +2535,7 @@ describe("Reagents only used by professions you lack", function()
   it("shows the vendor and auction prices when the data has one", function()
     withData({ AuctionPriceCeiling = { [8001] = 500 } }, function()
       local _, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(item(), player(TWO))
-      assert.are.equal("Vendor 1s, auction about 5s", note)
+      assert.are.equal("Vendor 1s, auction up to 5s", note)
     end)
     withData(nil, function()
       local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(item(), player(TWO))
@@ -2767,6 +2769,120 @@ describe("Items for a quest far above you", function()
       local low = questItem({ questItemQuestIDs = { 5204 }, openQuestIDs = { 5204 } })
       local _, _, _, _, rule = Bagwise.Verdict.Evaluate(low, at(30))
       assert.are.equal("trivial_quest_item", rule)
+    end)
+  end)
+end)
+
+describe("Live prices from Auctionator", function()
+  local function boe(overrides)
+    local item = { id = 42001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
+      reqLevel = 18, sellPrice = 300, count = 1, isBound = false,
+      equippedInSlots = { { quality = 2, itemLevel = 25 } } }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local state = { level = 20, professionNames = {}, professionsKnown = true }
+
+  local function withSnapshot(prices, fn)
+    local saved, missing = Bagwise.Data.AuctionPriceCeiling, Bagwise.Data.AuctionMarketMissing
+    Bagwise.Data.AuctionPriceCeiling = prices
+    fn()
+    Bagwise.Data.AuctionPriceCeiling, Bagwise.Data.AuctionMarketMissing = saved, missing
+  end
+
+  it("makes green gear green when the live price is close to the vendor price, and says about", function()
+    withSnapshot({}, function()
+      local verdict, reason, _, _, rule = Bagwise.Verdict.Evaluate(boe({ livePrice = 400 }), state)
+      assert.are.equal("green", verdict)
+      assert.are.equal("Vendor 3s, auction about 4s", reason)
+      assert.are.equal("sell_at_vendor", rule)
+    end)
+  end)
+
+  it("covers gear the snapshot has no price for", function()
+    withSnapshot({}, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe(), state)))
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+    end)
+  end)
+
+  it("works without any snapshot for the player's market", function()
+    withSnapshot(nil, function()
+      Bagwise.Data.AuctionMarketMissing = true
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe(), state)))
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+    end)
+  end)
+
+  it("gives no green when the live price is well above the vendor price", function()
+    withSnapshot({}, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 900 }), state)))
+    end)
+  end)
+
+  it("judges white and blue gear on a live price, but never epics", function()
+    withSnapshot({}, function()
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 1, livePrice = 350 }), state)))
+      local worn = { { quality = 4, itemLevel = 25 } }
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 3, livePrice = 350, equippedInSlots = worn }), state)))
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 4, livePrice = 350, equippedInSlots = worn }), state)))
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 3, equippedInSlots = worn }), state)))
+    end)
+  end)
+
+  it("keeps the upgrade check and the Enchanting check for live prices", function()
+    withSnapshot({}, function()
+      local upgrade = boe({ quality = 3, livePrice = 350, equippedInSlots = { { quality = 2, itemLevel = 10 } } })
+      assert.is_nil((Bagwise.Verdict.Evaluate(upgrade, state)))
+      local enchanter = { level = 20, professionNames = { Enchanting = true }, professionsKnown = true }
+      local worn = { { quality = 4, itemLevel = 25 } }
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 3, livePrice = 350, equippedInSlots = worn }), enchanter)))
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 1, livePrice = 350 }), enchanter)))
+    end)
+  end)
+
+  it("never greens a soulbound or protected item from a live price", function()
+    withSnapshot({}, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ isBound = true, livePrice = 350 }), state)))
+    end)
+  end)
+
+  it("ignores a live price far below the snapshot, since it may be a lowball", function()
+    withSnapshot({ [42001] = 2000 }, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+      local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ livePrice = 350 }), state), "\n")
+      assert.is_truthy(facts:find("lowball", 1, true))
+    end)
+  end)
+
+  it("falls back to the snapshot rules when the live price is ignored", function()
+    withSnapshot({ [42001] = 900 }, function()
+      -- 250 is below half of 900, so the snapshot (900, too much) decides: no green
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 250 }), state)))
+    end)
+    withSnapshot({ [42001] = 400 }, function()
+      -- 250 is not below half of 400, so it is trusted
+      local _, reason = Bagwise.Verdict.Evaluate(boe({ livePrice = 250 }), state)
+      assert.are.equal("Vendor 3s, auction about 2s 50c", reason)
+    end)
+  end)
+
+  it("a live price above the snapshot can drop a green the snapshot allowed", function()
+    withSnapshot({ [42001] = 400 }, function()
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe(), state)))
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 1500 }), state)))
+    end)
+  end)
+
+  it("tells the live price from the snapshot in the tooltip note", function()
+    local manual = { id = 16645, classID = 12, quality = 1, count = 1, sellPrice = 5, isBound = false,
+      bindType = 0, questItemQuestIDs = { 7 }, allQuestObjectivesCompleted = true }
+    withSnapshot({ [16645] = 800 }, function()
+      local _, _, _, _, _, _, snapshotNote = Bagwise.Verdict.Evaluate(manual, state)
+      assert.are.equal("Vendor 5c, auction up to 8s", snapshotNote)
+      manual.livePrice = 800
+      local _, _, _, _, _, _, liveNote = Bagwise.Verdict.Evaluate(manual, state)
+      assert.are.equal("Vendor 5c, auction about 8s", liveNote)
     end)
   end)
 end)

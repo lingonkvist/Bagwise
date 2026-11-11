@@ -32,8 +32,8 @@ Green:
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
 - Tradable items that are otherwise green (finished quest items, unused trade goods, vendor and class reagents, white gear you cannot use) lose the dot when the auction pays clearly more than a vendor.
-- When the auction check takes a green away, the tooltip says why in one blue line, for example `Vendor 5c, auction about 8s`, so a missing dot is not a mystery.
-- Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction about 3s`.
+- When the auction check takes a green away, the tooltip says why in one blue line, for example `Vendor 5c, auction up to 8s`, so a missing dot is not a mystery.
+- Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
 
 Yellow:
 - Bound gear 10 to 19 levels below you.
@@ -60,8 +60,13 @@ Bagwise ships with auction price data for Forever, so it can tell vendor trash f
 - Ordinary auctions and commodities (stackable materials) are both read. Items that sell for more than the price cap get no price but are marked as above it, so "worth a lot" is told apart from "nobody lists it".
 - Enchanters are never told to vendor green gear, since it can be disenchanted.
 - Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
-- The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees.
+- The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees: the auction price may always be 4s above the vendor price (two lost deposits, the cut and your time), so for a 5s item up to 9s still reads as "just vendor it".
 - A few copper never decide it, so both prices are rounded first, towards "just vendor it": the vendor price up to the next half silver (3s 24c counts as 3s 50c, 3s 70c as 4s) and the auction price down to whole silver (7s 78c counts as 7s). Tooltips still show the real prices.
+- If you also run Auctionator, Bagwise uses it for live prices. An item Auctionator saw at the auction house in the last 3 days is judged on that price, and the tooltip says "auction about 8s" where the snapshot says "auction up to 8s". Live prices only come in through Auctionator's public API, and every other check (safety, upgrades, Enchanting) still applies. They also reach further than the snapshot:
+  - Gear you can still sell (not soulbound) can get "Safe to vendor" at white and blue quality too, not just green, never epic.
+  - Items the snapshot has no price for, or has no price for your region and faction, can still be judged.
+  - Auctionator records the lowest listing, so one cheap listing can make an item look worth less than it is. A live price far below the snapshot (under half of it) is ignored and the careful snapshot rules decide. `/bagwise why` says when that happens.
+  - Without Auctionator, or for items it has not seen lately, nothing changes.
 - The data is refreshed with each release. `tools/build_auction_prices.py` rebuilds it, and a weekly workflow opens a pull request with new prices.
 
 ## What never gets a dot

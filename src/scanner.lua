@@ -450,6 +450,7 @@ local function gatherItem(bag, slot, state)
   if item then
     item.link = containerInfo.hyperlink
     item.bonusKey = Bagwise.Verdict.BonusKey(containerInfo.hyperlink)
+    item.livePrice = Bagwise.Live.FreshPrice(item)
   end
   if item and item.classID == RECIPE_CLASS_ID then
     item.requiredSkill = readRequiredSkill(bag, slot)
@@ -506,6 +507,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.restoresManaOnly)
       .. ":" .. equippedKey(item)
       .. ":" .. tostring(item.bonusKey)
+      .. ":" .. tostring(item.livePrice)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
@@ -992,6 +994,8 @@ function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot, link)
   local item = buildItem(itemID, false, nil, state, nil, opensForLoot)
   if not item then return nil end
   item.bonusKey = Bagwise.Verdict.BonusKey(link)
+  item.link = link
+  item.livePrice = Bagwise.Live.FreshPrice(item)
   return evaluateCached(item, state, professionCacheKey(state))
 end
 

@@ -197,6 +197,9 @@ local COMMAND_HANDLERS = {
     elseif Bagwise.Data.AuctionMarkets then
       print("  Auction market: none for your region and faction, so tradable items get no green")
     end
+    print("  Live prices: " .. (Bagwise.Live.Api()
+      and ("Auctionator found, prices seen in the last " .. Bagwise.Live.MAX_AGE_DAYS .. " days are used")
+      or "Auctionator not found, using the price snapshot only"))
     print("  Safety checks: " .. table.concat(Bagwise.Safety.Names(), ", "))
     print("  Your lists: " .. size(BagwiseDB.keepList) .. " kept, "
       .. size(BagwiseDB.flagList) .. " flagged")
