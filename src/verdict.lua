@@ -947,6 +947,8 @@ end
 -- is. The snapshot is the check: a live price far below the snapshot's cheap end
 -- is not trusted, and the careful snapshot rules decide instead.
 local LIVE_LOWBALL_FRACTION = 0.5
+-- Days: a live price with no snapshot price next to it must be this fresh.
+local LIVE_UNBACKED_MAX_AGE_DAYS = 1
 
 --- The live price to use for this item, or nil.
 -- @return number|nil price, string|nil why it was not used (for /bagwise why)
@@ -954,7 +956,17 @@ local function liveCeiling(item)
   local live = item.livePrice
   if type(live) ~= "number" or live <= 0 then return nil end
   local snapshot, source = snapshotCeilingFor(item)
-  if snapshot and source ~= "unknown" and live < snapshot * LIVE_LOWBALL_FRACTION then
+  local backed = snapshot and source ~= "unknown"
+  -- Without a snapshot price to compare against, only a very fresh price counts.
+  if not backed and (type(item.liveAge) ~= "number"
+      or item.liveAge > LIVE_UNBACKED_MAX_AGE_DAYS) then
+    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
+        .. " is not confirmed by the snapshot and is over a day old, so it is ignored"
+  end
+  -- (a versioned item is not ignored here: its live price is floored in ceilingFor)
+  -- A price that several recent days agree on (item.liveSteady) is the market's
+  -- own, not a one-off lowball, even when it differs from the snapshot.
+  if backed and not item.bonusKey and not item.liveSteady and live < snapshot * LIVE_LOWBALL_FRACTION then
     return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
         .. " is far below the snapshot (" .. Bagwise.Verdict.FormatMoney(snapshot)
         .. "), so it may be a lowball and is ignored"
@@ -962,11 +974,56 @@ local function liveCeiling(item)
   return live
 end
 
--- @return number|nil ceiling, string source ("live", "version", "item" or "unknown")
+-- A version's snapshot price is the pricey end of that version (the 75th
+-- percentile of its listings, build_auction_prices.py), a margin kept on purpose
+-- to be careful. Its cheap end, about what a seller gets, is roughly this
+-- fraction of it. A live price can bring the ceiling of a versioned item down to
+-- this floor and no further, since Auctionator's price is the cheapest version's.
+local VERSION_FLOOR_FRACTION = 0.6
+
+-- Versions the data must list before the dearest of them stands in for a
+-- version it has no price for. A handful of listed versions means the market
+-- was seen well; a single one proves nothing about the rest.
+local MIN_LISTED_VERSIONS = 3
+
+--- The dearest listed version of a random-suffix item, for the player's version
+-- when the data has no price for it. Most such items cost about the same in
+-- every version or are all worth selling, and the dearest version can only keep
+-- a green away, never give one that the dearest version would not.
+-- @return number|nil
+local function dearestVersionCeiling(item)
+  local data = Bagwise.Data or {}
+  local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
+  if not versions then return nil end
+  local count, dearest = 0, 0
+  for _, price in pairs(versions) do
+    count = count + 1
+    if price > dearest then dearest = price end
+  end
+  if count < MIN_LISTED_VERSIONS or dearest <= 0 then return nil end
+  return dearest
+end
+
+-- @return number|nil ceiling, string source ("live", "version", "versions", "item" or "unknown")
 local function ceilingFor(item)
   local live = liveCeiling(item)
-  if live then return live, "live" end
-  return snapshotCeilingFor(item)
+  local snapshot, source = snapshotCeilingFor(item)
+  if source == "unknown" then
+    local dearest = dearestVersionCeiling(item)
+    if dearest then snapshot, source = dearest, "versions" end
+  end
+  if not live then return snapshot, source end
+  -- Auctionator files every version of a random-suffix item under one key, so
+  -- its price is the cheapest version's. For a versioned item (the link carries
+  -- bonus ids) it may lower the snapshot's price only down to a floor: the
+  -- snapshot is the pricey end of this version (see VERSION_FLOOR_FRACTION), and
+  -- the floor is roughly its cheap end. With no snapshot price it decides nothing.
+  if item.bonusKey then
+    if not snapshot or source == "unknown" then return snapshot, source end
+    local fraction = source == "item" and LIVE_LOWBALL_FRACTION or VERSION_FLOOR_FRACTION
+    return math.max(live, snapshot * fraction), source
+  end
+  return live, "live"
 end
 
 --- Everything the sell-at-vendor rule looks at, in one place: the rule and
@@ -982,12 +1039,23 @@ local function checkSellAtVendor(item, state)
   local ceiling, source = ceilingFor(item)
   local _, ignored = liveCeiling(item)
   if ignored then note_(ignored) end
+  if source == "live" and item.liveSteady then
+    local snapshot, snapshotSource = snapshotCeilingFor(item)
+    if snapshot and snapshotSource ~= "unknown" and ceiling < snapshot * LIVE_LOWBALL_FRACTION then
+      note_("live price " .. money(ceiling) .. " is far below the snapshot (" .. money(snapshot)
+          .. ") but steady over the last days, so it is trusted")
+    end
+  end
+  if ceiling and item.bonusKey and type(item.livePrice) == "number" and source ~= "live" and not ignored then
+    note_("Auctionator's " .. money(item.livePrice) .. " is the cheapest version's price; it can lower the"
+        .. " snapshot price of this version to " .. math.floor(VERSION_FLOOR_FRACTION * 100) .. "% of it at most")
+  end
 
   -- Green gear is judged on the snapshot. With a fresh live price the price is
-  -- known, so white and blue gear can be judged too (epics never are).
+  -- known, so blue gear can be judged too (epics never are).
   local quality = item.quality
   local considered = quality == UNCOMMON_QUALITY
-      or (source == "live" and (quality == COMMON_QUALITY or quality == RARE_QUALITY))
+      or (source == "live" and quality == RARE_QUALITY)
   if not considered then
     note_("only green gear is considered without a live price (this is quality " .. tostring(quality) .. ")")
     return check
@@ -1022,6 +1090,7 @@ local function checkSellAtVendor(item, state)
   note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
       .. (source == "live" and " (live price from Auctionator)"
           or source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")"
+          or source == "versions" and " (this version has no price on file, so the dearest listed version)"
           or " (whole item)")
       .. ", limit " .. money(limit) .. " (vendor counted as " .. money(roundedVendor(item.sellPrice))
       .. ", auction as " .. money(compared) .. ")"

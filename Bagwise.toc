@@ -2,7 +2,7 @@
 ## Title: Bagwise
 ## Notes: Colored dots that mark what is safe to delete in your bags and bank
 ## Author: lingonkvist
-## Version: 0.5.7
+## Version: 0.5.8
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator, Bagnon, Auctionator

@@ -403,18 +403,25 @@ local function repaintBagnon()
 end
 
 -- ---------------------------------------------------------------------------
--- Loot window: with full bags, a green dot on loot that is worth less than
--- your junk (skip it). Loot worth a slot stays
--- silent: nothing to warn about. Shown as an X, not a dot.
+-- Loot window: with full bags, a red X on loot that is worth less than your junk
+-- (skip it) and a green check on loot that is worth a slot. Shapes, not dots.
 -- ---------------------------------------------------------------------------
 local lootMarksByRow = setmetatable({}, { __mode = "k" })
-local LOOT_LEAVE_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+-- Shapes as well as colours: a red X for skip, a green check for take.
+local LOOT_ICONS = {
+  leave = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+  take = "Interface\\RaidFrame\\ReadyCheck-Ready",
+  consider = "Interface\\RaidFrame\\ReadyCheck-Ready",
+  noroom = "Interface\\RaidFrame\\ReadyCheck-Ready",
+}
 
--- A small X in the row's corner: this loot is not worth a slot.
+-- A small mark in the row's corner: an X when this loot is not worth a slot,
+-- a check when it is (including loot you must make room for by hand).
 local function paintLootRow(row, slot)
   local decision = slot and Bagwise.Scanner.LootDecision(slot)
+  local icon = decision and LOOT_ICONS[decision]
   local mark = lootMarksByRow[row]
-  if decision ~= "leave" then
+  if not icon then
     if mark then mark:Hide() end
     return
   end
@@ -422,10 +429,10 @@ local function paintLootRow(row, slot)
     if not row.CreateTexture then return end
     mark = row:CreateTexture(nil, "OVERLAY")
     mark:SetSize(16, 16)
-    mark:SetTexture(LOOT_LEAVE_ICON)
     mark:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     lootMarksByRow[row] = mark
   end
+  mark:SetTexture(icon)
   mark:Show()
 end
 

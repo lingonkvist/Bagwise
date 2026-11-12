@@ -114,23 +114,21 @@ local function lootSlotOf(owner)
   return owner.slot
 end
 
-local LOOT_TAKE_LINE = "Worth a slot, more than your junk"
-local LOOT_CONSIDER_LINE = "Consider taking it"
+local LOOT_CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
+local LOOT_TAKE_LINE = LOOT_CHECK_ICON .. "Take it"
+local LOOT_CONSIDER_DETAIL = "May be needed"
 local LOOT_LEAVE_REASON = "Worth less than your junk"
-local LOOT_NOROOM_REASON = "Needs a slot, nothing safe to delete"
-local LOOT_NOROOM_HEADING = { title = "Make room by hand", detail = "Nothing to delete" }
+local LOOT_NOROOM_REASON = "Nothing safe to delete"
+local LOOT_NOROOM_HEADING = { title = "Make room first", detail = "Nothing safe to delete" }
 
 -- Name the junk the loot lost to, so the comparison is visible:
--- "Worth less than your cheapest gray (Odd Bauble, 8s)", item and coins coloured.
+-- "Worth less than Odd Bauble (8s)", item and coins coloured.
 local function lootLeaveReason()
   local summary = Bagwise.Scanner.MakeRoomSummary and Bagwise.Scanner.MakeRoomSummary()
-  if not (summary and summary.cheapestJunkValue) then return LOOT_LEAVE_REASON end
-  local kind = (summary.cheapestJunkQuality or 0) == 0 and "gray" or "junk"
-  local junk = Bagwise.Verdict.FormatMoney(summary.cheapestJunkValue)
-  if summary.cheapestJunkName then
-    junk = Bagwise.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality) .. ", " .. junk
-  end
-  return "Worth less than your cheapest " .. kind .. " (" .. junk .. ")"
+  if not (summary and summary.cheapestJunkValue and summary.cheapestJunkName) then return LOOT_LEAVE_REASON end
+  return "Worth less than "
+      .. Bagwise.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality)
+      .. " (" .. Bagwise.Verdict.FormatMoney(summary.cheapestJunkValue) .. ")"
 end
 
 -- The loot window gives no "opens for loot" flag, but the item's own tooltip
@@ -315,6 +313,19 @@ local LOOT_HEADINGS = {
   yellow = "Worth a glance",
 }
 
+-- The pop-out you get from clicking an item link in chat. The item is not in
+-- your bags, so it gets the general info rows and no verdict.
+local function isLinkTooltip(tooltip)
+  local name = tooltip.GetName and tooltip:GetName()
+  return name == "ItemRefTooltip"
+end
+
+-- With full bags and loot that loses to your junk, the header says it outright.
+local LOOT_LEAVE_HEADINGS = {
+  green  = "Skip it",
+  yellow = "Worth a glance",
+}
+
 local function dotEscape(verdict)
   return "|T" .. DOT_TEXTURES[verdict] .. ":" .. DOT_ESCAPE_SIZE .. ":" .. DOT_ESCAPE_SIZE .. "|t"
 end
@@ -367,6 +378,11 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     -- backpack slot holding the same item.
     result = Bagwise.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip), link)
     headings = LOOT_HEADINGS
+  elseif isLinkTooltip(tooltip) then
+    -- An item link in chat gets the general blue info only (what it is used
+    -- for, which quests need it), never a verdict: it is not your item.
+    result = nil
+    headings = LOOT_HEADINGS
   else
     local bag, slot = bagSlotOf(tooltip)
     if not bag then
@@ -396,6 +412,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     verdict, reason = nil, nil
   end
   if lootDecision == "leave" then
+    headings = LOOT_LEAVE_HEADINGS
     -- A gray's own "sells for ..." line would only repeat the comparison.
     local isGray = result and result.tag == Bagwise.Verdict.POOR_QUALITY_TAG
     if verdict and not isGray then lootNote = lootLeaveReason() else
@@ -452,8 +469,11 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   end
 
   if lootDecision == "take" or lootDecision == "consider" then
-    tooltip:AddLine(lootDecision == "take" and LOOT_TAKE_LINE or LOOT_CONSIDER_LINE,
-      INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    local green = VERDICT_COLORS.green
+    tooltip:AddLine(LOOT_TAKE_LINE, green.r, green.g, green.b)
+    if lootDecision == "consider" then
+      tooltip:AddLine(LOOT_CONSIDER_DETAIL, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    end
   end
 
   tooltip:Show()

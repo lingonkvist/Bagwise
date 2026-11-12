@@ -224,6 +224,30 @@ describe("tooltip basic output", function()
     assert.are.equal(0, #tt.lines)
   end)
 
+  it("a clicked chat link shows no verdict, even for an item that would have one", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = nil
+    Bagwise.Scanner = {
+      EvaluateItem = function() error("a link gets no verdict") end,
+      GetResult = function() error("a link is not in a bag") end,
+    }
+    local tt = makeTooltip("|cff1eff00|Hitem:14406::::::::31:1491|h[Resilient Cord]|h|r")
+    tt.GetName = function() return "ItemRefTooltip" end
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal(0, #tt.lines)
+  end)
+
+  it("a clicked chat link shows what a reagent is for even without a verdict", function()
+    Bagwise.Data.ReagentProfessions = { [765] = { { "Alchemy", 5, 1, 50 } } }
+    Bagwise.Data.VendorReagents = nil
+    Bagwise.Scanner = {}
+    local tt = makeTooltip("|cffffffff|Hitem:765:::::::|h[Silverleaf]|h|r")
+    tt.GetName = function() return "ItemRefTooltip" end
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Alchemy", 1, true))
+  end)
+
   it("explains the missing dot when the auction pays more: no verdict, one price row", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {
@@ -926,8 +950,7 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
-    assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
-      .. "8s)", tt.lines[3].text)
+    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (8s)", tt.lines[3].text)
   end)
 
   it("says a must-take item has no room even when it has its own verdict", function()
@@ -940,7 +963,7 @@ describe("tooltip in the loot window", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.are.equal("Needs a slot, nothing safe to delete", tt.lines[3].text)
+    assert.are.equal("Nothing safe to delete", tt.lines[3].text)
   end)
 
   it("says to consider an item taken for a reason a price cannot judge", function()
@@ -953,7 +976,9 @@ describe("tooltip in the loot window", function()
     Bagwise.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.are.equal("Consider taking it", tt.lines[#tt.lines].text)
+    assert.are.equal("May be needed", tt.lines[#tt.lines].text)
+    assert.is_truthy(tt.lines[#tt.lines - 1].text:find("Take it", 1, true))
+    assert.are.equal(0.33, tt.lines[#tt.lines - 1].r)
   end)
 
   it("names the cheapest gray on one line, item and coins coloured", function()
@@ -970,8 +995,7 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.are.equal(2, #tt.lines)
-    assert.are.equal("Worth less than your cheapest gray (|cff9d9d9dOdd Bauble|r, "
-      .. "1s 17c)", tt.lines[2].text)
+    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (1s 17c)", tt.lines[2].text)
   end)
 
   it("a skipped gray does not repeat its own price", function()
@@ -989,7 +1013,8 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.are.equal(2, #tt.lines)
-    assert.is_truthy(tt.lines[2].text:find("^Worth less than your cheapest gray"))
+    assert.is_truthy(tt.lines[1].text:find("Skip it$"))
+    assert.is_truthy(tt.lines[2].text:find("^Worth less than"))
   end)
 
   it("does not repeat a gray's own sell price next to the comparison", function()
@@ -1007,7 +1032,7 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.are.equal(2, #tt.lines)
-    assert.is_truthy(tt.lines[2].text:find("Worth less than your cheapest gray", 1, true))
+    assert.is_truthy(tt.lines[2].text:find("Worth less than", 1, true))
   end)
 
   it("names a recognised yellow by what was found, detail underneath", function()

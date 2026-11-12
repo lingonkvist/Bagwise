@@ -10,7 +10,7 @@ read_globals = {
   "EUI_Bags", "EllesmereUI", "Enum", "GameTooltip", "GetAddOnMetadata", "GetBagName", "GetBuildInfo",
   "GetInventoryItemLink", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink",
   "GetNumLootItems", "GetNumSkillLines", "GetProfessionInfo", "GetProfessions", "GetRealmName",
-  "GetServerTime", "GetSkillLineInfo", "IsAnyBagOpen", "ITEM_OPENABLE", "ITEM_QUALITY_COLORS",
+  "GetServerTime", "GetTime", "GetSkillLineInfo", "IsAnyBagOpen", "ITEM_OPENABLE", "ITEM_QUALITY_COLORS",
   "LOOTFRAME_NUMBUTTONS", "LootFrame", "LootSlotHasItem", "NUM_BAG_SLOTS", "NUM_CONTAINER_FRAMES",
   "NUM_REAGENTBAG_SLOTS", "OpenAllBags", "TooltipDataProcessor", "UIParent", "UISpecialFrames",
   "UnitClass", "UnitFactionGroup", "UnitLevel", "UnitName", "UnitRace", "hooksecurefunc", "time", "tinsert",

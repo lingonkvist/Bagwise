@@ -231,6 +231,7 @@ local COMMAND_HANDLERS = {
     for _, line in ipairs(Bagwise.Verdict.SellAtVendorFacts(item, explained.state)) do
       print("  " .. line)
     end
+    print("  " .. Bagwise.Live.Describe(item))
     if item.link then
       print("  link fields: " .. tostring(item.link:match("item:([^|]*)")))
     end

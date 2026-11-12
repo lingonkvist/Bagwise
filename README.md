@@ -59,13 +59,16 @@ Bagwise ships with auction price data for Forever, so it can tell vendor trash f
 - If Bagwise cannot tell your region or faction, tradable items get no green at all.
 - Ordinary auctions and commodities (stackable materials) are both read. Items that sell for more than the price cap get no price but are marked as above it, so "worth a lot" is told apart from "nobody lists it".
 - Enchanters are never told to vendor green gear, since it can be disenchanted.
-- Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no data gets no dot.
+- Gear with random suffixes (of the Eagle, of the Whale) is priced per version. A version with no price of its own is judged on the dearest of the versions that have one, as long as at least 3 are listed, so it only gets a dot when even the dearest version would; with fewer, it gets no dot.
 - The more an item is worth, the closer the auction price has to be to the vendor price before Bagwise says to vendor it. Cheap items give more room, since listing costs time and fees: the auction price may always be 4s above the vendor price (two lost deposits, the cut and your time), so for a 5s item up to 9s still reads as "just vendor it".
 - A few copper never decide it, so both prices are rounded first, towards "just vendor it": the vendor price up to the next half silver (3s 24c counts as 3s 50c, 3s 70c as 4s) and the auction price down to whole silver (7s 78c counts as 7s). Tooltips still show the real prices.
 - If you also run Auctionator, Bagwise uses it for live prices. An item Auctionator saw at the auction house in the last 3 days is judged on that price, and the tooltip says "auction about 8s" where the snapshot says "auction up to 8s". Live prices only come in through Auctionator's public API, and every other check (safety, upgrades, Enchanting) still applies. They also reach further than the snapshot:
-  - Gear you can still sell (not soulbound) can get "Safe to vendor" at white and blue quality too, not just green, never epic.
+  - Gear you can still sell (not soulbound) can get "Safe to vendor" at blue quality too, not just green, never epic.
   - Items the snapshot has no price for, or has no price for your region and faction, can still be judged.
-  - Auctionator records the lowest listing, so one cheap listing can make an item look worth less than it is. A live price far below the snapshot (under half of it) is ignored and the careful snapshot rules decide. `/bagwise why` says when that happens.
+  - Auctionator records the lowest listing, so one cheap listing can make an item look worth less than it is. A live price far below the snapshot (under half of it) is ignored and the careful snapshot rules decide, unless the last days agree on it (two or more days within a quarter of each other): prices differ between realms, and a price several days agree on is not a one-off lowball. `/bagwise why` says when that happens.
+  - The price Auctionator shows is its last reading, and for busy items it swings by half from one scan to the next. Bagwise reads Auctionator's recorded daily history too: green and cheaper items are judged on the average over the last 3 days of the middle of each day's range, blue gear on the average of the daily highs, since it is dearer and sells less often. It never goes below the price Auctionator shows, so recent dearer days can hold a verdict back. If the history cannot be read, the shown price is used.
+  - Auctionator files all versions of a random-suffix item (of the Eagle, of the Whale) under one key, so its price is the cheapest version's. For items whose link carries a version, Bagwise lets it lower the snapshot's price only to 60% of it (the snapshot is the pricey end of that version), and uses it for nothing when the snapshot has no price for the item.
+  - Auctionator keeps the last price it saw until the item is seen again, and it can file a price under the wrong item. So a live price must belong to exactly this item, and when the snapshot has no price to compare against it must have been seen today or yesterday, not 3 days ago.
   - Without Auctionator, or for items it has not seen lately, nothing changes.
 - The data is refreshed with each release. `tools/build_auction_prices.py` rebuilds it, and a weekly workflow opens a pull request with new prices.
 
@@ -80,6 +83,10 @@ Anything that could still matter:
 - Consumables, other than the yellow cases above.
 - Anything you have told Bagwise to keep.
 
+## Item links in chat
+
+Click an item link in chat and the pop-out tooltip gets the general blue info: what a crafting item is used for and which quests need it. There is no verdict, since it is not your item.
+
 ## In the bank
 
 Dots work in the bank and the warband bank too. People bank things on purpose, so a verdict only stays as it is when it holds for any character. Anything that depends on your professions, class or quests is at most yellow, "Bank it" hints are dropped because the item is already there, and vendor suggestions are not shown.
@@ -89,7 +96,8 @@ Dots work in the bank and the warband bank too. People bank things on purpose, s
 When the loot window is open and your bags cannot hold everything:
 - The cheapest junk in your bags gets a soft green glow around its slot.
 - Every other dot goes quiet, so the glow is the only thing to act on.
-- Loot worth less than your cheapest junk gets a green dot in the loot window.
+- Loot worth less than your cheapest junk gets a red X in the loot window, and its tooltip says "Skip it".
+- Loot worth a slot gets a green check, and its tooltip says "Take it". That includes quest and crafting items a price cannot judge, and loot you must make room for by hand.
 - Deleting the glowing item moves the glow to the next cheapest.
 
 Loot that joins a stack you already carry does not count as needing a slot. Quiver, ammo and profession bags are not counted as room.

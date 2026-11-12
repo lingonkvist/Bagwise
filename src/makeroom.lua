@@ -165,5 +165,5 @@ function Bagwise.MakeRoom.BannerText(summary)
   if (summary.noRoom or 0) > 0 then return "Bags full: make room by hand" end
   if (summary.leaving or 0) == 0 then return nil end
   if not summary.cheapestJunkValue then return "Bags full, nothing safe to delete" end
-  return "Bags full: loot is worth less than your junk"
+  return "Bags full: nothing here is worth a slot"
 end

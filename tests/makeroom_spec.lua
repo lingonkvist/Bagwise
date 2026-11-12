@@ -195,7 +195,7 @@ describe("Make room banner text", function()
   it("explains why loot is left (the tooltip names the junk)", function()
     local text = banner({ active = true, deletes = 0, leaving = 1,
       cheapestJunkValue = 800, cheapestJunkName = "Odd Bauble" })
-    assert.are.equal("Bags full: loot is worth less than your junk", text)
+    assert.are.equal("Bags full: nothing here is worth a slot", text)
   end)
 
   it("asks you to make room by hand for must-take loot", function()

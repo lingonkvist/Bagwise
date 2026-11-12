@@ -1832,7 +1832,7 @@ end)
 describe("Safe to vendor: the auction price is close to the vendor price", function()
   local function greenBoe(overrides)
     local item = { id = 41001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
-      reqLevel = 18, sellPrice = 300, count = 1, isBound = false,
+      reqLevel = 18, sellPrice = 300, count = 1, isBound = false, liveAge = 0,
       equippedInSlots = { { quality = 2, itemLevel = 25 } } }
     for key, value in pairs(overrides or {}) do item[key] = value end
     return item
@@ -2102,6 +2102,23 @@ describe("Auction price per version of an item", function()
     local text = table.concat(Bagwise.Verdict.SellAtVendorFacts(rare), "\n")
     assert.is_truthy(text:find("this version has no auction price", 1, true))
     Bagwise.Data.AuctionPriceCeiling = nil
+    Bagwise.Data.AuctionVariantCeiling = nil
+  end)
+
+  it("a version with no price follows the dearest listed version when several are listed", function()
+    local unlisted = {}
+    for k, v in pairs(gear) do unlisted[k] = v end
+    unlisted.bonusKey = "12723"
+    Bagwise.Data.AuctionVariantCeiling = { [777010] = { ["12744"] = 800, ["12745"] = 700, ["12746"] = 900 } }
+    local verdict, reason = Bagwise.Verdict.Evaluate(unlisted, state)
+    assert.are.equal("green", verdict)
+    assert.are.equal("Vendor 7s 25c, auction up to 9s", reason)
+    -- one dear version among the listed ones keeps the green away
+    Bagwise.Data.AuctionVariantCeiling = { [777010] = { ["12744"] = 800, ["12745"] = 700, ["12746"] = 27000 } }
+    assert.is_nil((Bagwise.Verdict.Evaluate(unlisted, state)))
+    -- two listed versions are too few to stand in for the rest
+    Bagwise.Data.AuctionVariantCeiling = { [777010] = { ["12744"] = 800, ["12745"] = 700 } }
+    assert.is_nil((Bagwise.Verdict.Evaluate(unlisted, state)))
     Bagwise.Data.AuctionVariantCeiling = nil
   end)
 
@@ -2776,7 +2793,7 @@ end)
 describe("Live prices from Auctionator", function()
   local function boe(overrides)
     local item = { id = 42001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
-      reqLevel = 18, sellPrice = 300, count = 1, isBound = false,
+      reqLevel = 18, sellPrice = 300, count = 1, isBound = false, liveAge = 0,
       equippedInSlots = { { quality = 2, itemLevel = 25 } } }
     for key, value in pairs(overrides or {}) do item[key] = value end
     return item
@@ -2820,9 +2837,9 @@ describe("Live prices from Auctionator", function()
     end)
   end)
 
-  it("judges white and blue gear on a live price, but never epics", function()
+  it("judges blue gear on a live price, but never white or epic", function()
     withSnapshot({}, function()
-      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 1, livePrice = 350 }), state)))
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 1, livePrice = 350 }), state)))
       local worn = { { quality = 4, itemLevel = 25 } }
       assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 3, livePrice = 350, equippedInSlots = worn }), state)))
       assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 4, livePrice = 350, equippedInSlots = worn }), state)))
@@ -2837,7 +2854,7 @@ describe("Live prices from Auctionator", function()
       local enchanter = { level = 20, professionNames = { Enchanting = true }, professionsKnown = true }
       local worn = { { quality = 4, itemLevel = 25 } }
       assert.is_nil((Bagwise.Verdict.Evaluate(boe({ quality = 3, livePrice = 350, equippedInSlots = worn }), enchanter)))
-      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ quality = 1, livePrice = 350 }), enchanter)))
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350, quality = 2 }), { level = 20, professionNames = {}, professionsKnown = true })))
     end)
   end)
 
@@ -2847,11 +2864,72 @@ describe("Live prices from Auctionator", function()
     end)
   end)
 
+  it("a versioned item may use a live price to go below the snapshot, but only to a floor of 60% of it", function()
+    withSnapshot({}, function()
+      local function versions(price) return { [42001] = { ["12744"] = price, ["12745"] = price, ["12746"] = price } } end
+      -- snapshot 900: floor 540. Auctionator's 350 (the cheapest version) is lifted to 5s 40c, under the 7s limit
+      Bagwise.Data.AuctionVariantCeiling = versions(900)
+      local verdict, reason = Bagwise.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 350 }), state)
+      assert.are.equal("green", verdict)
+      assert.are.equal("Vendor 3s, auction up to 5s 40c", reason)
+      -- snapshot 2000: floor 1200 is over the limit however low Auctionator says
+      Bagwise.Data.AuctionVariantCeiling = versions(2000)
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 100 }), state)))
+      -- a live price above the floor counts as it is
+      Bagwise.Data.AuctionVariantCeiling = versions(900)
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 1500 }), state)))
+      Bagwise.Data.AuctionVariantCeiling = nil
+    end)
+  end)
+
+  it("explains in /bagwise why how a live price was used on a versioned item", function()
+    withSnapshot({}, function()
+      Bagwise.Data.AuctionVariantCeiling = { [42001] = { ["12744"] = 900, ["12745"] = 900, ["12746"] = 900 } }
+      local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ bonusKey = "12744", livePrice = 350 }), state), "\n")
+      assert.is_truthy(facts:find("cheapest version", 1, true))
+      assert.is_truthy(facts:find("60%", 1, true))
+      Bagwise.Data.AuctionVariantCeiling = nil
+    end)
+  end)
+
+  it("with no snapshot price a live price decides nothing for a versioned item", function()
+    withSnapshot({}, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 350 }), state)))
+    end)
+  end)
+
   it("ignores a live price far below the snapshot, since it may be a lowball", function()
     withSnapshot({ [42001] = 2000 }, function()
       assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
       local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ livePrice = 350 }), state), "\n")
       assert.is_truthy(facts:find("lowball", 1, true))
+    end)
+  end)
+
+  it("needs a price seen today or yesterday when the snapshot has nothing to compare", function()
+    withSnapshot({}, function()
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350, liveAge = 1 }), state)))
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 350, liveAge = 2 }), state)))
+      local noAge = boe({ livePrice = 350 })
+      noAge.liveAge = nil
+      assert.is_nil((Bagwise.Verdict.Evaluate(noAge, state)))
+      local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ livePrice = 350, liveAge = 3 }), state), "\n")
+      assert.is_truthy(facts:find("over a day old", 1, true))
+    end)
+  end)
+
+  it("accepts a price up to 3 days old when the snapshot is in the same range", function()
+    withSnapshot({ [42001] = 400 }, function()
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350, liveAge = 3 }), state)))
+    end)
+  end)
+
+  it("trusts a live price far below the snapshot when the recent days agree on it", function()
+    withSnapshot({ [42001] = 2000 }, function()
+      assert.is_nil((Bagwise.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+      assert.are.equal("green", (Bagwise.Verdict.Evaluate(boe({ livePrice = 350, liveSteady = true }), state)))
+      local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ livePrice = 350, liveSteady = true }), state), "\n")
+      assert.is_truthy(facts:find("steady over the last days", 1, true))
     end)
   end)
 
