@@ -614,6 +614,9 @@ local function evaluateOutleveledReagent(item, state)
   -- Without the downstream uses we cannot tell a finished material from an
   -- ingredient of something still in demand, so the rule stays silent.
   if not Bagwise.Data.ReagentChains then return nil end
+  -- A quest that still wants it (a profession quest, say) is a use the recipe
+  -- data knows nothing about, whatever your skill is.
+  if item.openQuestIDs and #item.openQuestIDs > 0 then return nil end
   local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end

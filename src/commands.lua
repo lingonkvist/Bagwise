@@ -167,6 +167,13 @@ local COMMAND_HANDLERS = {
     print("  /bagwise loot           - What the make-room plan sees (loot window open)")
     print("  /bagwise glow           - Test the delete glow on your first item")
     print("  /bagwise status         - Version, bag UI and counts")
+    print("  /bagwise bank           - What Bagwise sees of the bank")
+  end,
+  bank = function()
+    say("bank:")
+    local ok, lines = pcall(Bagwise.Overlay.BankDiagnostics)
+    if not ok then lines = { "Diagnostics failed: " .. tostring(lines) } end
+    for _, line in ipairs(lines) do print("  " .. line) end
   end,
   status = function()
     say("v" .. Bagwise.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))

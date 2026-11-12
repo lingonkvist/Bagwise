@@ -17,6 +17,8 @@ Bagwise.Data.ProtectedItems = {
   [268416] = "Plant in a Herbalism Greenhouse, or combine in a Seed Hybridizer", -- Uncommon Herb Seeds
   [268417] = "Plant in a Herbalism Greenhouse, or combine in a Seed Hybridizer", -- Unusual Herb Seeds
   [268418] = "Plant in a Herbalism Greenhouse (camp item)", -- Scarce Herb Seeds
+  -- Keys: a quest reward that does a job. Deleting it means going back for it.
+  [9173] = "Needed to use the Gnomeregan teleporter in Booty Bay", -- Goblin Transponder
   -- Found by the trade goods audit
   [11099] = "Smelts into Dark Iron Bars at the Black Forge", -- Dark Iron Ore
   [273295] = "Forever seasonal item, use unknown", -- Seasonal Fish Steaks

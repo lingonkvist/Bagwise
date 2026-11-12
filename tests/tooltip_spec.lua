@@ -248,6 +248,27 @@ describe("tooltip basic output", function()
     assert.is_truthy(tt.lines[1].text:find("Alchemy", 1, true))
   end)
 
+  it("shows the verdict on a Forever bank button, which knows its own tab and slot", function()
+    Bagwise.Data.ReagentProfessions = {}
+    local asked
+    Bagwise.Scanner = {
+      GetResult = function(bag, slot)
+        asked = bag .. ":" .. slot
+        return { verdict = "green", reason = "Well below your level" }
+      end,
+    }
+    local realIsScanned = Bagwise.Bags.IsScanned
+    Bagwise.Bags.IsScanned = function(bag) return bag == 7 end
+    local tt = makeTooltip("|cff...|Hitem:123:...|h[Old Sword]|h|r")
+    local button = { GetBankTabID = function() return 7 end, GetContainerSlotID = function() return 3 end,
+                     GetID = function() return 99 end, GetParent = function() return {} end }
+    tt.GetOwner = function() return button end
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    Bagwise.Bags.IsScanned = realIsScanned
+    assert.are.equal("7:3", asked)
+    assert.are.equal(2, #tt.lines)
+  end)
+
   it("explains the missing dot when the auction pays more: no verdict, one price row", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {

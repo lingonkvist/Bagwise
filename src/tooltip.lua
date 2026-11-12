@@ -147,6 +147,12 @@ end
 
 local function bagSlotOf(tooltip)
   local owner = tooltip:GetOwner()
+  -- Forever's tabbed bank: each button knows its own tab (a bag ID) and slot.
+  if owner and owner.GetBankTabID and owner.GetContainerSlotID then
+    local tabID, slotID = owner:GetBankTabID(), owner:GetContainerSlotID()
+    if tabID and slotID and Bagwise.Bags.IsScanned(tabID) then return tabID, slotID end
+    return nil
+  end
   if not (owner and owner.GetParent and owner.GetID) then return nil end
 
   local slotID = owner:GetID()

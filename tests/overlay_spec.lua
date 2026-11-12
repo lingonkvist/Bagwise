@@ -201,6 +201,126 @@ describe("Bank bags", function()
 end)
 
 
+describe("Blizzard tabbed bank (Forever)", function()
+  -- A bank button knows its own tab and slot; its parent frame carries no bag ID.
+  local realIsScanned = Bagwise.Bags.IsScanned
+  local function teardown()
+    Bagwise.Bags.IsScanned = realIsScanned
+    _G.BankFrame, _G.hooksecurefunc = nil, nil
+  end
+  local function makeBankButton(tabID, slotID)
+    local button = makeButton(0, 99)
+    function button:GetBankTabID() return tabID end
+    function button:GetContainerSlotID() return slotID end
+    return button
+  end
+
+  -- poolStyle: the real bank panel yields (button, true) from its object pool.
+  local function installBankPanel(buttons, poolStyle)
+    local panel = { visible = true, hooks = {} }
+    function panel:IsVisible() return self.visible end
+    function panel:EnumerateValidItems()
+      local index = 0
+      return function()
+        index = index + 1
+        if buttons[index] then
+          if poolStyle then return buttons[index], true end
+          return index, buttons[index]
+        end
+      end
+    end
+    function panel:GenerateItemSlotsForSelectedTab() end
+    _G.BankFrame = { BankPanel = panel }
+    _G.hooksecurefunc = function(target, name, fn)
+      local original = target[name]
+      target[name] = function(...) original(...) fn(...) end
+      panel.hooks[#panel.hooks + 1] = name
+    end
+    return panel
+  end
+
+  it("paints a bank slot from the button's own tab and slot", function()
+    local first = makeBankButton(6, 4)
+    installBankPanel({ first })
+    installScanner({ ["6:4"] = { verdict = "yellow" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    Bagwise.Overlay.UpdateAll()
+    assert.are.equal(1, #first.dots)
+    assert.is_truthy(first.dots[1].shown)
+    teardown()
+  end)
+
+  it("reads the bank panel's button pool, which yields (button, true)", function()
+    local first = makeBankButton(6, 4)
+    installBankPanel({ first }, true)
+    installScanner({ ["6:4"] = { verdict = "green" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    Bagwise.Overlay.UpdateAll()
+    assert.are.equal(1, #first.dots)
+    assert.is_truthy(first.dots[1].shown)
+    for _, line in ipairs(Bagwise.Overlay.BankDiagnostics()) do
+      assert.is_truthy(not line:find("failed"))
+    end
+    teardown()
+  end)
+
+  it("repaints after the panel redraws a tab", function()
+    local button = makeBankButton(7, 2)
+    local panel = installBankPanel({ button })
+    installScanner({ ["7:2"] = { verdict = "green" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    Bagwise.Overlay.UpdateAll()
+    button.dots[1].shown = false
+    panel:GenerateItemSlotsForSelectedTab()
+    assert.is_truthy(button.dots[1].shown)
+    teardown()
+  end)
+
+  it("finds a bank panel that is only a child of BankFrame", function()
+    local button = makeBankButton(6, 1)
+    local panel = installBankPanel({ button })
+    _G.BankFrame = { GetChildren = function() return panel end }
+    installScanner({ ["6:1"] = { verdict = "green" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    Bagwise.Overlay.UpdateAll()
+    assert.are.equal(1, #button.dots)
+    teardown()
+  end)
+
+  it("falls back to the panel's child frames when it cannot list its buttons", function()
+    local button = makeBankButton(6, 5)
+    local other = makeButton(0, 1) -- a child that is not an item button
+    local panel = { IsVisible = function() return true end,
+                    GetChildren = function() return other, button end }
+    _G.BankPanel = panel
+    installScanner({ ["6:5"] = { verdict = "green" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    Bagwise.Overlay.UpdateAll()
+    _G.BankPanel = nil
+    assert.are.equal(1, #button.dots)
+    assert.are.equal(0, #other.dots)
+    teardown()
+  end)
+
+  it("reports what it sees of the bank for /bagwise bank", function()
+    local button = makeBankButton(6, 2)
+    installBankPanel({ button })
+    installScanner({ ["6:2"] = { verdict = "yellow" } })
+    Bagwise.Bags.IsScanned = function() return true end
+    local text = table.concat(Bagwise.Overlay.BankDiagnostics(), "\n")
+    assert.is_truthy(text:find("Bank panels with item buttons: 1", 1, true))
+    assert.is_truthy(text:find("tab 6 slot 2 scanned verdict yellow", 1, true))
+    teardown()
+  end)
+
+  it("lists the bank among the painted bag UIs", function()
+    installBankPanel({})
+    local found = table.concat(Bagwise.Overlay.DetectedBagAddons(), ",")
+    assert.is_truthy(found:find("Blizzard bank", 1, true))
+    teardown()
+  end)
+end)
+
 describe("Bagnon adapter", function()
   -- A fake Bagnon: Item.UpdateSecondary is what Bagnon calls after each slot refresh.
   local function installBagnon()

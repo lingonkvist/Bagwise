@@ -1568,6 +1568,16 @@ describe("Outleveled reagents", function()
     assert.are.equal("Outleveled, Tailoring recipes use it up to 125", reason)
   end)
 
+  it("stays silent while an unfinished quest still wants it", function()
+    local wanted = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
+                     questItemQuestIDs = { 4001 }, openQuestIDs = { 4001 } }
+    assert.is_nil((Bagwise.Verdict.Evaluate(wanted, state({ Tailoring = 250 }))))
+    -- once every quest that wants it is done, the hint is back
+    local done = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
+                   questItemQuestIDs = { 4001 }, openQuestIDs = {}, allQuestObjectivesCompleted = true }
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(done, state({ Tailoring = 250 }))))
+  end)
+
   it("stays silent while something made from it is still in demand", function()
     Bagwise.Data.ReagentChains[2589] = { { "Tailoring", 40, 225 } }
     local silent = Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 225 }))

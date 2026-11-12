@@ -28,6 +28,9 @@ local function rescanSoon()
   end)
 end
 
+-- A bank tab the client draws that Bagwise did not know about: scan it.
+Bagwise.Bags.onNewBankBag = function() rescanSoon() end
+
 local function invalidateAndRescan()
   Bagwise.Scanner.ClearCache()
   rescanAll()
@@ -150,7 +153,13 @@ local EVENT_HANDLERS = {
   LOOT_OPENED            = onLootOpened,
   LOOT_SLOT_CLEARED      = onLootChanged,
   LOOT_CLOSED            = onLootClosed,
-  BANKFRAME_OPENED       = rescanSoon,
+  BANKFRAME_OPENED       = function()
+    rescanSoon()
+    -- Blizzard fills the bank panel after the event; paint once it has.
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.5, function() Bagwise.Overlay.UpdateAll() end)
+    end
+  end,
   BANKFRAME_CLOSED       = rescanSoon,
   PLAYERBANKSLOTS_CHANGED = rescanSoon,
   PLAYERBANKBAGSLOTS_CHANGED = rescanSoon,

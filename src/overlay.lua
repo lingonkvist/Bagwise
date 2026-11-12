@@ -189,9 +189,37 @@ end
 --     ContainerFrameNItemM, where M counts from the end (slot = size - M + 1).
 local MAX_FRAMES = NUM_CONTAINER_FRAMES or 13
 
+local bankPanelFrames = setmetatable({}, { __mode = "k" })
+
+-- The item buttons of a bank panel, as an iterator of buttons. Normally the panel
+-- lists them itself; if it cannot, its child frames that know their own tab and
+-- slot are the buttons.
+local function bankButtons(panel)
+  local buttons = {}
+  if panel.EnumerateValidItems then
+    -- Bag frames yield (index, button); the bank panel yields its button pool,
+    -- which is (button, true). Take whichever of the two is the frame.
+    for first, second in panel:EnumerateValidItems() do
+      local button = type(first) == "table" and first or second
+      if type(button) == "table" then buttons[#buttons + 1] = button end
+    end
+  elseif panel.GetChildren then
+    for _, child in ipairs({ panel:GetChildren() }) do
+      if child.GetBankTabID and child.GetContainerSlotID then buttons[#buttons + 1] = child end
+    end
+  end
+  return buttons
+end
+
+-- Forever's bank is Mainline's BankPanel: one tab at a time, drawn from a pool of
+-- buttons that each know their own tab (bag ID) and slot.
 local function paintEnumerated(frame)
-  for _, button in frame:EnumerateValidItems() do
-    paintButton(button, bagIDOf(button), button:GetID())
+  for _, button in ipairs(bankButtons(frame)) do
+    local bagID = button.GetBankTabID and button:GetBankTabID() or bagIDOf(button)
+    local slotID = button.GetContainerSlotID and button:GetContainerSlotID() or button:GetID()
+    -- A tab the client draws is a bank bag, whatever number it has.
+    Bagwise.Bags.NoteBankBag(bagID)
+    paintButton(button, bagID, slotID)
   end
 end
 
@@ -213,12 +241,44 @@ end
 -- bag replacement takes over) can still report shown.
 local function paintFrame(frame)
   if not (frame and frame:IsVisible()) then return end
-  if frame.EnumerateValidItems then
-    paintEnumerated(frame)
+  if frame.EnumerateValidItems or bankPanelFrames[frame] then
+    -- A bank painting error must not stop the other bags; /bagwise bank shows it.
+    local ok, err = pcall(paintEnumerated, frame)
+    Bagwise.Overlay.lastBankError = (not ok) and tostring(err) or nil
   else
     paintNamed(frame)
   end
 end
+
+-- The bank's item panels, on clients with the tabbed bank (Forever): one panel
+-- for the character bank, and on some builds another for the warband bank. The
+-- usual names are tried first, then the children of BankFrame, since the exact
+-- name is not something every build agrees on.
+local function bankPanels()
+  local found, seen = {}, {}
+  local function add(panel)
+    -- A panel counts when it can list its item buttons, or has child frames
+    -- that are bank item buttons (see bankButtons).
+    if type(panel) == "table" and (panel.EnumerateValidItems or panel.GetChildren) and not seen[panel] then
+      seen[panel] = true
+      bankPanelFrames[panel] = true
+      found[#found + 1] = panel
+    end
+  end
+  add(BankFrame and BankFrame.BankPanel)
+  add(BankFrame and BankFrame.AccountBankPanel)
+  add(_G.BankPanel)
+  add(_G.AccountBankPanel)
+  if BankFrame and BankFrame.GetChildren then
+    for _, child in ipairs({ BankFrame:GetChildren() }) do
+      if child.EnumerateValidItems then add(child) end
+    end
+  end
+  return found
+end
+
+local function bankPanel() return bankPanels()[1] end
+
 
 local function blizzardFrames()
   local frames = {}
@@ -229,10 +289,35 @@ local function blizzardFrames()
     local frame = _G["ContainerFrame" .. frameIndex]
     if frame then frames[#frames + 1] = frame end
   end
+  for _, panel in ipairs(bankPanels()) do frames[#frames + 1] = panel end
   return frames
 end
 
+-- Switching bank tab re-inits the pooled buttons with no bag event, so the bank
+-- panel is repainted straight after its own redraw. Done once per panel, and
+-- when the panel first shows up, since it may be created after Bagwise loads.
+local hookedBankPanels = setmetatable({}, { __mode = "k" })
+local BANK_REDRAWS = { "GenerateItemSlotsForSelectedTab", "RefreshAllItemsForSelectedTab" }
+
+local function hookBankPanel()
+  for _, panel in ipairs(bankPanels()) do
+    if not hookedBankPanels[panel] then
+      hookedBankPanels[panel] = true
+      for _, name in ipairs(BANK_REDRAWS) do
+        if type(panel[name]) == "function" then
+          hooksecurefunc(panel, name, function() paintFrame(panel) end)
+        end
+      end
+      -- The first draw can come before Bagwise has hooked the panel.
+      if panel.HookScript then
+        panel:HookScript("OnShow", function() paintFrame(panel) end)
+      end
+    end
+  end
+end
+
 local function updateBlizzard()
+  hookBankPanel()
   for _, frame in ipairs(blizzardFrames()) do
     paintFrame(frame)
   end
@@ -506,12 +591,72 @@ function Bagwise.Overlay.BagWindows()
   return windows
 end
 
+--- What Bagwise sees of the Blizzard bank, for /bagwise bank.
+-- @return table  list of lines
+local function bankDiagnosticLines()
+  local lines = {}
+  local function add(text) lines[#lines + 1] = text end
+  local panels = bankPanels()
+  add("BankFrame: " .. (BankFrame and "found" or "missing")
+      .. (BankFrame and BankFrame.IsShown and (BankFrame:IsShown() and ", shown" or ", hidden") or ""))
+  add("Bank panels with item buttons: " .. #panels)
+  for index, panel in ipairs(panels) do
+    local count, sample = 0, {}
+    for _, button in ipairs(bankButtons(panel)) do
+      count = count + 1
+      if #sample < 3 then
+        local tab = button.GetBankTabID and button:GetBankTabID() or "no GetBankTabID"
+        local slot = button.GetContainerSlotID and button:GetContainerSlotID() or "no GetContainerSlotID"
+        local result = type(tab) == "number" and type(slot) == "number"
+            and Bagwise.Scanner.GetResult(tab, slot)
+        sample[#sample + 1] = "tab " .. tostring(tab) .. " slot " .. tostring(slot)
+            .. (type(tab) == "number" and (Bagwise.Bags.IsScanned(tab) and " scanned" or " NOT scanned") or "")
+            .. (result and (" verdict " .. tostring(result.verdict)) or " no result")
+    end
+    end
+    add("  panel " .. index .. (panel.IsVisible and (panel:IsVisible() and " visible" or " hidden") or "")
+        .. ", " .. count .. " buttons")
+    for _, line in ipairs(sample) do add("    " .. line) end
+  end
+  local ids = Bagwise.Bags.BankBags()
+  add("Bank bag IDs with slots: " .. (#ids > 0 and table.concat(ids, ", ") or "none"))
+  local known, detail = {}, {}
+  for id in pairs(Bagwise.Bags.BankIDSet()) do known[#known + 1] = id end
+  table.sort(known)
+  for _, id in ipairs(known) do
+    local slots = C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerNumSlots(id)
+    if (slots or 0) > 0 then detail[#detail + 1] = id .. "=" .. slots end
+  end
+  add("Slots per bank bag: " .. (#detail > 0 and table.concat(detail, ", ") or "none read"))
+  local keys = {}
+  if Enum and Enum.BagIndex then
+    for name, id in pairs(Enum.BagIndex) do
+      if tostring(name):find("Bank") then keys[#keys + 1] = name .. "=" .. id end
+    end
+    table.sort(keys)
+  end
+  add("Enum.BagIndex bank entries: " .. (#keys > 0 and table.concat(keys, ", ") or "none"))
+  return lines
+end
+
+function Bagwise.Overlay.BankDiagnostics()
+  local ok, lines = pcall(bankDiagnosticLines)
+  if ok then
+    if Bagwise.Overlay.lastBankError then
+      lines[#lines + 1] = "Last bank paint error: " .. Bagwise.Overlay.lastBankError
+    end
+    return lines
+  end
+  return { "Diagnostics failed: " .. tostring(lines) }
+end
+
 --- Which bag UIs Bagwise can currently paint (for /bagwise status).
 -- @return table  list of names
 function Bagwise.Overlay.DetectedBagAddons()
   local found = {}
   if ContainerFrameCombinedBags then found[#found + 1] = "Blizzard combined bags" end
   if ContainerFrame1 then found[#found + 1] = "Blizzard separate bags" end
+  if bankPanel() then found[#found + 1] = "Blizzard bank" end
   if Baganator and Baganator.API and Baganator.API.RegisterCornerWidget then
     found[#found + 1] = "Baganator"
   end

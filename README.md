@@ -118,10 +118,11 @@ Troubleshooting:
 - `/bagwise loot`: what the make-room plan sees. Run it with a loot window open.
 - `/bagwise glow`: test the delete glow on your first item.
 - `/bagwise status`: version, bag UI and counts.
+- `/bagwise bank`: what Bagwise sees of the bank (open the bank window first).
 
 ## Compatibility
 
-- Blizzard bags, Baganator (with Syndicator), EllesmereUI Bags and Bagnon.
+- Blizzard bags and bank, Baganator (with Syndicator), EllesmereUI Bags and Bagnon.
 - WoW Forever (Interface 16001).
 
 ## Reporting a bug
