@@ -26,8 +26,9 @@ Green:
 - Quest items whose quests are all done.
 - Reagents sold by vendors, for professions you do not have.
 - Class reagents for other classes.
-- Bound gear 20 or more levels below you (rare and better are at most yellow).
+- Bound gear 20 or more levels below you (rare and better are at most yellow). Gear with a Use effect, an on-hit proc or a special Equip effect (trinkets, rocket boots, speed procs) is left alone, since it is worth keeping for what it does.
 - White armor your class cannot wear, or cannot wear yet.
+- White weapons of a type your class can never learn (a priest with an axe), and arrows or bullets for a class with no bow, crossbow or gun. This comes from the game's own skill data for Forever, so it follows its differences (rogues use axes there). A pricey one is still held back by the auction check.
 - White armor you have outgrown, because you wear green or better in that slot.
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
@@ -43,7 +44,8 @@ Yellow:
 - Things you open: clams, lockboxes and bags of loot.
 - Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it"). A recipe is far above you when it needs more than 25 skill points. A reagent needs more than 50, or more than 25 once you have stopped leveling that profession for 6 hours. A profession counts as idle after 12 hours without a skill gain (and a new play session), and then any recipe out of reach is banked.
 - Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them. The hint appears once the last recipe that needs the item, directly or through what it is turned into, has turned green (the skill-up chance is then under half), and the tooltip says "Recipes turn green at Profession N", the skill where the color changes in your profession window. Data built before 0.6.1 uses the skill the best recipe is learned at instead. An open quest that wants the item holds the hint back, unless that quest is 10 or more levels below you (the same goes for the hint on reagents only other professions use).
-- Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
+- Food, drink, potions, elixirs, flasks and stat scrolls (Strength, Agility, Stamina, Intellect, Spirit, Protection) made for a much lower level. Food with an effect is left alone, and Enchanters keep scrolls that are Enchanting reagents. When the auction house pays clearly more than a vendor for one of these, the tooltip adds the price line (for example `Vendor 5c, auction about 8s`), so the hint never reads as "throw it away".
+- Bandages that heal under 15% of your health. The tooltip says what it heals, for example `Heals 9% of your health (400 of 4500)`. Without that to go on, a bandage follows its required level like other consumables.
 - Mana potions and drinks, if your class has no mana.
 - Crafting materials that drop (no vendor sells them) and that none of your professions use. It waits until both primary profession slots are taken, and stays quiet for anything Cooking, First Aid or Fishing uses (anyone can learn those) and for characters with only gathering professions. The tooltip shows the vendor and auction prices when there is one on file. The bank does not show it.
 - Library books, with who to hand them in to (Garion Wendell in Stormwind, Owen Thadd in Undercity). A deleted book cannot be looted again.
@@ -110,6 +112,7 @@ Everyday:
 - `/bagwise flag [item]`: always show a yellow dot on this item.
 - `/bagwise reset [item]`: return this item to the normal rules.
 - `/bagwise list`: show your kept and flagged items.
+- `/bagwise summary`: what the dots in your bags add up to, for example `9 green (2g 14s at a vendor), 5 yellow`. Bagwise also says this when you level up, if anything is marked.
 
 `[item]` can be a shift-clicked link, an item ID or an item name.
 
@@ -136,7 +139,7 @@ Troubleshooting:
 ## Development
 
 - Tests: `python3 -I tests/run_tests.py` (needs `lupa`). `node tools/check_globals.js` catches stray globals, and CI runs both.
-- Data: `tools/build_auction_prices.py` (needs `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET`) and `tools/build_reagent_professions.py` regenerate the files in `data/`. Both have a `--selftest`. `tools/build_library_books.py` rebuilds the library book list from the quest data, and `tools/build_quest_availability.py --source <foreverQuestDB.lua>` when quests open and which events offer them (use the same Questie export as `build_quest_items.py`).
+- Data: `tools/build_auction_prices.py` (needs `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET`) and `tools/build_reagent_professions.py` regenerate the files in `data/`. `tools/build_weapon_skills.py` builds which classes can use each weapon type (from the game's skill data). Both have a `--selftest`. `tools/build_library_books.py` rebuilds the library book list from the quest data, and `tools/build_quest_availability.py --source <foreverQuestDB.lua>` when quests open and which events offer them (use the same Questie export as `build_quest_items.py`).
 - `src/verdict.lua` decides, and is pure. It never calls the game.
 - `src/notes.lua` holds the words behind every yellow. `src/bank.lua` turns a verdict into what the bank shows.
 - `src/safety.lua` holds the protections. A rule can propose a green, and a protection can veto it.

@@ -91,3 +91,23 @@ describe("Commands.PriceAgeDays", function()
   end)
 end)
 
+
+
+describe("Commands.SummaryLine", function()
+  Bagwise.Verdict = Bagwise.Verdict or {}
+  Bagwise.Verdict.FormatMoney = Bagwise.Verdict.FormatMoney or function(copper) return copper .. "c" end
+
+  it("says greens with their vendor value and yellows", function()
+    local line = Bagwise.Commands.SummaryLine({ green = 9, yellow = 5, greenValue = 214 })
+    assert.are.equal("9 green (214c at a vendor), 5 yellow", line)
+  end)
+
+  it("leaves out what is zero", function()
+    assert.are.equal("5 yellow", Bagwise.Commands.SummaryLine({ green = 0, yellow = 5, greenValue = 0 }))
+    assert.are.equal("2 green (30c at a vendor)", Bagwise.Commands.SummaryLine({ green = 2, yellow = 0, greenValue = 30 }))
+  end)
+
+  it("gives nothing when nothing is marked", function()
+    assert.is_nil(Bagwise.Commands.SummaryLine({ green = 0, yellow = 0, greenValue = 0 }))
+  end)
+end)

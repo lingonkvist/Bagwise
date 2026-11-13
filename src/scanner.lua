@@ -21,6 +21,8 @@ local verdictCache = {}
 -- Slot results: keyed by "bag:slot" string
 -- Rebuilt on every scan. The overlay reads this.
 local slotResults = {}
+-- What the last scan found in your bags: dots and what the greens would fetch at a vendor.
+local lastSummary = { green = 0, yellow = 0, greenValue = 0 }
 
 -- English profession name -> skillLine ID.
 -- Only needs the professions referenced by VendorReagents, but we include
@@ -168,6 +170,7 @@ local function getPlayerState()
     race = race,
     faction = faction,
     level = level,
+    maxHealth = UnitHealthMax and UnitHealthMax("player") or nil,
     professionSkillLines = skillLines,
     professionNames = professionNames,
     professionRanks = professionRanks,
@@ -407,6 +410,46 @@ local function readRequiredSkill(bag, slot)
   return found
 end
 
+-- Tooltip prefixes, from the game's own strings so other locales match.
+local USE_PREFIX = _G.ITEM_SPELL_TRIGGER_ONUSE or "Use:"
+local EQUIP_PREFIX = _G.ITEM_SPELL_TRIGGER_ONEQUIP or "Equip:"
+local PROC_PREFIX = _G.ITEM_SPELL_TRIGGER_ONPROC or "Chance on hit:"
+-- An Equip line that only adds a stat ("Increases attack power by 20") is not
+-- an effect. Anything else (a chance to stun, a speed burst) is.
+local PLAIN_STAT_WORDS = { "Increases", "Improves", "Restores" }
+
+local function isEffectLine(content)
+  if content:sub(1, #USE_PREFIX) == USE_PREFIX then return true end
+  if content:sub(1, #PROC_PREFIX) == PROC_PREFIX then return true end
+  if content:sub(1, #EQUIP_PREFIX) == EQUIP_PREFIX then
+    local rest = content:sub(#EQUIP_PREFIX + 1):gsub("^%s+", "")
+    for i = 1, #PLAIN_STAT_WORDS do
+      local word = PLAIN_STAT_WORDS[i]
+      if rest:sub(1, #word) == word then return false end
+    end
+    return true
+  end
+  return false
+end
+
+--- Whether gear has a Use, on-hit or special Equip effect, so it is kept for
+-- what it does and never called outdated or sellable.
+local function readHasEffect(bag, slot)
+  if not (CreateFrame and UIParent) then return false end
+  if not skillTip then
+    skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+  end
+  skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+  skillTip:ClearLines()
+  skillTip:SetBagItem(bag, slot)
+  for line = 2, skillTip:NumLines() do
+    local text = _G["BagwiseSkillTipTextLeft" .. line]
+    local content = text and text:GetText()
+    if content and isEffectLine(content) then return true end
+  end
+  return false
+end
+
 --- The tooltip lines of an item in your bags, as the skill reader sees them, for
 -- /bagwise why when a recipe's required skill was not found.
 -- @return table|nil list of strings
@@ -438,6 +481,7 @@ local RECIPE_CLASS_ID = 9
 local CONSUMABLE_CLASS_ID = 0
 local POTION_SUBCLASS_ID = 1
 local FOOD_SUBCLASS_ID = 5
+local BANDAGE_SUBCLASS_ID = 7
 
 -- Does this potion restore health or mana? Utility potions (swim speed, free
 -- action) are never outleveled, so the potion rule needs a yes. The wording is
@@ -469,6 +513,24 @@ local function readRestores(bag, slot)
   return restores, givesBuff, restoresMana and not restoresHealth
 end
 
+--- How much a bandage heals, from its tooltip ("Heals 400 damage over 8 sec").
+local function readHealAmount(bag, slot)
+  if not (CreateFrame and UIParent) then return nil end
+  if not skillTip then
+    skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+  end
+  skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+  skillTip:ClearLines()
+  skillTip:SetBagItem(bag, slot)
+  for line = 2, skillTip:NumLines() do
+    local text = _G["BagwiseSkillTipTextLeft" .. line]
+    local content = text and text:GetText()
+    local amount = content and content:match("Heals ([%d,]+) damage")
+    if amount then return tonumber((amount:gsub(",", ""))) end
+  end
+  return nil
+end
+
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index
 -- @param slot  number  Slot index (1-N)
@@ -486,11 +548,16 @@ local function gatherItem(bag, slot, state)
     item.bonusKey = Bagwise.Verdict.BonusKey(containerInfo.hyperlink)
     item.livePrice, item.liveAge, item.liveSteady = Bagwise.Live.FreshPrice(item)
   end
+  if item and item.isEquippable then
+    item.hasEffect = readHasEffect(bag, slot)
+  end
   if item and item.classID == RECIPE_CLASS_ID then
     item.requiredSkill = readRequiredSkill(bag, slot)
   elseif item and item.classID == CONSUMABLE_CLASS_ID
       and (item.subClassID == POTION_SUBCLASS_ID or item.subClassID == FOOD_SUBCLASS_ID) then
     item.restoresHealthOrMana, item.givesBuff, item.restoresManaOnly = readRestores(bag, slot)
+  elseif item and item.classID == CONSUMABLE_CLASS_ID and item.subClassID == BANDAGE_SUBCLASS_ID then
+    item.healAmount = readHealAmount(bag, slot)
   end
   return item
 end
@@ -540,6 +607,8 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.hasLoot)
       .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana) .. ":" .. tostring(item.givesBuff)
       .. ":" .. tostring(item.restoresManaOnly)
+      .. ":" .. tostring(item.hasEffect)
+      .. ":" .. tostring(item.healAmount) .. ":" .. tostring(item.healAmount and state.maxHealth and math.floor(state.maxHealth / 250))
       .. ":" .. equippedKey(item)
       .. ":" .. tostring(item.bonusKey)
       .. ":" .. tostring(item.livePrice) .. ":" .. tostring(item.liveAge) .. ":" .. tostring(item.liveSteady)
@@ -666,6 +735,18 @@ local function scanAllSlots()
 
   -- Making room for loot runs last, on the final results.
   lootPlan = { take = {}, deletes = {}, active = false }
+  lastSummary = { green = 0, yellow = 0, greenValue = 0 }
+  for _, candidate in ipairs(junkCandidates) do
+    local result = slotResults[candidate.key]
+    if result and Bagwise.Bags.IsCarried(candidate.bag) then
+      if result.verdict == "green" then
+        lastSummary.green = lastSummary.green + 1
+        lastSummary.greenValue = lastSummary.greenValue + (candidate.value or 0)
+      elseif result.verdict == "yellow" then
+        lastSummary.yellow = lastSummary.yellow + 1
+      end
+    end
+  end
   lastFreeSlots, lastJunkCount = freeSlots, 0
   lastCheapestJunk = nil
   if #lootPieces == 0 then return end
@@ -944,6 +1025,12 @@ function Bagwise.Scanner.ForceTestGlow()
     end
   end
   return nil
+end
+
+--- The dots in your bags after the last scan, and the vendor value of the greens.
+-- @return table { green = n, yellow = n, greenValue = copper }
+function Bagwise.Scanner.Summary()
+  return { green = lastSummary.green, yellow = lastSummary.yellow, greenValue = lastSummary.greenValue }
 end
 
 function Bagwise.Scanner.GetResult(bag, slot)

@@ -159,6 +159,30 @@ local function otherFaction(questFaction, playerFaction)
   return questFaction ~= nil and mine ~= nil and questFaction ~= mine
 end
 
+--- One line on what the dots in your bags add up to.
+-- @param summary table { green, yellow, greenValue }
+-- @return string|nil nil when there is nothing marked
+function Bagwise.Commands.SummaryLine(summary)
+  local parts = {}
+  if summary.green > 0 then
+    parts[#parts + 1] = summary.green .. " green (" .. Bagwise.Verdict.FormatMoney(summary.greenValue)
+      .. " at a vendor)"
+  end
+  if summary.yellow > 0 then parts[#parts + 1] = summary.yellow .. " yellow" end
+  if #parts == 0 then return nil end
+  return table.concat(parts, ", ")
+end
+
+--- Say the summary. At level up it stays quiet when there is nothing to say.
+function Bagwise.Commands.PrintSummary(quietWhenEmpty)
+  local line = Bagwise.Commands.SummaryLine(Bagwise.Scanner.Summary())
+  if line then
+    say("Your bags: " .. line .. ".")
+  elseif not quietWhenEmpty then
+    say("Nothing marked in your bags.")
+  end
+end
+
 local COMMAND_HANDLERS = {
   help = function()
     say("commands:")
@@ -167,6 +191,7 @@ local COMMAND_HANDLERS = {
     print("  /bagwise reset [item]   - Return this item to the normal rules")
     print("  /bagwise list           - Show your kept and flagged items")
     print("  /bagwise autoopen       - Turn on or off opening your bags when loot needs room")
+    print("  /bagwise summary        - What the dots in your bags add up to")
     print("  /bagwise help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
     print("Troubleshooting (paste the output when something looks wrong):")
@@ -176,6 +201,9 @@ local COMMAND_HANDLERS = {
     print("  /bagwise glow           - Test the delete glow on your first item")
     print("  /bagwise status         - Version, bag UI and counts")
     print("  /bagwise bank           - What Bagwise sees of the bank")
+  end,
+  summary = function()
+    Bagwise.Commands.PrintSummary(false)
   end,
   bank = function()
     say("bank:")
@@ -268,6 +296,10 @@ local COMMAND_HANDLERS = {
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0
       and table.concat(explained.recipeProfessions, ", ") or "none"))
+    if item.classID == 0 and item.subClassID == 7 then
+      print("  bandage heal, read from the tooltip: " .. tostring(item.healAmount or "not found")
+        .. ", your max health: " .. tostring(explained.state and explained.state.maxHealth or "unknown"))
+    end
     if item.classID == 9 and explained.fromBag then
       print("  skill needed, read from the tooltip: " .. tostring(item.requiredSkill or "not found"))
       local ok, summary = pcall(Bagwise.Scanner.ProfessionSummary)

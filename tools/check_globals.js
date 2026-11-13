@@ -23,7 +23,7 @@ const WOW = new Set(("Baganator Bagnon C_AddOns C_Bank C_Container C_Item C_Ques
   "GetProfessionInfo GetProfessions GetCurrentRegion GetNormalizedRealmName GetRealmName GetServerTime GetSkillLineInfo IsAnyBagOpen " +
   "ITEM_OPENABLE ITEM_QUALITY_COLORS LOOTFRAME_NUMBUTTONS LootFrame LootSlotHasItem NUM_BAG_SLOTS " +
   "NUM_CONTAINER_FRAMES NUM_REAGENTBAG_SLOTS OpenAllBags SlashCmdList TooltipDataProcessor UIParent " +
-  "UISpecialFrames UnitClass UnitFactionGroup UnitLevel UnitName UnitRace hooksecurefunc time tinsert").split(" "));
+  "UISpecialFrames UnitClass UnitFactionGroup UnitHealthMax UnitLevel UnitName UnitRace hooksecurefunc time tinsert").split(" "));
 
 // The only globals the addon may create.
 const OURS = new Set(["Bagwise", "BagwiseDB", "SLASH_BAGWISE1"]);

@@ -8,6 +8,7 @@ Bagwise = nil
 local DATA_FILES = {
   "reagent_professions", "reagent_chains", "vendor_reagents", "class_reagents",
   "quest_items", "mana_consumables", "protected_items", "auction_prices", "library_books", "quest_availability",
+  "weapon_skills",
 }
 for _, file in ipairs(DATA_FILES) do
   dofile("data/" .. file .. ".lua")
@@ -78,6 +79,29 @@ describe("Data files: shape", function()
         if row[4] and row[4] > 0 then assert.is_truthy(row[4] >= row[3]) end
       end
     end
+  end)
+
+  it("weapon_skills lists the nine classes' real access, and every weapon type has some class", function()
+    local known = { WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true, PRIEST = true,
+                    SHAMAN = true, MAGE = true, WARLOCK = true, DRUID = true }
+    for _, table_ in ipairs({ Data.WeaponClasses, Data.AmmoClasses }) do
+      local count = 0
+      for subClassID, classes in pairs(table_) do
+        assert.are.equal("number", type(subClassID))
+        local any = false
+        for name in pairs(classes) do
+          assert.is_truthy(known[name])
+          any = true
+        end
+        assert.is_truthy(any)
+        count = count + 1
+      end
+      assert.is_truthy(count >= 2)
+    end
+    -- Forever's own data: rogues use axes, priests never do.
+    assert.is_truthy(Data.WeaponClasses[0].ROGUE)
+    assert.is_nil(Data.WeaponClasses[0].PRIEST)
+    assert.is_nil(Data.AmmoClasses[2].MAGE)
   end)
 
   it("library books are item IDs that the quest data also knows", function()

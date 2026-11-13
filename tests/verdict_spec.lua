@@ -7,6 +7,7 @@ dofile("data/vendor_reagents.lua")
 dofile("data/reagent_professions.lua")
 dofile("data/class_reagents.lua")
 dofile("data/quest_items.lua")
+dofile("data/weapon_skills.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
 dofile("src/live.lua")
@@ -67,6 +68,20 @@ describe("Story 1.3: soulbound gear far below my level (reqLevel)", function()
     local state = { class = "Warrior", race = "Human", level = 40 }
 
     assert.is_nil(Bagwise.Verdict.Evaluate(item, state))
+  end)
+end)
+
+describe("Gear with an effect gets no verdict", function()
+  local state = { class = "Warrior", race = "Human", level = 45 }
+
+  it("a soulbound trinket far below your level is left alone", function()
+    local item = { id = 33090, isBound = true, isEquippable = true, reqLevel = 10, hasEffect = true }
+    assert.is_nil((Bagwise.Verdict.Evaluate(item, state)))
+  end)
+
+  it("the same gear without an effect still gets green", function()
+    local item = { id = 33091, isBound = true, isEquippable = true, reqLevel = 10 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(item, state)))
   end)
 end)
 
@@ -1548,12 +1563,12 @@ describe("Outleveled consumables", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable(), at(24))))
   end)
 
-  it("covers potions and bandages but not elixirs or flasks", function()
+  it("covers potions, bandages, elixirs and flasks", function()
     assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(
       consumable({ subClassID = 1, restoresHealthOrMana = true }), at(40))))
     assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 7 }), at(40))))
-    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 2 }), at(40))))
-    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ subClassID = 3 }), at(40))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 2 }), at(40))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable({ subClassID = 3 }), at(40))))
   end)
 
   it("a utility potion (swim speed, water walking) is never outleveled", function()
@@ -1563,9 +1578,10 @@ describe("Outleveled consumables", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(unread, at(60))))
   end)
 
-  it("says nothing when the item has no level requirement or serves a quest", function()
+  it("says nothing when the item has no level requirement or serves a quest you are on", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ reqLevel = 0 }), at(50))))
-    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ questItemQuestIDs = { 1 } }), at(50))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable({ questItemQuestIDs = { 1 }, openQuestIDs = { 1 },
+      onOpenQuest = true }), at(50))))
   end)
 end)
 
@@ -2046,6 +2062,7 @@ describe("Yellow headings", function()
       { { "bank_used_from", "Mining", 175 }, "Bank it, used from Mining 175",            "Bank it",             "Used from Mining 175" },
       { { "outleveled_reagent", "Mining", 125 }, "Outleveled, Mining recipes use it up to 125", "Outleveled reagent", "Mining recipes use it up to 125" },
       { { "low_level_consumable", "food", 5, 30 }, "Low-level food (level 5, you are 30)", "Low-level food",    "Level 5, you are 30" },
+      { { "weak_bandage", 400, 9, 4500 },    "Weak bandage", "Weak bandage", "Heals 9% of your health (400 of 4500)" },
       { { "open_it" },                      "Open it, the contents may stack",           "Open it",             "Contents may stack" },
       { { "no_mana", "Warriors" },          "Warriors have no mana. May sell at the auction house", "Not for your class", "No mana for Warriors" },
       { { "wrong_class_reagent", "Mage, Priest only (world drop)" }, "Mage, Priest only (world drop)", "Wrong class reagent", "Mage, Priest only (world drop)" },
@@ -3076,5 +3093,211 @@ describe("Live prices from Auctionator", function()
       local _, _, _, _, _, _, liveNote = Bagwise.Verdict.Evaluate(manual, state)
       assert.are.equal("Vendor 5c, auction about 8s", liveNote)
     end)
+  end)
+end)
+
+
+describe("Weak bandages and outleveled scrolls", function()
+  local function bandage(heal, overrides)
+    local item = { id = 6450, classID = 0, subClassID = 7, quality = 1, healAmount = heal }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local function at(level, health, names)
+    return { level = level, maxHealth = health, professionNames = names or {}, professionsKnown = true }
+  end
+
+  it("a bandage under 15% of your health is yellow, with the numbers", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(bandage(400), at(60, 4500))
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Weak bandage", reason)
+  end)
+
+  it("a bandage that heals enough is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(bandage(2000), at(60, 4500))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(bandage(675), at(60, 4500))))
+  end)
+
+  it("flags just under the line", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(bandage(674), at(60, 4500))))
+  end)
+
+  it("without health or heal data a bandage with no level gets nothing", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(bandage(nil), at(60, 4500))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(bandage(400), at(60, nil))))
+  end)
+
+  it("a bandage with no heal data still follows its required level", function()
+    local item = bandage(nil, { reqLevel = 5 })
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(item, at(40, 3000))))
+  end)
+
+  local function scroll(id, overrides)
+    local item = { id = id, classID = 0, subClassID = 4, quality = 1 }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+
+  it("a stat scroll made for a much lower level is yellow", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(scroll(2289, { reqLevel = 25 }), at(45, 3000))
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Low-level scroll (level 25, you are 45)", reason)
+  end)
+
+  it("not yet when the gap is under 20 levels", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(scroll(2289, { reqLevel = 25 }), at(44, 3000))))
+  end)
+
+  it("a scroll without a required level uses its item level", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(scroll(3013, { itemLevel = 10 }), at(40, 3000))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(scroll(3013, { itemLevel = 10 }), at(29, 3000))))
+  end)
+
+  it("an Enchanter keeps scrolls that are Enchanting reagents", function()
+    local state = at(60, 4500, { Enchanting = true })
+    assert.is_nil((Bagwise.Verdict.Evaluate(scroll(2289, { reqLevel = 25 }), state)))
+  end)
+
+  it("scrolls that are not stat scrolls are left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(scroll(211780, { reqLevel = 1 }), at(60, 4500))))
+  end)
+end)
+
+
+describe("Outleveled consumables say when the auction pays well", function()
+  local state = { level = 40, professionNames = {}, professionsKnown = true }
+  local function food()
+    return { id = 42001, classID = 0, subClassID = 5, quality = 1, reqLevel = 5, sellPrice = 10,
+             count = 20, restoresHealthOrMana = true }
+  end
+
+  it("carries a price note when the auction is worth it", function()
+    local saved = Bagwise.Data.AuctionPriceCeiling
+    Bagwise.Data.AuctionPriceCeiling = { [42001] = 900 }
+    local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(food(), state)
+    Bagwise.Data.AuctionPriceCeiling = saved
+    assert.are.equal("yellow", verdict)
+    assert.is_truthy(note and note:find("auction", 1, true))
+  end)
+
+  it("has no note when the auction pays next to nothing", function()
+    local saved = Bagwise.Data.AuctionPriceCeiling
+    Bagwise.Data.AuctionPriceCeiling = { [42001] = 12 }
+    local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(food(), state)
+    Bagwise.Data.AuctionPriceCeiling = saved
+    assert.are.equal("yellow", verdict)
+    assert.is_nil(note)
+  end)
+end)
+
+
+describe("Elixirs and flasks made for a much lower level", function()
+  local state = { level = 50, professionNames = {}, professionsKnown = true }
+  local function consumable(subClassID, reqLevel)
+    return { id = 43001, classID = 0, subClassID = subClassID, quality = 1, reqLevel = reqLevel }
+  end
+
+  it("an elixir 20 levels below you is yellow", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(consumable(2, 10), state)
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Low-level elixir (level 10, you are 50)", reason)
+  end)
+
+  it("a flask is judged the same way", function()
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(consumable(3, 20), state)))
+  end)
+
+  it("one closer to your level is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable(2, 35), state)))
+  end)
+
+  it("an elixir with no required level is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(consumable(2, 0), state)))
+  end)
+end)
+
+
+describe("Weapons and ammo your class can never use", function()
+  local function weapon(subClassID, overrides)
+    local item = { id = 44001, classID = 2, subClassID = subClassID, quality = 1, isEquippable = true }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local function as(playerClass, level)
+    return { playerClass = playerClass, level = level or 30, professionNames = {}, professionsKnown = true }
+  end
+
+  it("a white axe is green for a priest", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(weapon(0), as("PRIEST"))
+    assert.are.equal("green", verdict)
+    assert.are.equal("Priests can't use axes", reason)
+  end)
+
+  it("a rogue uses axes in Forever, so the same axe is left alone", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(0), as("ROGUE"))))
+  end)
+
+  it("a mage can use daggers and swords but not maces", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(15), as("MAGE"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(7), as("MAGE"))))
+    assert.are.equal("Mages can't use maces", select(2, Bagwise.Verdict.Evaluate(weapon(4), as("MAGE"))))
+  end)
+
+  it("two-handed types are judged on their own skill", function()
+    assert.are.equal("Rogues can't use two-handed swords",
+      select(2, Bagwise.Verdict.Evaluate(weapon(8), as("ROGUE"))))
+  end)
+
+  it("greens and better are never called unusable", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(0, { quality = 2 }), as("PRIEST"))))
+  end)
+
+  it("an unknown weapon type or class gets no verdict", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(14), as("PRIEST"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(0), as("MONK"))))
+    assert.is_nil((Bagwise.Verdict.Evaluate(weapon(0), { level = 30, professionNames = {}, professionsKnown = true })))
+  end)
+
+  local function ammo(subClassID)
+    return { id = 44002, classID = 6, subClassID = subClassID, quality = 1 }
+  end
+
+  it("arrows are green for a class with no bow or crossbow", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(ammo(2), as("MAGE"))
+    assert.are.equal("green", verdict)
+    assert.are.equal("Mages can't use arrows", reason)
+    assert.are.equal("Paladins can't use bullets", select(2, Bagwise.Verdict.Evaluate(ammo(3), as("PALADIN"))))
+  end)
+
+  it("hunters, warriors and rogues keep their ammo", function()
+    for _, class in ipairs({ "HUNTER", "WARRIOR", "ROGUE" }) do
+      assert.is_nil((Bagwise.Verdict.Evaluate(ammo(2), as(class))))
+      assert.is_nil((Bagwise.Verdict.Evaluate(ammo(3), as(class))))
+    end
+  end)
+end)
+
+
+describe("Quests do not hide a weak bandage", function()
+  local function woolBandage(overrides)
+    local item = { id = 3530, classID = 0, subClassID = 7, quality = 1, healAmount = 161,
+                   questItemQuestIDs = { 8604, 8605 }, openQuestIDs = { 8604, 8605 }, onOpenQuest = false }
+    for key, value in pairs(overrides or {}) do item[key] = value end
+    return item
+  end
+  local state = { level = 33, maxHealth = 1500, faction = "Horde", professionNames = {}, professionsKnown = true }
+
+  it("a quest you have not taken (war effort turn-ins) does not stop the hint", function()
+    local verdict, reason = Bagwise.Verdict.Evaluate(woolBandage(), state)
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Weak bandage", reason)
+  end)
+
+  it("a quest you are on still holds it back", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(woolBandage({ onOpenQuest = true }), state)))
+  end)
+
+  it("an item that starts a quest is never hinted", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(woolBandage({ startsQuestID = 123 }), state)))
   end)
 end)

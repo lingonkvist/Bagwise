@@ -77,6 +77,10 @@ local NOTES = {
     return "Low-level " .. noun .. " (level " .. level .. ", you are " .. you .. ")",
         "Low-level " .. noun, "Level " .. level .. ", you are " .. you
   end,
+  weak_bandage = function(heal, percent, health)
+    return "Weak bandage", "Weak bandage",
+        "Heals " .. percent .. "% of your health (" .. heal .. " of " .. health .. ")"
+  end,
   wrong_class_reagent = function(whole)
     return whole, "Wrong class reagent", whole
   end,

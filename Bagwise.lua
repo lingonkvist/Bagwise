@@ -41,6 +41,19 @@ local function invalidateAndRescan()
   rescanAll()
 end
 
+-- A new level changes what is outdated, so say what the dots add up to. The
+-- client can still report the old level for a moment after the event, so the
+-- count waits and scans once more before it speaks.
+local LEVEL_UP_SUMMARY_DELAY_SECONDS = 2
+local function onPlayerLevelUp()
+  invalidateAndRescan()
+  if not (C_Timer and C_Timer.After) then return end
+  C_Timer.After(LEVEL_UP_SUMMARY_DELAY_SECONDS, function()
+    invalidateAndRescan()
+    Bagwise.Commands.PrintSummary(true)
+  end)
+end
+
 -- Loot window: read what is in it, work out what is worth a slot, repaint.
 -- LOOT_SLOT_CLEARED carries the slot that was just taken. The client can still
 -- report the item for that slot, and Blizzard re-lays the rows after the event,
@@ -149,7 +162,7 @@ local EVENT_HANDLERS = {
   PLAYER_LOGIN           = onPlayerLogin,
   BAG_UPDATE_DELAYED     = rescanSoon,
   GET_ITEM_INFO_RECEIVED = rescanSoon,
-  PLAYER_LEVEL_UP        = invalidateAndRescan,
+  PLAYER_LEVEL_UP        = onPlayerLevelUp,
   QUEST_TURNED_IN        = invalidateAndRescan,
   QUEST_ACCEPTED         = invalidateAndRescan,
   QUEST_REMOVED          = invalidateAndRescan,

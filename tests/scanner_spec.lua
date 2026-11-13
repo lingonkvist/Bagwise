@@ -24,6 +24,7 @@ local ITEMS = {
   [700] = { "Odd Bauble", 0, 1, 0, 1, "", 800, 15, 0 },
   [800] = { "Recipe: Fancy Elixir", 1, 1, 0, 1, "", 100, 9, 6 },
   [1100] = { "Healing Draught", 1, 1, 1, 5, "", 10, 0, 1 }, -- potion
+  [1101] = { "Test Bandage", 1, 1, 1, 1, "", 10, 0, 7 },     -- bandage
   [1003] = { "Spent Token", 1, 1, 0, 1, "", 5, 12, 0 },   -- quest item, 5c
   [1004] = { "Gray Totem", 0, 1, 0, 1, "", 5, 15, 0 },    -- gray, 5c
   [1001] = { "Strange Mineral", 1, 1, 0, 20, "", 0, 7, 7 }, -- white, no vendor price
@@ -597,5 +598,52 @@ describe("Scanner: deleting while the loot window is open", function()
     assert.is_nil(Bagwise.Scanner.GetResult(0, 1))
     assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow)
     assert.is_nil(Bagwise.Scanner.GetResult(0, 3) and Bagwise.Scanner.GetResult(0, 3).glow)
+  end)
+end)
+
+
+describe("Scanner: bandages by what they heal", function()
+  local function giveTooltipLine(text)
+    _G.UIParent = {}
+    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.CreateFrame = function()
+      return {
+        SetOwner = function() end, ClearLines = function() end,
+        SetBagItem = function() end, NumLines = function() return 2 end,
+      }
+    end
+  end
+
+  local function resultFor(line, health)
+    setUp({ [0] = { { id = 1101 } } }, { [0] = 0 })
+    _G.UnitLevel = function() return 60 end
+    _G.UnitHealthMax = function() return health end
+    giveTooltipLine(line)
+    Bagwise.Scanner.ScanAll()
+    return Bagwise.Scanner.GetResult(0, 1)
+  end
+
+  it("reads the heal amount and flags a weak bandage", function()
+    local result = resultFor("Use: Heals 400 damage over 8 sec. Must remain stationary while channeling.", 4500)
+    assert.are.equal("yellow", result.verdict)
+    assert.are.equal("Weak bandage", result.reason)
+  end)
+
+  it("reads a heal amount with a thousands separator", function()
+    local result = resultFor("Use: Heals 1,104 damage over 8 sec.", 4500)
+    assert.is_nil(result.verdict)
+  end)
+end)
+
+
+describe("Scanner: summary of the dots", function()
+  it("counts what the last scan marked, and is empty when nothing is", function()
+    setUp({ [0] = { { id = 300 } } }, { [0] = 0 })
+    Bagwise.Scanner.ScanAll()
+    local summary = Bagwise.Scanner.Summary()
+    assert.are.equal("number", type(summary.green))
+    assert.are.equal("number", type(summary.yellow))
+    assert.are.equal("number", type(summary.greenValue))
+    assert.is_truthy(summary.greenValue >= 0)
   end)
 end)

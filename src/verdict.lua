@@ -66,6 +66,7 @@ end
 
 local function evaluateLevelGap(item, state)
   if not (item.isBound and item.isEquippable) then return nil end
+  if item.hasEffect then return nil end
   if couldBeUpgrade(item) then return nil end
 
   -- A low required level does not make gear outdated by itself: plenty of
@@ -738,10 +739,21 @@ end
 -- Food, drink, potions and bandages made for a much lower level than yours
 -- restore little now. Only a hint: you may want the stack for an alt.
 local CONSUMABLE_CLASS = 0
-local OUTLEVELED_SUBCLASSES = { [1] = true, [5] = true, [7] = true } -- potion, food and drink, bandage
+local OUTLEVELED_SUBCLASSES = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [7] = true } -- potion, elixir, flask, scroll, food and drink, bandage
 local OUTLEVELED_GAP = 20
-local CONSUMABLE_NOUNS = { [1] = "potion", [5] = "food", [7] = "bandage" }
+local CONSUMABLE_NOUNS = { [1] = "potion", [2] = "elixir", [3] = "flask", [4] = "scroll", [5] = "food", [7] = "bandage" }
 local FOOD_SUBCLASS = 5
+local SCROLL_SUBCLASS = 4
+local BANDAGE_SUBCLASS = 7
+-- A bandage that heals less than this share of your health is a weak one.
+local WEAK_BANDAGE_FRACTION = 0.15
+-- The stat scrolls (Strength, Agility, Stamina, Intellect, Spirit, Protection,
+-- every rank). Other scrolls in the same class are not for this rule.
+local STAT_SCROLLS = {}
+for _, id in ipairs({ 954, 955, 1180, 1181, 1477, 1478, 1711, 1712, 2289, 2290, 3012, 3013,
+    4419, 4421, 4422, 4424, 4425, 4426, 10305, 10306, 10307, 10308, 10309, 10310 }) do
+  STAT_SCROLLS[id] = true
+end
 local POTION_SUBCLASS = 1
 
 local CLASS_PLURALS_FOR_POTIONS = { WARRIOR = "Warriors", ROGUE = "Rogues" }
@@ -775,7 +787,24 @@ end
 
 local function evaluateOutleveledConsumable(item, state)
   if item.classID ~= CONSUMABLE_CLASS or not OUTLEVELED_SUBCLASSES[item.subClassID] then return nil end
-  if item.questItemQuestIDs or item.startsQuestID then return nil end
+  -- Only a quest you are on, or one this item starts, holds it. A quest you
+  -- have not taken (a war effort turn-in for wool bandages) does not: these are
+  -- soft hints, and the item may be worth far more as a keepsake than as a hint.
+  if item.startsQuestID then return nil end
+  if item.onOpenQuest and heldByOpenQuest(item, state) then return nil end
+  if item.subClassID == SCROLL_SUBCLASS then
+    if not STAT_SCROLLS[item.id] then return nil end
+    -- An Enchanter may still want it: some scrolls are reagents for Enchanting.
+    local uses = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[item.id]
+    if uses and hasEnchanting(state) then return nil end
+  end
+  -- A bandage is judged by what it heals against your health, when both are known.
+  if item.subClassID == BANDAGE_SUBCLASS and item.healAmount and state.maxHealth
+      and state.maxHealth > 0 then
+    local share = item.healAmount / state.maxHealth
+    if share >= WEAK_BANDAGE_FRACTION then return nil end
+    return yellow("weak_bandage", item.healAmount, math.floor(share * 100 + 0.5), state.maxHealth)
+  end
   -- Utility potions (swimming speed, water walking, free action) stay useful
   -- at any level. Only a potion known to restore health or mana can be outleveled.
   if item.subClassID == POTION_SUBCLASS and item.restoresHealthOrMana ~= true then return nil end
@@ -784,6 +813,10 @@ local function evaluateOutleveledConsumable(item, state)
   if item.subClassID == FOOD_SUBCLASS
       and (item.restoresHealthOrMana ~= true or item.givesBuff == true) then return nil end
   local reqLevel = item.reqLevel
+  -- Some scrolls have no required level; their item level stands in.
+  if (not reqLevel or reqLevel <= 0) and item.subClassID == SCROLL_SUBCLASS then
+    reqLevel = item.itemLevel
+  end
   if not reqLevel or reqLevel <= 0 then return nil end
   if reqLevel + OUTLEVELED_GAP > (state.level or 1) then return nil end
   return yellow("low_level_consumable", CONSUMABLE_NOUNS[item.subClassID], reqLevel, state.level or 1)
@@ -853,6 +886,45 @@ local function evaluateUnwearableWhite(item, state)
     reason = reason .. " until " .. rule
   end
   return "green", reason
+end
+
+-- Weapons and ammo of a type your class can never learn. Read from the game's
+-- skill data (data/weapon_skills.lua), so a class a type is missing from truly
+-- cannot use it. White only: greens and better can sell well, and the auction
+-- check holds a pricey one back.
+local WEAPON_CLASS_ID = 2
+local AMMO_CLASS_ID = 6
+local WEAPON_WORDING = {
+  [0] = "axes", [1] = "two-handed axes", [2] = "bows", [3] = "guns", [4] = "maces",
+  [5] = "two-handed maces", [6] = "polearms", [7] = "swords", [8] = "two-handed swords",
+  [10] = "staves", [13] = "fist weapons", [15] = "daggers", [16] = "thrown weapons",
+  [18] = "crossbows", [19] = "wands",
+}
+local AMMO_WORDING = { [2] = "arrows", [3] = "bullets" }
+
+local function classCannotUse(classes, state)
+  local plural = CLASS_PLURALS[state.playerClass]
+  if not (classes and plural) then return nil end
+  if classes[state.playerClass] then return nil end
+  return plural
+end
+
+local function evaluateUnusableWeapon(item, state)
+  if item.quality ~= COMMON_QUALITY or item.classID ~= WEAPON_CLASS_ID or item.hasEffect then return nil end
+  local wording = WEAPON_WORDING[item.subClassID]
+  local classes = Bagwise.Data.WeaponClasses and Bagwise.Data.WeaponClasses[item.subClassID]
+  local plural = wording and classCannotUse(classes, state)
+  if not plural then return nil end
+  return "green", plural .. " can't use " .. wording
+end
+
+local function evaluateUnusableAmmo(item, state)
+  if item.quality ~= COMMON_QUALITY or item.classID ~= AMMO_CLASS_ID then return nil end
+  local wording = AMMO_WORDING[item.subClassID]
+  local classes = Bagwise.Data.AmmoClasses and Bagwise.Data.AmmoClasses[item.subClassID]
+  local plural = wording and classCannotUse(classes, state)
+  if not plural then return nil end
+  return "green", plural .. " can't use " .. wording
 end
 
 -- A white piece of armor you have already out-geared. Every slot it could go
@@ -1110,6 +1182,8 @@ end
 --   otherwise { passes = boolean, ceiling, limit, notes = { lines } }
 local function checkSellAtVendor(item, state)
   if not EQUIPMENT_CLASSES[item.classID] then return nil end
+  -- A gadget or proc is worth keeping for what it does, not its stats.
+  if item.hasEffect then return nil end
   local money = Bagwise.Verdict.FormatMoney
   local check = { passes = false, notes = {} }
   local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
@@ -1208,6 +1282,11 @@ end
 
 local RULES = {
   { name = "unwearable_white",   evaluate = evaluateUnwearableWhite, checksAuction = true },
+  { name = "unusable_weapon",    evaluate = evaluateUnusableWeapon, checksAuction = true },
+  -- Ammo is protected as a class (hunters need it); this rule only speaks for
+  -- classes that can never use it, so it may lift that one protection.
+  { name = "unusable_ammo",      evaluate = evaluateUnusableAmmo, checksAuction = true,
+    overrides = { essential_item = true } },
   { name = "level_gap",          evaluate = evaluateLevelGap },
   { name = "outgeared_white",    evaluate = evaluateOutgearedWhite, checksAuction = true },
   { name = "quest_starter_done", evaluate = evaluateCompletedQuestStarter, checksAuction = true,
@@ -1341,7 +1420,11 @@ function Bagwise.Verdict.Evaluate(item, state)
     verdict, reason, _, _, heading = evaluateManaConsumable(item, state)
     if verdict then return verdict, reason, nil, nil, "mana_consumable", heading end
     verdict, reason, _, _, heading = evaluateOutleveledConsumable(item, state)
-    return verdict, reason, nil, nil, verdict and "outleveled_consumable" or nil, heading
+    if not verdict then return nil end
+    -- Consumables often sell well: say so when the auction house pays clearly
+    -- more than a vendor, so a hint never reads as "throw it away".
+    local note = auctionPriceLine(item)
+    return verdict, reason, nil, nil, "outleveled_consumable", heading, note
   end
 
   -- A blocked green is dropped and the next rule gets its turn. A yellow is
