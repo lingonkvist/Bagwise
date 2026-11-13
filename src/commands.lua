@@ -151,6 +151,14 @@ local function openReport()
   say(#snapshot.rows .. " items listed. Press Ctrl+C in the window to copy, then paste it where you are reporting.")
 end
 
+-- The quest data tags a quest "A" or "H" when only one faction can take it.
+local FACTION_TAGS = { Alliance = "A", Horde = "H" }
+
+local function otherFaction(questFaction, playerFaction)
+  local mine = FACTION_TAGS[playerFaction]
+  return questFaction ~= nil and mine ~= nil and questFaction ~= mine
+end
+
 local COMMAND_HANDLERS = {
   help = function()
     say("commands:")
@@ -254,7 +262,8 @@ local COMMAND_HANDLERS = {
       for _, quest in ipairs(explained.quests) do
         print("    " .. quest.id .. " " .. tostring(quest.name)
           .. " [" .. (quest.faction or "both") .. "] "
-          .. (quest.done and "done" or "not done"))
+          .. (quest.done and "done" or "not done")
+          .. (otherFaction(quest.faction, explained.faction) and ", other faction, ignored" or ""))
       end
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0

@@ -229,19 +229,39 @@ end
 -- low quest worth it, so it says "consider", never "delete".
 local QUEST_TRIVIAL_GAP = 10
 
+-- Is this open quest far below the player? A repeatable quest keeps wanting its
+-- item at any level (Blood Shards), and a quest with no level data is unknown.
+local function isTrivialQuest(questID, state)
+  local repeatable = Bagwise.Data.RepeatableQuests
+  if repeatable and repeatable[questID] then return false end
+  local info = Bagwise.Data.QuestInfo
+  local entry = info and info[questID]
+  local level = entry and entry[QUEST_INFO_LEVEL]
+  return level ~= nil and level > 0 and level + QUEST_TRIVIAL_GAP <= (state.level or 1)
+end
+
+-- Does an open quest still hold this item? Quests far below you do not: nobody
+-- keeps a reagent for a level 6 quest at level 60. Used by the reagent hints,
+-- which are only soft suggestions.
+local function heldByOpenQuest(item, state)
+  local open = item.openQuestIDs
+  if not open and item.questItemQuestIDs and not item.allQuestObjectivesCompleted then
+    open = item.questItemQuestIDs
+  end
+  if not open then return false end
+  for i = 1, #open do
+    if not isTrivialQuest(open[i], state) then return true end
+  end
+  return false
+end
+
 local function evaluateTrivialQuestItem(item, state)
   if not item.questItemQuestIDs or item.allQuestObjectivesCompleted then return nil end
   if isOrdinaryItem(item) then return nil end
   local open = item.openQuestIDs or item.questItemQuestIDs
   if #open == 0 then return nil end
-  local info = Bagwise.Data.QuestInfo
-  local repeatable = Bagwise.Data.RepeatableQuests
   for i = 1, #open do
-    -- A repeatable quest keeps wanting the item at any level (Blood Shards).
-    if repeatable and repeatable[open[i]] then return nil end
-    local entry = info and info[open[i]]
-    local level = entry and entry[QUEST_INFO_LEVEL]
-    if not level or level <= 0 or level + QUEST_TRIVIAL_GAP > (state.level or 1) then return nil end
+    if not isTrivialQuest(open[i], state) then return nil end
   end
   local label = #open == 1 and questLabel(open[1], nil) or nil
   local verdict, reason, _, _, heading = yellow(item.onOpenQuest and "quest_abandon" or "quest_not_worth")
@@ -510,10 +530,14 @@ local RECIPE_PROFESSIONS = {
   [4] = "Blacksmithing", [5] = "Cooking", [6] = "Alchemy",
   [7] = "First Aid", [8] = "Enchanting", [9] = "Fishing",
 }
--- A reagent is "outleveled" as soon as you are past the best recipe that needs
--- it, counting what it is turned into: past that skill every one of them is
--- gray, so nothing you make from it is still a skill-up.
-local OUTLEVELED_SKILL_GAP = 0
+-- A reagent is "outleveled" once every recipe that needs it, counting what it
+-- is turned into, has turned green: past that the chance of a skill-up is under
+-- half, and it falls to nothing at gray. The data holds the skill where the last
+-- of them turns green, which is also where its color changes in the profession
+-- window. Data without it (older builds) falls back to the best recipe's
+-- learnable-at skill, which is earlier, and the wording then only says the
+-- recipes "use it".
+local OUTLEVELED_FALLBACK_GAP = 0
 -- A recipe you cannot learn yet gets the bank hint once it is this far out of
 -- reach. A profession you have stopped leveling has nothing "close", so for
 -- it any shortfall counts (see Bagwise.Progress).
@@ -555,7 +579,7 @@ end
 -- Where a reagent is used, direct and through what it is turned into: copper
 -- bars go into bronze bars, which smithing and engineering use far higher up.
 -- ReagentChains (generated) holds the downstream uses; entries are merged per
--- profession into { name, minSkill, maxSkill }.
+-- profession into { name, minSkill, maxSkill, greenSkill }.
 -- Both reagent rules ask for the same merge, so it is kept per data table. A
 -- different table (new data, or a test swapping it) misses and is rebuilt.
 local reagentUseMemo = setmetatable({}, { __mode = "k" })
@@ -567,20 +591,22 @@ local function reagentUses(itemID)
   local memo = reagentUseMemo[direct]
   if memo and memo.chains == chains then return memo.order end
   local merged, order = {}, {}
-  local function add(name, minSkill, maxSkill)
+  local function add(name, minSkill, maxSkill, greenSkill)
+    if greenSkill == 0 then greenSkill = nil end
     local use = merged[name]
     if not use then
-      use = { name = name, minSkill = minSkill, maxSkill = maxSkill }
+      use = { name = name, minSkill = minSkill, maxSkill = maxSkill, greenSkill = greenSkill }
       merged[name] = use
       order[#order + 1] = use
       return
     end
     if minSkill and (not use.minSkill or minSkill < use.minSkill) then use.minSkill = minSkill end
     if maxSkill and (not use.maxSkill or maxSkill > use.maxSkill) then use.maxSkill = maxSkill end
+    if greenSkill and (not use.greenSkill or greenSkill > use.greenSkill) then use.greenSkill = greenSkill end
   end
-  for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4]) end
+  for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4], direct[i][5]) end
   if chains then
-    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3]) end
+    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3], chains[i][4]) end
   end
   reagentUseMemo[direct] = { chains = chains, order = order }
   return order
@@ -621,7 +647,7 @@ local function evaluateOutleveledReagent(item, state)
   if not Bagwise.Data.ReagentChains then return nil end
   -- A quest that still wants it (a profession quest, say) is a use the recipe
   -- data knows nothing about, whatever your skill is.
-  if item.openQuestIDs and #item.openQuestIDs > 0 then return nil end
+  if heldByOpenQuest(item, state) then return nil end
   local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
@@ -632,14 +658,19 @@ local function evaluateOutleveledReagent(item, state)
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not maxSkill then return nil end
-      if rank <= maxSkill + OUTLEVELED_SKILL_GAP then return nil end
-      if not newest or maxSkill > newest.maxSkill then
-        newest = { name = name, maxSkill = maxSkill }
+      -- The skill where the last recipe turns green. At that skill it is green
+      -- already, so a rank equal to it counts as past.
+      local green = entries[i].greenSkill
+      local past = green and rank >= green or (not green and rank > maxSkill + OUTLEVELED_FALLBACK_GAP)
+      if not past then return nil end
+      local until_ = green or (maxSkill + OUTLEVELED_FALLBACK_GAP)
+      if not newest or until_ > newest.skill then
+        newest = { name = name, skill = until_, green = green ~= nil }
       end
     end
   end
   if not newest then return nil end
-  return yellow("outleveled_reagent", newest.name, newest.maxSkill)
+  return yellow("outleveled_reagent", newest.name, newest.skill, newest.green)
 end
 
 -- Can this be listed at the auction house? Not once it is soulbound or bound to
@@ -681,7 +712,7 @@ local function evaluateOtherProfessionReagent(item, state)
   local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false or not state.professionNames then return nil end
   if not isTradeable(item) then return nil end
-  if item.questItemQuestIDs and not item.allQuestObjectivesCompleted then return nil end
+  if heldByOpenQuest(item, state) then return nil end
   local data = Bagwise.Data
   if data.VendorReagents and data.VendorReagents[item.id] then return nil end
   if data.ClassReagents and data.ClassReagents[item.id] then return nil end
@@ -1237,14 +1268,28 @@ local function auctionBlocker(item)
   return "it may be worth more at auction (" .. note:sub(1, 1):lower() .. note:sub(2) .. ")", note
 end
 
---- The price line for a hint that suggests selling at the auction house, when
--- the data has a price for the item. Never blocks anything.
+-- Under this a stack is not worth the trip to the auction house, whatever a
+-- vendor pays: a reagent that lists for a couple of copper is vendor trash.
+local MIN_LISTING_COPPER = 50
+
+--- The price line for a hint that suggests selling at the auction house. It
+-- only shows when the auction is worth it: the price is at least the listing
+-- floor and clearly above what the same sell check allows over a vendor. A
+-- price that is known but not worth it returns nothing and says so, so the hint
+-- can stop suggesting the auction house. Never blocks anything.
+-- @return string|nil the price line
+-- @return boolean true when the price is known and not worth listing
 local function auctionPriceLine(item)
   if not isTradeable(item) then return nil end
   local ceiling, source = ceilingFor(item)
   if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end
-  return priceNote(item, ceiling, source)
+  local stackable = isStackable(item)
+  local compared = stackable and ceiling or roundedAuction(ceiling)
+  if ceiling >= MIN_LISTING_COPPER and compared > sellLimit(item.sellPrice or 0, stackable) then
+    return priceNote(item, ceiling, source)
+  end
+  return nil, true
 end
 
 --- Run one rule and apply the safety check to a green.
@@ -1252,7 +1297,12 @@ end
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "yellow" and rule.showsAuctionPrice then
-    return verdict, reason, detail, tag, nil, heading, auctionPriceLine(item)
+    local note, notWorth = auctionPriceLine(item)
+    if notWorth then
+      -- The auction pays too little to suggest it.
+      reason = reason:gsub("%. May sell at the auction house$", "")
+    end
+    return verdict, reason, detail, tag, nil, heading, note
   end
   if verdict == "green" then
     local blocker = Bagwise.Safety.Blocker(item, rule.overrides)

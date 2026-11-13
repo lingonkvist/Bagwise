@@ -380,7 +380,7 @@ def build_chains(spell_reagents, abilities, prof_names, products):
 
     A recipe that consumes item I and creates item P passes every use of P on
     to I: copper bar -> bronze bar -> the smithing and engineering recipes that
-    use bronze bars. Returns {itemID: {profName: [minSkill, maxSkill]}} holding
+    use bronze bars. Returns {itemID: {profName: [minSkill, maxSkill, greenSkill]}} holding
     only uses reached through at least one intermediate (direct uses stay in
     ReagentProfessions). Cycles (transmutes both ways) are handled by iterating
     to a fixed point.
@@ -404,10 +404,11 @@ def build_chains(spell_reagents, abilities, prof_names, products):
             for product in outputs:
                 uses = {}
                 for prof, entry in direct.get(product, {}).items():
-                    uses[prof] = [entry["min"], entry["max"]]
+                    uses[prof] = [entry["min"], entry["max"], entry["green"]]
                 for prof, span in reach.get(product, {}).items():
                     if prof in uses:
-                        uses[prof] = [min(uses[prof][0], span[0]), max(uses[prof][1], span[1])]
+                        uses[prof] = [min(uses[prof][0], span[0]), max(uses[prof][1], span[1]),
+                                      max(uses[prof][2], span[2])]
                     else:
                         uses[prof] = list(span)
                 mine = reach.setdefault(item_id, {})
@@ -418,9 +419,16 @@ def build_chains(spell_reagents, abilities, prof_names, products):
                     else:
                         lo = min(mine[prof][0], span[0])
                         hi = max(mine[prof][1], span[1])
-                        if [lo, hi] != mine[prof]:
-                            mine[prof] = [lo, hi]
+                        gr = max(mine[prof][2], span[2])
+                        if [lo, hi, gr] != mine[prof]:
+                            mine[prof] = [lo, hi, gr]
                             changed = True
+    # A green point below the highest skill means the merged uses disagree
+    # (one use had no green data); treat it as unknown rather than wrong.
+    for spans in reach.values():
+        for span in spans.values():
+            if span[2] < span[1]:
+                span[2] = 0
     return reach
 
 
@@ -429,17 +437,18 @@ def generate_chains_lua(chains, build_version):
         "-- Bagwise: reagent uses through what a reagent is made into.",
         "-- Copper Bar is smelted into Bronze Bar, which smithing uses far above",
         "-- what copper recipes do. Used so a material is never called outleveled",
-        "-- while something made from it is still in demand.",
+        "-- while something made from it is still in demand. green_level is the",
+        "-- skill where the last of those recipes turns green.",
         f"-- Generated from wago.tools DB2 build {build_version}. Do not edit by hand.",
         "",
         "Bagwise                      = Bagwise or {}",
         "Bagwise.Data                 = Bagwise.Data or {}",
         "",
-        "-- Format: [itemID] = { { profession, min_level, max_level }, ... }",
+        "-- Format: [itemID] = { { profession, min_level, max_level, green_level }, ... }",
         "Bagwise.Data.ReagentChains = {",
     ]
     for item_id in sorted(chains):
-        parts = ", ".join('{ "%s", %d, %d }' % (p, span[0], span[1])
+        parts = ", ".join('{ "%s", %d, %d, %d }' % (p, span[0], span[1], span[2])
                           for p, span in sorted(chains[item_id].items()))
         out.append(f"  [{item_id}] = {{ {parts} }},")
     out.append("}")
@@ -457,16 +466,19 @@ def selftest():
         4: [(300, 1)],             # item 300 -> item 301
     }
     abilities = {
-        1: (186, 1, 1, 0), 2: (186, 65, 65, 0),
-        3: (164, 85, 85, 0), 4: (164, 155, 155, 0),
+        1: (186, 1, 1, 47), 2: (186, 65, 65, 110),
+        3: (164, 85, 85, 130), 4: (164, 155, 155, 205),   # greens 24, 87, 107, 180
     }
     products = {1: 99, 2: 200, 3: 300, 4: 301}
     names = {186: "Mining", 164: "Blacksmithing"}
     chains = build_chains(reagents, abilities, names, products)
-    assert chains[99]["Blacksmithing"] == [85, 155], chains
-    assert chains[200]["Blacksmithing"] == [155, 155], chains
-    assert chains[98]["Mining"] == [65, 65] and chains[98]["Blacksmithing"] == [85, 155], chains
+    assert chains[99]["Blacksmithing"] == [85, 155, 180], chains
+    assert chains[200]["Blacksmithing"] == [155, 155, 180], chains
+    assert chains[98]["Mining"] == [65, 65, 87] and chains[98]["Blacksmithing"] == [85, 155, 180], chains
     assert 301 not in chains and 300 in chains, chains
+    direct = build_reagent_map(reagents, abilities, names)
+    assert direct[99]["Mining"]["green"] == 87, direct  # copper bar: bronze recipe turns green at 87
+    assert direct[300]["Blacksmithing"]["green"] == 180, direct
     print("selftest ok")
 
 
@@ -479,7 +491,10 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
     """
     Join SpellReagents with SkillLineAbility and SkillLine.
 
-    Returns {itemID: {profName: {"count": N, "min": X, "max": Y}}}.
+    Returns {itemID: {profName: {"count": N, "min": X, "max": Y, "green": Z}}}.
+    "green" is the highest skill at which any of the recipes is still yellow or
+    better: the point where it turns green, halfway between TrivialSkillLineRankLow
+    and TrivialSkillLineRankHigh. Past it the skill-up chance is under 50%.
 
     For skill levels:
       - MinSkillLineRank is the orange threshold (recipe becomes available).
@@ -498,13 +513,13 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
         print("  NOTE: MinSkillLineRank mostly zero/one; "
               "using TrivialSkillLineRankLow instead.")
 
-    reagent_data = {}  # {itemID: {profName: {"count", "min", "max"}}}
+    reagent_data = {}  # {itemID: {profName: {"count", "min", "max", "green"}}}
 
     for spell_id, reagents in spell_reagents.items():
         ability = abilities.get(spell_id)
         if not ability:
             continue
-        skill_line, min_rank, trivial_low, _trivial_high = ability
+        skill_line, min_rank, trivial_low, trivial_high = ability
         name = prof_names.get(skill_line) or FALLBACK_NAMES.get(skill_line)
         if not name:
             continue
@@ -516,8 +531,12 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
 
         for item_id, _qty in reagents:
             profs = reagent_data.setdefault(item_id, {})
-            entry = profs.setdefault(name, {"count": 0, "min": 9999, "max": 0})
+            entry = profs.setdefault(name, {"count": 0, "min": 9999, "max": 0, "green": 0})
             entry["count"] += 1
+            # The skill where this recipe turns green (the skill-up chance drops
+            # under 50% from here, to 0% at gray).
+            if trivial_low > 0 and trivial_high > trivial_low:
+                entry["green"] = max(entry["green"], (trivial_low + trivial_high) // 2)
             if recipe_skill > 0:
                 entry["min"] = min(entry["min"], recipe_skill)
                 entry["max"] = max(entry["max"], recipe_skill)
@@ -529,6 +548,8 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
                 entry["min"] = 0
             if entry["max"] == 0:
                 entry["max"] = entry["min"]
+            if entry["green"] < entry["max"]:
+                entry["green"] = 0  # no usable green point, the game falls back
 
     return reagent_data
 
@@ -546,7 +567,8 @@ def generate_lua(reagent_data, item_names, build_version):
 
     out.append("-- Bagwise: reagent-to-profession mapping with recipe stats")
     out.append("-- For each reagent item: which professions use it, how many")
-    out.append("-- recipes, and the skill level range.")
+    out.append("-- recipes, the skill range they are learnable at, and the skill")
+    out.append("-- where the last of them turns green (0 when unknown).")
     out.append(f"-- Generated from wago.tools DB2 build {build_version}. "
                "Do not edit by hand.")
     out.append("--")
@@ -556,7 +578,7 @@ def generate_lua(reagent_data, item_names, build_version):
     out.append("Bagwise.Data                    = Bagwise.Data or {}")
     out.append("")
     out.append("-- Format: [itemID] = { { profession, recipe_count, "
-               "min_level, max_level }, ... }")
+               "min_level, max_level, green_level }, ... }")
     out.append("Bagwise.Data.ReagentProfessions = {")
 
     # Group items by their sorted profession combo for readable sections.
@@ -579,7 +601,7 @@ def generate_lua(reagent_data, item_names, build_version):
             for pname in sorted(profs.keys()):
                 e = profs[pname]
                 parts.append(
-                    f'{{ "{pname}", {e["count"]}, {e["min"]}, {e["max"]} }}'
+                    f'{{ "{pname}", {e["count"]}, {e["min"]}, {e["max"]}, {e["green"]} }}'
                 )
             entry = ", ".join(parts)
             name = item_names.get(item_id, "")

@@ -462,8 +462,15 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local profEntries = Bagwise.Data.ReagentProfessions
       and Bagwise.Data.ReagentProfessions[itemID]
 
+  -- Only quests this player's faction can take: an Alliance quest on a Horde
+  -- tooltip is noise, and the verdict already ignores it.
   local questIDs = Bagwise.Data.QuestItems
       and Bagwise.Data.QuestItems[itemID]
+  if questIDs then
+    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    questIDs = Bagwise.Verdict.QuestsForFaction(questIDs, faction)
+    if #questIDs == 0 then questIDs = nil end
+  end
 
   local protectedNote = Bagwise.Data.ProtectedItems
       and Bagwise.Data.ProtectedItems[itemID]

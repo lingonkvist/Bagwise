@@ -61,8 +61,10 @@ local NOTES = {
     return "Bank it, for a " .. event .. " quest", BANK_IT,
         label and (capitalize(event) .. ": " .. label) or capitalize(event)
   end,
-  outleveled_reagent = function(profession, maxSkill)
-    local rest = profession .. " recipes use it up to " .. maxSkill
+  outleveled_reagent = function(profession, skill, green)
+    -- With the green point known, say where the last recipe turns green.
+    local rest = green and ("recipes turn green at " .. profession .. " " .. skill)
+        or (profession .. " recipes use it up to " .. skill)
     return "Outleveled, " .. rest, "Outleveled reagent", capitalize(rest)
   end,
   open_it = function()

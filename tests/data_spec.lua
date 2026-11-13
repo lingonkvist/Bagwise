@@ -51,7 +51,7 @@ describe("Data files: sizes", function()
 end)
 
 describe("Data files: shape", function()
-  it("reagent_professions rows are { profession, recipes, min, max }", function()
+  it("reagent_professions rows are { profession, recipes, min, max, green }", function()
     for id, rows in pairs(Data.ReagentProfessions) do
       assert.are.equal("number", type(id))
       assert.is_truthy(#rows >= 1)
@@ -61,11 +61,13 @@ describe("Data files: shape", function()
         assert.are.equal("number", type(row[3]))
         assert.are.equal("number", type(row[4]))
         assert.is_truthy(row[3] <= row[4])
+        -- the green point is optional in older data, and never before the best recipe
+        if row[5] and row[5] > 0 then assert.is_truthy(row[5] >= row[4]) end
       end
     end
   end)
 
-  it("reagent_chains, when generated, has { profession, min, max } rows", function()
+  it("reagent_chains, when generated, has { profession, min, max, green } rows", function()
     for id, rows in pairs(Data.ReagentChains or {}) do
       assert.are.equal("number", type(id))
       for _, row in ipairs(rows) do
@@ -73,6 +75,7 @@ describe("Data files: shape", function()
         assert.are.equal("number", type(row[2]))
         assert.are.equal("number", type(row[3]))
         assert.is_truthy(row[2] <= row[3])
+        if row[4] and row[4] > 0 then assert.is_truthy(row[4] >= row[3]) end
       end
     end
   end)

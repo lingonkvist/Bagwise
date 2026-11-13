@@ -12,3 +12,6 @@ tools/source/
 .cache/
 __pycache__/
 .venv/
+
+# Release archives
+*.zip

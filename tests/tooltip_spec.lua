@@ -737,6 +737,30 @@ describe("tooltip quest details with level and zone", function()
     assert.are.equal("[34] Test Quest 204 (Stranglethorn Vale)", tt.lines[1].text)
   end)
 
+  it("leaves out quests only the other faction can take", function()
+    local savedFaction = _G.UnitFactionGroup
+    _G.UnitFactionGroup = function() return "Horde" end
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Data.QuestItems = { [3460] = { 8520, 8521, 8522 } }
+    Bagwise.Data.QuestInfo = {
+      [8520] = { 60, nil, "Alliance Bandages", "A" },
+      [8521] = { 60, nil, "More Alliance Bandages", "A" },
+      [8522] = { 60, nil, "Horde Bandages", "H" },
+    }
+    Bagwise.Scanner = { GetResult = function() return { verdict = nil, reason = nil } end }
+
+    local tt = makeTooltip("|cff...|Hitem:3460:...|h[Silk Bandage]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    Bagwise.Data.QuestItems = { [3460] = { 8520 } }
+    local tt2 = makeTooltip("|cff...|Hitem:3460:...|h[Silk Bandage]|h|r", "ContainerFrame1", 0, 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt2)
+    _G.UnitFactionGroup = savedFaction
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Test Quest 8522", 1, true))
+    assert.are.equal(0, #tt2.lines)
+  end)
+
   it("shows [level] name when QuestInfo has level but no zone", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Data.QuestItems = { [3457] = { 100 } }
