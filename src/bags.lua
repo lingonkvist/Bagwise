@@ -38,12 +38,18 @@ end
 -- guess; these are what the client says.
 local learnedBankBags = {}
 
+-- Building the set asks the client for its bank tabs, and IsBank is asked once
+-- per button per paint, so the set is kept until a scan (BankBags) or a newly
+-- learned tab builds it again.
+local bankSet = nil
+
 --- Remember a bank bag ID seen on the client (a bank tab button, say).
 -- @return boolean  true when the ID was new, so the bank needs a fresh scan
 function Bagwise.Bags.NoteBankBag(bag)
   if type(bag) ~= "number" or Bagwise.Bags.IsCarried(bag) or bag < 0 then return false end
   if learnedBankBags[bag] then return false end
   learnedBankBags[bag] = true
+  bankSet = nil
   if Bagwise.Bags.onNewBankBag then Bagwise.Bags.onNewBankBag(bag) end
   return true
 end
@@ -78,6 +84,12 @@ end
 --- Bag IDs Bagwise treats as bank, whether or not they hold items right now.
 -- @return table  set of bag ID -> true
 function Bagwise.Bags.BankIDSet()
+  if bankSet then return bankSet end
+  return Bagwise.Bags.RefreshBankIDs()
+end
+
+--- Build the set of bank bag IDs again from what the client says now.
+function Bagwise.Bags.RefreshBankIDs()
   local set = {}
   local function add(id)
     if type(id) == "number" and id >= 0 and not Bagwise.Bags.IsCarried(id) then set[id] = true end
@@ -86,6 +98,7 @@ function Bagwise.Bags.BankIDSet()
   for id in pairs(learnedBankBags) do add(id) end
   for _, id in ipairs(clientBankTabIDs()) do add(id) end
   for _, id in ipairs(enumBankTabIDs()) do add(id) end
+  bankSet = set
   return set
 end
 
@@ -94,7 +107,7 @@ end
 function Bagwise.Bags.BankBags()
   local ids = {}
   if not (C_Container and C_Container.GetContainerNumSlots) then return ids end
-  for bag in pairs(Bagwise.Bags.BankIDSet()) do
+  for bag in pairs(Bagwise.Bags.RefreshBankIDs()) do
     if (C_Container.GetContainerNumSlots(bag) or 0) > 0 then ids[#ids + 1] = bag end
   end
   table.sort(ids)

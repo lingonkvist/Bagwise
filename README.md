@@ -16,7 +16,7 @@ Bagwise checks every item against your quests, professions, class, level and wha
 | Yellow | Worth a second look. The tooltip says what to look at. |
 | None | No signal. Bagwise does not know, or you still need the item. |
 
-Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it.
+Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it. Prices show the numbers in white and `g`, `s` and `c` in the usual coin colours.
 
 You make every deletion yourself. Bagwise has no delete button, no auto-destroy and no popups.
 
@@ -32,7 +32,7 @@ Green:
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
 - Tradable items that are otherwise green (finished quest items, unused trade goods, vendor and class reagents, white gear you cannot use) lose the dot when the auction pays clearly more than a vendor.
-- When the auction check takes a green away, the tooltip says why in one blue line, for example `Vendor 5c, auction up to 8s`, so a missing dot is not a mystery.
+- When the auction check takes a green away, the tooltip says why in one blue line, for example `Vendor 5c, auction up to 8s`, so a missing dot is not a mystery. 
 - Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
 
 Yellow:
@@ -41,7 +41,7 @@ Yellow:
 - Unused trade goods that sell for a fair price.
 - A gray that is worth some silver (the cheapest one only).
 - Things you open: clams, lockboxes and bags of loot.
-- Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it").
+- Recipes for a profession you do not have (unbound ones only), and recipes or reagents far above your skill ("Bank it"). A recipe is far above you when it needs more than 25 skill points. A reagent needs more than 50, or more than 25 once you have stopped leveling that profession for 6 hours. A profession counts as idle after 12 hours without a skill gain (and a new play session), and then any recipe out of reach is banked.
 - Reagents you have outleveled. Bagwise follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them. The hint appears as soon as you pass the best recipe that needs the item, directly or through what it is turned into.
 - Food, drink, potions and bandages made for a much lower level. Food with an effect is left alone.
 - Mana potions and drinks, if your class has no mana.
@@ -97,7 +97,7 @@ When the loot window is open and your bags cannot hold everything:
 - The cheapest junk in your bags gets a soft green glow around its slot.
 - Every other dot goes quiet, so the glow is the only thing to act on.
 - Loot worth less than your cheapest junk gets a red X in the loot window, and its tooltip says "Skip it".
-- Loot worth a slot gets a green check, and its tooltip says "Take it". That includes quest and crafting items a price cannot judge, and loot you must make room for by hand.
+- Loot worth a slot gets a green check, and its tooltip says "Take it". That includes quest items and loot you must make room for by hand. Reagents are weighed by what they sell for (vendor or auction), so a cheap or outleveled reagent never pushes out a gray that is worth more.
 - Deleting the glowing item moves the glow to the next cheapest.
 
 Loot that joins a stack you already carry does not count as needing a slot. Quiver, ammo and profession bags are not counted as room.
@@ -118,7 +118,7 @@ Troubleshooting:
 - `/bagwise loot`: what the make-room plan sees. Run it with a loot window open.
 - `/bagwise glow`: test the delete glow on your first item.
 - `/bagwise status`: version, bag UI and counts.
-- `/bagwise bank`: what Bagwise sees of the bank (open the bank window first).
+- `/bagwise bank`: what Bagwise sees of the bank.
 
 ## Compatibility
 

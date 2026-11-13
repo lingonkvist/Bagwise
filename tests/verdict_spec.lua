@@ -1487,6 +1487,28 @@ describe("Recipes and reagents you cannot use yet", function()
     assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 160 }))))
   end)
 
+  it("an active profession banks a reagent from 50 points out", function()
+    assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 150 }))))
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 149 }))))
+  end)
+
+  it("a profession that has gone quiet for a while banks it from 25 points out", function()
+    local settling = state({ Blacksmithing = 175 })
+    settling.professionSettling = { Blacksmithing = true }
+    assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, settling)))
+    settling.professionRanks.Blacksmithing = 174
+    assert.are.equal("yellow", (Bagwise.Verdict.Evaluate(MITHRIL_BAR, settling)))
+  end)
+
+  it("an idle profession banks a reagent from 25 points out, not on any shortfall", function()
+    local idleState = state({ Blacksmithing = 199 })
+    idleState.professionIdle = { Blacksmithing = true }
+    assert.is_nil((Bagwise.Verdict.Evaluate(MITHRIL_BAR, idleState)))
+    idleState.professionRanks.Blacksmithing = 174
+    local _, reason = Bagwise.Verdict.Evaluate(MITHRIL_BAR, idleState)
+    assert.are.equal("Bank it, used from Blacksmithing 200", reason)
+  end)
+
   it("reagent another of your professions already uses stays silent", function()
     local verdict = Bagwise.Verdict.Evaluate(MITHRIL_BAR, state({ Blacksmithing = 100, Engineering = 100 }))
 
@@ -1566,6 +1588,16 @@ describe("Outleveled reagents", function()
 
     assert.are.equal("yellow", verdict)
     assert.are.equal("Outleveled, Tailoring recipes use it up to 125", reason)
+  end)
+
+  it("shows the vendor and auction prices, so you can see which pays more", function()
+    local saved = Bagwise.Data.AuctionPriceCeiling
+    Bagwise.Data.AuctionPriceCeiling = { [2589] = 3100 }
+    local verdict, _, _, _, rule, _, note = Bagwise.Verdict.Evaluate(LINEN, state({ Tailoring = 250 }))
+    Bagwise.Data.AuctionPriceCeiling = saved
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("outleveled_reagent", rule)
+    assert.are.equal("Vendor 13c, auction up to 31s", note)
   end)
 
   it("stays silent while an unfinished quest still wants it", function()
@@ -2223,6 +2255,21 @@ describe("Tradable items the auction house may value more than a vendor", functi
     local trace = Bagwise.Verdict.Trace(manual(), state)
     assert.are.equal("quest_objective_done", trace[1].rule)
     assert.is_truthy(trace[1].blockedBy:find("auction up to 8s", 1, true))
+  end)
+
+  it("a stackable is judged by the stack: 4c vendor and 1s 75c auction is no green", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 175 }
+    local blackmouth = manual({ sellPrice = 4, maxStack = 20, count = 7 })
+    local verdict, _, _, _, _, _, note = Bagwise.Verdict.Evaluate(blackmouth, state)
+    assert.is_nil(verdict)
+    assert.are.equal("Vendor 4c, auction up to 1s 75c", note)
+    -- the same prices on a single item (not stackable) are still close enough
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual({ sellPrice = 4 }), state)))
+  end)
+
+  it("a stackable that auctions for about the vendor price is still green", function()
+    Bagwise.Data.AuctionPriceCeiling = { [16645] = 50 }
+    assert.are.equal("green", (Bagwise.Verdict.Evaluate(manual({ sellPrice = 30, maxStack = 20 }), state)))
   end)
 
   it("a dropped green hands back a note with both prices for the tooltip", function()

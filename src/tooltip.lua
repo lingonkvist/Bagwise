@@ -117,7 +117,7 @@ end
 local LOOT_CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
 local LOOT_TAKE_LINE = LOOT_CHECK_ICON .. "Take it"
 local LOOT_CONSIDER_DETAIL = "May be needed"
-local LOOT_LEAVE_REASON = "Worth less than your junk"
+local LOOT_LEAVE_REASON = "Not worth a slot"
 local LOOT_NOROOM_REASON = "Nothing safe to delete"
 local LOOT_NOROOM_HEADING = { title = "Make room first", detail = "Nothing safe to delete" }
 
@@ -203,6 +203,29 @@ local function bagSlotOf(tooltip)
   return bagID, slotID
 end
 
+-- An amount of money (4g 12s 5c): the numbers in white and the letters in the
+-- coin colours the game uses, whatever colour the rest of the line is.
+local COIN_COLORS = { g = "|cffffd700", s = "|cffc7c7cf", c = "|cffeda55f" }
+
+local function colorCoins(text)
+  if type(text) ~= "string" then return text end
+  return (text:gsub("%f[%w](%d+)([gsc])%f[%W]", function(amount, coin)
+    return "|cffffffff" .. amount .. "|r" .. COIN_COLORS[coin] .. coin .. "|r"
+  end))
+end
+
+local function addLine(tooltip, text, r, g, b)
+  tooltip:AddLine(colorCoins(text), r, g, b)
+end
+
+-- The price line stays even with Auctionator installed: Bagwise's number is
+-- its own judgement (an average, or the snapshot) and it is what makes the
+-- "may sell at the auction house" hint, or a missing dot, make sense.
+local function addPriceNote(tooltip, result)
+  if not (result and result.auctionNote) then return end
+  addLine(tooltip, result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+end
+
 local function renderProfessionDetails(tooltip, profEntries)
   local myProfs = Bagwise.Scanner and Bagwise.Scanner.professionNames
   local playerEntries = myProfs
@@ -237,7 +260,7 @@ local function renderProfessionDetails(tooltip, profEntries)
       text = text .. " " .. suffix
     end
 
-    tooltip:AddLine(text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    addLine(tooltip, text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
   end
 end
 
@@ -293,7 +316,7 @@ local function renderQuestDetails(tooltip, questIDs)
     if i == QUEST_DETAIL_LIMIT and #unique > QUEST_DETAIL_LIMIT then
       text = text .. " +" .. (#unique - QUEST_DETAIL_LIMIT)
     end
-    tooltip:AddLine(text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    addLine(tooltip, text, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     shown = shown + 1
   end
   return shown
@@ -348,7 +371,7 @@ local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, spec
     heading, reason = specific.title, specific.detail
   end
 
-  tooltip:AddLine(dotEscape(verdict) .. " " .. heading, color.r, color.g, color.b)
+  addLine(tooltip, dotEscape(verdict) .. " " .. heading, color.r, color.g, color.b)
   if not reason then return end
 
   -- Break long reasons at the last comma before the wrap threshold so
@@ -356,14 +379,14 @@ local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, spec
   if not keepWhole and #reason > VERDICT_LINE_WRAP then
     for i = VERDICT_LINE_WRAP, 1, -1 do
       if reason:sub(i, i) == "," then
-        tooltip:AddLine(reason:sub(1, i), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
-        tooltip:AddLine(reason:sub(i + 2), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
+        addLine(tooltip, reason:sub(1, i), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
+        addLine(tooltip, reason:sub(i + 2), DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
         return
       end
     end
   end
 
-  tooltip:AddLine(reason, DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
+  addLine(tooltip, reason, DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
 end
 
 function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
@@ -430,6 +453,10 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       verdict, reason = "yellow", LOOT_NOROOM_REASON
       specificHeading = LOOT_NOROOM_HEADING
     end
+  elseif (lootDecision == "take" or lootDecision == "consider") and verdict == "green" then
+    -- The plan says take it, so the item's own "not needed" would contradict the
+    -- check mark and the "Take it" line. A yellow hint can stand beside them.
+    verdict, reason, specificHeading = nil, nil, nil
   end
 
   local profEntries = Bagwise.Data.ReagentProfessions
@@ -445,17 +472,13 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
-      tooltip:AddLine(result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+      addLine(tooltip, result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
-    if result and result.auctionNote then
-      tooltip:AddLine(result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
-    end
+    addPriceNote(tooltip, result)
   else
     -- An item that would have been green but sells for more at auction: say so,
     -- so the missing dot is not a mystery. One row, leaving room for one more.
-    if result and result.auctionNote then
-      tooltip:AddLine(result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
-    end
+    addPriceNote(tooltip, result)
     -- No verdict: show context rows (profession and/or quest).
     -- Design doc 4.3: never more than 2 detail rows total.
     -- Skip all detail rows for vendor reagents (cheap, repurchasable).
@@ -466,19 +489,19 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     elseif questIDs and not isVendorReagent then
       renderQuestDetails(tooltip, questIDs)
     elseif protectedNote then
-      tooltip:AddLine(protectedNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+      addLine(tooltip, protectedNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
   end
 
   if lootNote then
-    tooltip:AddLine(lootNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    addLine(tooltip, lootNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
   end
 
   if lootDecision == "take" or lootDecision == "consider" then
     local green = VERDICT_COLORS.green
-    tooltip:AddLine(LOOT_TAKE_LINE, green.r, green.g, green.b)
+    addLine(tooltip, LOOT_TAKE_LINE, green.r, green.g, green.b)
     if lootDecision == "consider" then
-      tooltip:AddLine(LOOT_CONSIDER_DETAIL, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+      addLine(tooltip, LOOT_CONSIDER_DETAIL, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
   end
 

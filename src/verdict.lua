@@ -510,11 +510,6 @@ local RECIPE_PROFESSIONS = {
   [4] = "Blacksmithing", [5] = "Cooking", [6] = "Alchemy",
   [7] = "First Aid", [8] = "Enchanting", [9] = "Fishing",
 }
--- How many skill points short before a reagent counts as "a while away". It is
--- wider than RECIPE_SKILL_GAP below on purpose: a reagent is used by many recipes
--- at many levels, so one ingredient stays useful for longer than a single
--- recipe you cannot learn yet.
-local BANK_SKILL_GAP = 50
 -- A reagent is "outleveled" as soon as you are past the best recipe that needs
 -- it, counting what it is turned into: past that skill every one of them is
 -- gray, so nothing you make from it is still a skill-up.
@@ -525,6 +520,13 @@ local OUTLEVELED_SKILL_GAP = 0
 local RECIPE_SKILL_GAP = 25
 local RECIPE_IDLE_SKILL_GAP = 0
 local RECIPE_LEVEL_GAP = 3
+-- A reagent counts as "a while away" when it is out of reach by this much. It
+-- is wider than a recipe's gap because one reagent feeds many recipes. The gap
+-- closes to the recipe gap once the profession has gone quiet (half the idle
+-- time) and stays there when it is idle: a reagent is never banked on any
+-- shortfall, because the tooltip already says what it is for.
+local BANK_SKILL_GAP = 50
+local BANK_QUIET_SKILL_GAP = RECIPE_SKILL_GAP
 
 local function evaluateRecipe(item, state)
   if item.classID ~= RECIPE_CLASS_ID then return nil end
@@ -597,7 +599,10 @@ local function evaluateDistantReagent(item, state)
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not minSkill then return nil end
-      if minSkill <= rank + BANK_SKILL_GAP then return nil end
+      local quiet = (state.professionIdle and state.professionIdle[name])
+          or (state.professionSettling and state.professionSettling[name])
+      local gap = quiet and BANK_QUIET_SKILL_GAP or BANK_SKILL_GAP
+      if minSkill <= rank + gap then return nil end
       if not nearest or minSkill - rank < nearest.gap then
         nearest = { gap = minSkill - rank, name = name, minSkill = minSkill, rank = rank }
       end
@@ -887,7 +892,24 @@ local function roundedAuction(auctionPrice)
   return math.floor(auctionPrice / AUCTION_ROUND_DOWN_COPPER) * AUCTION_ROUND_DOWN_COPPER
 end
 
-local function sellLimit(vendorPrice)
+-- Stackables are sold by the stack, so a few copper per unit add up and the
+-- gear allowances do not apply: no rounding up of the vendor price, no flat
+-- slack. A 4c reagent that auctions for 1s 75c is worth listing by the stack.
+local function isStackable(item)
+  return (item.maxStack or 1) > 1
+end
+
+local function sellLimit(vendorPrice, stackable)
+  if stackable then
+    local factor = AH_VENDOR_LAST_FACTOR
+    for i = 1, #AH_VENDOR_STEPS do
+      if vendorPrice < AH_VENDOR_STEPS[i].below then
+        factor = AH_VENDOR_STEPS[i].factor
+        break
+      end
+    end
+    return math.ceil(vendorPrice * factor)
+  end
   local vendor = roundedVendor(vendorPrice)
   local factor = AH_VENDOR_LAST_FACTOR
   for i = 1, #AH_VENDOR_STEPS do
@@ -1029,6 +1051,28 @@ local function ceilingFor(item)
   return live, "live"
 end
 
+-- What an auction price is worth to someone selling: the live price less the 5%
+-- cut, or the snapshot's pricey end scaled down to its cheap end.
+local LIVE_AFTER_CUT = 0.95
+
+--- What one of this item fetches when sold the better way, careful about the
+-- auction side so that a loot decision never leans on a price that is too high.
+-- Used to weigh loot against the junk it would replace.
+-- @return number copper per item (the vendor price at least)
+function Bagwise.Verdict.SaleValue(item)
+  local vendor = item.sellPrice or 0
+  if not isTradeable(item) then return vendor end
+  local ceiling, source = ceilingFor(item)
+  if not ceiling or source == "unknown" then return vendor end
+  local auction
+  if source == "live" then
+    auction = ceiling * LIVE_AFTER_CUT
+  else
+    auction = ceiling * VERSION_FLOOR_FRACTION
+  end
+  return math.max(vendor, math.floor(auction))
+end
+
 --- Everything the sell-at-vendor rule looks at, in one place: the rule and
 -- /bagwise why both read this, so they cannot disagree.
 -- @return table|nil nil for items the rule never considers (not gear);
@@ -1149,7 +1193,7 @@ local RULES = {
   { name = "openable",           evaluate = evaluateOpenable },
   { name = "recipe",             evaluate = evaluateRecipe },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
-  { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent },
+  { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent, showsAuctionPrice = true },
   { name = "other_profession_reagent", evaluate = evaluateOtherProfessionReagent, showsAuctionPrice = true },
   { name = "poor_quality",      evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse, checksAuction = true },
@@ -1167,12 +1211,12 @@ local RULES = {
 --- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
 local function priceNote(item, ceiling, source)
   local money = Bagwise.Verdict.FormatMoney
-  local vendor = item.sellPrice or 0
-  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
   -- A live price is the real price now ("about"); the snapshot is a cheap-end
   -- ceiling ("up to").
-  return vendorText:sub(1, 1):upper() .. vendorText:sub(2)
-      .. (source == "live" and ", auction about " or ", auction up to ") .. money(ceiling)
+  local approx = source == "live" and "about " or "up to "
+  local vendor = item.sellPrice or 0
+  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
+  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction " .. approx .. money(ceiling)
 end
 
 local function auctionBlocker(item)
@@ -1185,7 +1229,9 @@ local function auctionBlocker(item)
     return "this version may sell for more at auction"
   end
   local vendor = item.sellPrice or 0
-  if not ceiling or roundedAuction(ceiling) <= sellLimit(vendor) then return nil end
+  local stackable = isStackable(item)
+  local compared = stackable and ceiling or (ceiling and roundedAuction(ceiling))
+  if not ceiling or compared <= sellLimit(vendor, stackable) then return nil end
   -- The same facts for the tooltip, which tells the player why there is no dot.
   local note = priceNote(item, ceiling, source)
   return "it may be worth more at auction (" .. note:sub(1, 1):lower() .. note:sub(2) .. ")", note

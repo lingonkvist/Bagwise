@@ -108,6 +108,14 @@ describe("Scanner: make room", function()
     assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
   end)
 
+  it("knows whether a loot window has anything in it", function()
+    setUp({ [0] = { { id = 300 } } }, { [0] = 0 }, { { id = 500, qty = 1 } })
+    Bagwise.Scanner.RefreshLoot()
+    assert.are.equal(true, Bagwise.Scanner.HasLoot())
+    Bagwise.Scanner.ClearLoot()
+    assert.are.equal(false, Bagwise.Scanner.HasLoot())
+  end)
+
   it("does not ask for room when the loot joins a stack you carry", function()
     setUp({ [0] = { { id = 100, count = 5 } } }, { [0] = 0 }, { { id = 100, qty = 3 } })
     Bagwise.Scanner.RefreshLoot()
@@ -123,6 +131,37 @@ describe("Scanner: make room", function()
     assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
     assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow) -- Torn Rag sells for least
     assert.is_nil(Bagwise.Scanner.GetResult(0, 3).glow)
+  end)
+end)
+
+describe("Scanner: reagents in the loot window", function()
+  local function giveCooking(rank)
+    _G.GetNumSkillLines = function() return 2 end
+    _G.GetSkillLineInfo = function(i)
+      if i == 1 then return "Professions", true, true end
+      return "Cooking", false, nil, rank
+    end
+  end
+  local function lootDecisionFor(itemID, rank)
+    setUp({ [0] = { { id = 700 } } }, { [0] = 0 }, { { id = itemID, qty = 3 } }) -- one junk: 8s
+    giveCooking(rank)
+    Bagwise.Data.ReagentChains = {}
+    Bagwise.Data.ReagentProfessions = { [100] = { { "Cooking", 5, 1, 100 } }, [1001] = { { "Cooking", 5, 1, 100 } } }
+    Bagwise.Scanner.RefreshLoot()
+    Bagwise.Scanner.ScanAll()
+    return Bagwise.Scanner.LootDecision(1)
+  end
+
+  it("skips an outleveled reagent that is worth less than your junk", function()
+    assert.are.equal("leave", lootDecisionFor(100, 300))
+  end)
+
+  it("skips a reagent still in use when it is worth less than your junk", function()
+    assert.are.equal("leave", lootDecisionFor(100, 50))
+  end)
+
+  it("still takes a reagent with no price, since a price cannot judge it", function()
+    assert.are.equal("consider", lootDecisionFor(1001, 50))
   end)
 end)
 

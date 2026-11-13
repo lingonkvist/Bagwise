@@ -20,10 +20,26 @@ describe("Progress", function()
     assert.is_nil(session(0, { Alchemy = 100 }).Alchemy)
   end)
 
-  it("goes idle when a session a day later shows no gain", function()
+  it("goes idle when a session half a day later shows no gain", function()
     store = {}
     session(0, { Alchemy = 100 })
-    assert.is_truthy(session(DAY, { Alchemy = 100 }).Alchemy)
+    assert.is_truthy(session(13 * HOUR, { Alchemy = 100 }).Alchemy)
+  end)
+
+  it("is settling after 7 hours and idle only after 12", function()
+    store = {}
+    session(0, { Alchemy = 100 })
+    P.ResetSession()
+    P.Observe(store, { Alchemy = 100 }, 7 * HOUR)
+    assert.is_truthy(P.SettlingSet(store, { Alchemy = 100 }, 7 * HOUR).Alchemy)
+    assert.is_nil(P.IdleSet(store, { Alchemy = 100 }, 7 * HOUR).Alchemy)
+    assert.is_nil(P.SettlingSet(store, { Alchemy = 100 }, 5 * HOUR).Alchemy)
+  end)
+
+  it("is not idle after a session only 11 hours later", function()
+    store = {}
+    session(0, { Alchemy = 100 })
+    assert.is_nil(session(11 * HOUR, { Alchemy = 100 }).Alchemy)
   end)
 
   it("a second session the same day is not enough", function()

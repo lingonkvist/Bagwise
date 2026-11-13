@@ -72,6 +72,11 @@ local function makeTooltip(itemLink, ownerParent, bag, slot, buttonBagID)
   }
 end
 
+-- Coin letters are coloured in tooltip lines; compare the text without them.
+local function plainCoins(text)
+  return (text:gsub("|cffffffff(%d+)|r", "%1"):gsub("|cff[0-9a-f]+([gsc])|r", "%1"))
+end
+
 describe("tooltip basic output", function()
   it("shows verdict line for a bag item", function()
     Bagwise.Data = Bagwise.Data or {}
@@ -152,6 +157,17 @@ describe("tooltip basic output", function()
     assert.are.equal("Shamans can't wear mail until 40", tt.lines[2].text)
   end)
 
+  it("shows a price with white numbers and coloured coin letters", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function() return { auctionNote = "Vendor 1g 20s 5c, auction about 8s" } end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:127:...|h[Junk]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal("Vendor |cffffffff1|r|cffffd700g|r |cffffffff20|r|cffc7c7cfs|r |cffffffff5|r|cffeda55fc|r, auction about |cffffffff8|r|cffc7c7cfs|r",
+        tt.lines[1].text)
+  end)
+
   it("shows the dot header, reason and delete line for a slot picked to make room", function()
     Bagwise.Data.ReagentProfessions = {}
     Bagwise.Scanner = {
@@ -168,7 +184,7 @@ describe("tooltip basic output", function()
 
     assert.are.equal(3, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
-    assert.are.equal("Cheapest junk, sells for 5c", tt.lines[2].text)
+    assert.are.equal("Cheapest junk, sells for 5c", plainCoins(tt.lines[2].text))
     assert.are.equal("Delete to make room for your loot", tt.lines[3].text)
     assert.are.equal(0.40, tt.lines[3].r)
   end)
@@ -277,8 +293,27 @@ describe("tooltip basic output", function()
     local tt = makeTooltip("|cff...|Hitem:16645:...|h[Page 1]|h|r", "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(1, #tt.lines)
-    assert.are.equal("Vendor 5c, auction about 8s", tt.lines[1].text)
+    assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[1].text))
     assert.are.equal(0.40, tt.lines[1].r)
+  end)
+
+  it("keeps the price row on a yellow hint when Auctionator is installed", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "yellow", reason = "Flagged", auctionNote = "Vendor 5c, auction about 8s" }
+      end,
+    }
+    local realLive = Bagwise.Live
+    Bagwise.Live = { Api = function() return {} end }
+    local tt = makeTooltip("|cff...|Hitem:16645:...|h[Page 1]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    Bagwise.Live = realLive
+    local found = false
+    for _, line in ipairs(tt.lines) do
+      if line.text:find("auction about") then found = true end
+    end
+    assert.is_truthy(found)
   end)
 
   it("a price note goes with a yellow verdict too, after its detail", function()
@@ -290,7 +325,7 @@ describe("tooltip basic output", function()
     }
     local tt = makeTooltip("|cff...|Hitem:16646:...|h[Page 2]|h|r", "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
-    assert.are.equal("Vendor 5c, auction about 8s", tt.lines[#tt.lines].text)
+    assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[#tt.lines].text))
   end)
 
   it("shows profession info even when scan result is nil", function()
@@ -957,6 +992,37 @@ describe("tooltip in the loot window", function()
     assert.are.equal(2320, calls.evaluated[1])
   end)
 
+  it("does not call a taken item 'not needed': the plan says take it", function()
+    setup()
+    installScanner({ verdict = "green", reason = "Vendor reagent (Alchemy)" })
+    Bagwise.Scanner.LootDecision = function() return "take" end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    for _, line in ipairs(tt.lines) do
+      assert.is_truthy(not line.text:find("Not needed"))
+    end
+    assert.is_truthy(tt.lines[#tt.lines].text:find("Take it$"))
+  end)
+
+  it("a single skipped item with no junk to compare says it is not worth a slot", function()
+    setup()
+    installScanner(nil)
+    Bagwise.Scanner.LootDecision = function() return "leave" end
+    Bagwise.Scanner.MakeRoomSummary = function() return {} end
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    tt:GetOwner().slot = 1
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Skip it$"))
+    assert.are.equal("Not worth a slot", tt.lines[2].text)
+  end)
+
   it("explains the X on an item that already has its own verdict", function()
     setup()
     installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
@@ -971,7 +1037,7 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
-    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (8s)", tt.lines[3].text)
+    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (8s)", plainCoins(tt.lines[3].text))
   end)
 
   it("says a must-take item has no room even when it has its own verdict", function()
@@ -1016,7 +1082,7 @@ describe("tooltip in the loot window", function()
     teardown()
 
     assert.are.equal(2, #tt.lines)
-    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (1s 17c)", tt.lines[2].text)
+    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (1s 17c)", plainCoins(tt.lines[2].text))
   end)
 
   it("a skipped gray does not repeat its own price", function()

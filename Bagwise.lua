@@ -8,6 +8,11 @@ frame:RegisterEvent("PLAYER_LOGIN")
 local function rescanAll()
   Bagwise.Scanner.ScanAll()
   Bagwise.Overlay.UpdateAll()
+  -- Looting changes your bags a moment after the loot event, so the plan (and
+  -- with it the marks, banner and tooltips) only becomes right on this scan.
+  if Bagwise.Scanner.HasLoot and Bagwise.Scanner.HasLoot() then
+    Bagwise.Overlay.UpdateLoot()
+  end
 end
 
 -- Bursts of events (item info arriving for a whole bag, several bag updates

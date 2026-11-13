@@ -16,10 +16,10 @@ const LUA = new Set(("assert collectgarbage error getmetatable ipairs loadstring
   "io debug coroutine _G _VERSION").split(" "));
 
 // What the WoW client (or another addon) provides. Read only.
-const WOW = new Set(("Baganator Bagnon C_AddOns C_Bank C_Container C_Item C_QuestLog C_SkillInfo C_Timer " +
+const WOW = new Set(("Baganator Bagnon C_AddOns C_Bank C_Container C_Item C_QuestLog C_SkillInfo C_Spell C_Timer " +
   "BankFrame ChatFontNormal CloseAllBags ContainerFrame1 ContainerFrameCombinedBags CreateFrame EUI_Bags " +
   "EllesmereUI Enum GameTooltip GetAddOnMetadata GetBagName GetBuildInfo GetInventoryItemLink " +
-  "GetItemInfo GetTime GetItemInfoInstant GetLootSlotInfo GetLootSlotLink GetNumLootItems GetNumSkillLines " +
+  "GetItemInfo GetSpellInfo GetTime GetItemInfoInstant GetLootSlotInfo GetLootSlotLink GetNumLootItems GetNumSkillLines " +
   "GetProfessionInfo GetProfessions GetCurrentRegion GetNormalizedRealmName GetRealmName GetServerTime GetSkillLineInfo IsAnyBagOpen " +
   "ITEM_OPENABLE ITEM_QUALITY_COLORS LOOTFRAME_NUMBUTTONS LootFrame LootSlotHasItem NUM_BAG_SLOTS " +
   "NUM_CONTAINER_FRAMES NUM_REAGENTBAG_SLOTS OpenAllBags SlashCmdList TooltipDataProcessor UIParent " +

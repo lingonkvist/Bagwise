@@ -180,6 +180,8 @@ local COMMAND_HANDLERS = {
     local bagUIs = Bagwise.Overlay.DetectedBagAddons()
     print("  Bag UIs painted: " .. (#bagUIs > 0 and table.concat(bagUIs, ", ") or "none found"))
     print("  Bags scanned: 0-" .. Bagwise.Bags.LastScanned())
+    local professions, summary = pcall(Bagwise.Scanner.ProfessionSummary)
+    print("  Professions: " .. tostring(professions and summary or ("could not be read: " .. tostring(summary))))
     local counts = Bagwise.Scanner.Counts()
     print("  Scanned items: " .. counts.items .. " (" .. counts.green .. " green, "
       .. counts.yellow .. " yellow)")
@@ -257,6 +259,16 @@ local COMMAND_HANDLERS = {
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0
       and table.concat(explained.recipeProfessions, ", ") or "none"))
+    if item.classID == 9 and explained.fromBag then
+      print("  skill needed, read from the tooltip: " .. tostring(item.requiredSkill or "not found"))
+      local ok, summary = pcall(Bagwise.Scanner.ProfessionSummary)
+      print("  your professions: " .. tostring(ok and summary or "could not be read"))
+      if Bagwise.Scanner.TooltipTextOf then
+        for _, text in ipairs(Bagwise.Scanner.TooltipTextOf(item.id) or {}) do
+          print("    tooltip: " .. text)
+        end
+      end
+    end
     if explained.fromBag then
       print("  Judged as the stack in your bags (opens for loot: "
         .. tostring(item.hasLoot) .. ").")

@@ -1,7 +1,7 @@
 -- Bagwise: reagent-to-profession mapping with recipe stats
 -- For each reagent item: which professions use it, how many
 -- recipes, and the skill level range.
--- Generated from wago.tools DB2 build 1.60.1.70862. Do not edit by hand.
+-- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
 --
 -- 588 reagent items across 9 professions.
 
@@ -447,7 +447,7 @@ Bagwise.Data.ReagentProfessions = {
   [11291] = { { "Cooking", 1, 95, 95 }, { "Enchanting", 17, 140, 320 } },  -- Star Wood
 
   -- Cooking, Enchanting, First Aid, Leatherworking, Tailoring
-  [4470] = { { "Cooking", 2, 1, 25 }, { "Enchanting", 6, 10, 140 }, { "First Aid", 2, 140, 300 }, { "Leatherworking", 1, 140, 140 }, { "Tailoring", 2, 140, 300 } },  -- Simple Wood
+  [4470] = { { "Cooking", 2, 1, 25 }, { "Enchanting", 6, 10, 140 }, { "First Aid", 2, 140, 300 }, { "Leatherworking", 1, 125, 125 }, { "Tailoring", 2, 140, 300 } },  -- Simple Wood
 
   -- Cooking, Engineering
   [9061] = { { "Cooking", 1, 325, 325 }, { "Engineering", 7, 235, 295 } },  -- Goblin Rocket Fuel

@@ -143,9 +143,9 @@ local function getPlayerState()
     end
   end
 
-  -- Professions you have stopped leveling (no gain for a day): nothing is
+  -- Professions you have stopped leveling (no gain for 12 hours): nothing is
   -- close for them, so out-of-reach recipes get the bank hint at once.
-  local professionIdle = {}
+  local professionIdle, professionSettling = {}, {}
   if Bagwise.Progress and next(professionRanks) then
     local store = progressStore()
     Bagwise.Progress.Observe(store, professionRanks, now())
@@ -155,10 +155,12 @@ local function getPlayerState()
       end
     end
     professionIdle = Bagwise.Progress.IdleSet(store, professionRanks, now())
+    professionSettling = Bagwise.Progress.SettlingSet(store, professionRanks, now())
   end
 
   -- Expose for tooltip sorting (player's professions listed first)
   Bagwise.Scanner.professionNames = professionNames
+  Bagwise.Scanner.professionRanks = professionRanks
 
   return {
     class = class,
@@ -170,6 +172,7 @@ local function getPlayerState()
     professionNames = professionNames,
     professionRanks = professionRanks,
     professionIdle = professionIdle,
+    professionSettling = professionSettling,
     professionsKnown = professionsKnown,
     professionSource = professionSource,
   }
@@ -389,12 +392,43 @@ local function readRequiredSkill(bag, slot)
   skillTip:SetOwner(UIParent, "ANCHOR_NONE")
   skillTip:ClearLines()
   skillTip:SetBagItem(bag, slot)
+  -- A recipe's tooltip can embed a preview of the item it makes, with that
+  -- item's own "Requires First Aid (150)". The recipe's own line comes last, so
+  -- the last match is the one that gates learning it.
+  local found
   for line = 2, skillTip:NumLines() do
     local text = _G["BagwiseSkillTipTextLeft" .. line]
     local content = text and text:GetText()
     if content then
       local _, number = content:match(pattern)
-      if number then return tonumber(number) end
+      if number then found = tonumber(number) end
+    end
+  end
+  return found
+end
+
+--- The tooltip lines of an item in your bags, as the skill reader sees them, for
+-- /bagwise why when a recipe's required skill was not found.
+-- @return table|nil list of strings
+function Bagwise.Scanner.TooltipTextOf(itemID)
+  if not (CreateFrame and UIParent and C_Container) then return nil end
+  for bag = 0, Bagwise.Bags.LastScanned() do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) do
+      local info = C_Container.GetContainerItemInfo(bag, slot)
+      if info and info.itemID == itemID then
+        if not skillTip then
+          skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+        end
+        skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+        skillTip:ClearLines()
+        skillTip:SetBagItem(bag, slot)
+        local lines = {}
+        for line = 1, skillTip:NumLines() do
+          local text = _G["BagwiseSkillTipTextLeft" .. line]
+          lines[#lines + 1] = text and text:GetText() or "?"
+        end
+        return lines
+      end
     end
   end
   return nil
@@ -469,7 +503,8 @@ local function professionCacheKey(state)
   local parts = {}
   for name in pairs(state.professionNames or {}) do
     parts[#parts + 1] = name .. "=" .. tostring(state.professionRanks and state.professionRanks[name])
-      .. (state.professionIdle and state.professionIdle[name] and "!" or "")
+      .. (state.professionIdle and state.professionIdle[name] and "!"
+          or state.professionSettling and state.professionSettling[name] and "~" or "")
   end
   table.sort(parts)
   local key = table.concat(parts, ",")
@@ -707,7 +742,8 @@ function Bagwise.Scanner.ProfessionSummary()
   local parts = {}
   for name in pairs(state.professionNames or {}) do
     parts[#parts + 1] = name .. " " .. tostring(state.professionRanks and state.professionRanks[name] or "?")
-      .. (state.professionIdle and state.professionIdle[name] and " idle" or "")
+      .. (state.professionIdle and state.professionIdle[name] and " idle"
+          or state.professionSettling and state.professionSettling[name] and " quiet" or "")
   end
   table.sort(parts)
   local list = #parts > 0 and table.concat(parts, ", ") or "none"
@@ -736,6 +772,26 @@ local function questStillWantsIt(itemID)
   return false
 end
 
+-- Rules whose yellow says the reagent is no use to you: past your skill, or
+-- only for professions you do not have. Such a reagent is worth its price and
+-- nothing more, so it must never push a better-selling gray out of your bags.
+local UNNEEDED_REAGENT_RULES = { outleveled_reagent = true, other_profession_reagent = true }
+
+-- The item as the verdict rules see it, for a loot slot.
+local function lootItem(itemID, link)
+  local state = getPlayerState()
+  local item = buildItem(itemID, false, nil, state, nil, false)
+  if not item then return nil end
+  item.bonusKey = Bagwise.Verdict.BonusKey(link)
+  item.link = link
+  item.livePrice, item.liveAge, item.liveSteady = Bagwise.Live.FreshPrice(item)
+  return item, state
+end
+
+--- Is this loot something a price cannot judge?
+-- @param info table  { itemID, quality, sellPrice, classID, link }
+-- @return boolean priority, number|nil perItemValue  a value in copper when the
+--   item should be weighed by what it sells for (reagents)
 local function isPriorityLoot(info)
   local wanted = questStillWantsIt(info.itemID)
   if wanted then return true end -- an open quest needs it, even a gray
@@ -747,11 +803,26 @@ local function isPriorityLoot(info)
   -- Finished the quests it was for, or a gray: it is only worth its price.
   if wanted == false or info.quality == 0 then return false end
   if info.classID == 12 then return true end
+  local data = Bagwise.Data or {}
+  local isReagent = data.ReagentProfessions and data.ReagentProfessions[info.itemID]
+  if isReagent then
+    -- A reagent is weighed by what it sells for, at a vendor or the auction
+    -- house, so a cheap one does not push out a gray worth more. It stays
+    -- must-take only when it is one of yours, still in use, and has no price.
+    local item = lootItem(info.itemID, info.link)
+    if not item then return true end
+    local result = Bagwise.Scanner.EvaluateItem(info.itemID, false, info.link)
+    if result and UNNEEDED_REAGENT_RULES[result.rule] then
+      return false, Bagwise.Verdict.SaleValue(item)
+    end
+    local value = Bagwise.Verdict.SaleValue(item)
+    if value > 0 then return false, value end
+    return true
+  end
   -- No vendor price usually means it is worth something elsewhere (AH,
   -- quests, a use we cannot see).
   if (info.sellPrice or 0) == 0 then return true end
-  local data = Bagwise.Data or {}
-  return (data.ReagentProfessions and data.ReagentProfessions[info.itemID]) and true or false
+  return false
 end
 
 --- Read the open loot window and rescan with it in mind.
@@ -769,14 +840,16 @@ function Bagwise.Scanner.RefreshLoot(clearedSlot)
       local itemID = tonumber(link:match("item:(%d+)"))
       local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = getItemInfo(link)
       if itemID then
-        local info = { itemID = itemID, quality = quality, sellPrice = sellPrice, classID = classID }
+        local info = { itemID = itemID, quality = quality, sellPrice = sellPrice, classID = classID,
+                       link = link }
         liveLootSlots[slot] = true
+        local priority, perItem = isPriorityLoot(info)
         lootPieces[#lootPieces + 1] = {
           slot = slot,
           itemID = itemID,
           quantity = quantity or 1,
-          value = (sellPrice or 0) * (quantity or 1),
-          priority = isPriorityLoot(info) and true or false,
+          value = (perItem or sellPrice or 0) * (quantity or 1),
+          priority = priority and true or false,
         }
       end
     end
@@ -819,6 +892,11 @@ function Bagwise.Scanner.MakeRoomSummary()
     takes = takes,
     deletes = #lootPlan.deletes,
   }
+end
+
+--- Is there loot waiting in an open loot window?
+function Bagwise.Scanner.HasLoot()
+  return #lootPieces > 0
 end
 
 function Bagwise.Scanner.ClearLoot()

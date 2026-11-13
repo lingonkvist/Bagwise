@@ -5,12 +5,12 @@ unused_args = false
 exclude_files = { "data/*", "tests/*" }
 globals = { "Bagwise", "BagwiseDB", "SLASH_BAGWISE1", "SlashCmdList" }
 read_globals = {
-  "Baganator", "Bagnon", "C_AddOns", "C_Bank", "C_Container", "C_Item", "C_QuestLog", "C_SkillInfo", "C_Timer",
+  "Baganator", "Bagnon", "C_AddOns", "C_Bank", "C_Container", "C_Item", "C_QuestLog", "C_SkillInfo", "C_Spell", "C_Timer",
   "BankFrame", "ChatFontNormal", "CloseAllBags", "ContainerFrame1", "ContainerFrameCombinedBags", "CreateFrame",
   "EUI_Bags", "EllesmereUI", "Enum", "GameTooltip", "GetAddOnMetadata", "GetBagName", "GetBuildInfo",
   "GetInventoryItemLink", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink",
   "GetNumLootItems", "GetNumSkillLines", "GetProfessionInfo", "GetProfessions", "GetRealmName",
-  "GetServerTime", "GetTime", "GetSkillLineInfo", "IsAnyBagOpen", "ITEM_OPENABLE", "ITEM_QUALITY_COLORS",
+  "GetServerTime", "GetSpellInfo", "GetTime", "GetSkillLineInfo", "IsAnyBagOpen", "ITEM_OPENABLE", "ITEM_QUALITY_COLORS",
   "LOOTFRAME_NUMBUTTONS", "LootFrame", "LootSlotHasItem", "NUM_BAG_SLOTS", "NUM_CONTAINER_FRAMES",
   "NUM_REAGENTBAG_SLOTS", "OpenAllBags", "TooltipDataProcessor", "UIParent", "UISpecialFrames",
   "UnitClass", "UnitFactionGroup", "UnitLevel", "UnitName", "UnitRace", "hooksecurefunc", "time", "tinsert",

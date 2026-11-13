@@ -2,7 +2,7 @@
 -- Copper Bar is smelted into Bronze Bar, which smithing uses far above
 -- what copper recipes do. Used so a material is never called outleveled
 -- while something made from it is still in demand.
--- Generated from wago.tools DB2 build 1.60.1.70862. Do not edit by hand.
+-- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
 
 Bagwise                      = Bagwise or {}
 Bagwise.Data                 = Bagwise.Data or {}
