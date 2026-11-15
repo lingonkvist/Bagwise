@@ -33,6 +33,9 @@ end
 -- keeps the last minimum it saw until the item is seen again, so an older
 -- price may be long gone, and nothing else would catch a wrong one.
 Bagwise.Live.MAX_AGE_DAYS_UNBACKED = 1
+-- A price older than MAX_AGE_DAYS is not used to judge, but up to this old it still
+-- tells that an item is cheap: it only ever drops a "may sell at auction" hint.
+Bagwise.Live.MAX_STALE_DAYS = 14
 
 --- Auctionator's recorded days for this item, newest first, or nil when they
 -- cannot be read. Each entry is { day = number, low = copper, high = copper }:
@@ -69,27 +72,54 @@ function Bagwise.Live.History(item, auctionator)
   return nil
 end
 
---- The average over the last 3 days Auctionator has data for, in copper, or nil
--- when the history cannot be read. Each recorded day has a lowest and a highest
--- reading of the cheapest listing; `field` picks which one is averaged.
--- The single price Auctionator shows is the last reading of one day, and for
--- busy items readings differ a lot (3s one scan, 5s the next, 13s the day
--- before). An average over days is steadier than one reading.
--- @param field string  "low", "high" or "mid" (halfway between the two)
-function Bagwise.Live.RecentAverage(item, auctionator, field)
-  field = (field == "high" or field == "mid") and field or "low"
+--- The readings behind a live price: Auctionator's current price and the lowest
+-- and highest reading of each recent day, newest first.
+-- @return table list of copper values (empty when the history cannot be read)
+function Bagwise.Live.Samples(item, price, auctionator)
+  local samples = { price }
   local days = Bagwise.Live.History(item, auctionator)
-  if not days then return nil end
-  local newest, total, count = days[1].day, 0, 0
-  for _, d in ipairs(days) do
-    if d.day >= newest - (Bagwise.Live.MAX_AGE_DAYS - 1) then
-      total = total + (field == "mid" and (d.low + d.high) / 2 or d[field])
-      count = count + 1
+  if days then
+    local newest = days[1].day
+    for _, d in ipairs(days) do
+      if d.day >= newest - (Bagwise.Live.MAX_AGE_DAYS - 1) then
+        samples[#samples + 1] = d.low
+        if d.high ~= d.low then samples[#samples + 1] = d.high end
+      end
     end
   end
-  if count == 0 then return nil end
-  local average = math.floor(total / count)
-  return average > 0 and average or nil
+  return samples
+end
+
+local function median(values)
+  local sorted = {}
+  for i = 1, #values do sorted[i] = values[i] end
+  table.sort(sorted)
+  local n = #sorted
+  if n % 2 == 1 then return sorted[(n + 1) / 2] end
+  return (sorted[n / 2] + sorted[n / 2 + 1]) / 2
+end
+
+--- The typical price among some readings, with hopeful highs left out: a reading
+-- above `factor` times the median is one lone listing (the cheap ones sold out and
+-- the lowest price jumped), not the market. Nothing is dropped from fewer than 3
+-- readings, since a median of one or two says nothing; then the lowest of them
+-- is the price, never a lone high.
+-- @param samples table  copper values
+-- @param factor number  how far above the median a reading may be
+-- @return number|nil copper
+function Bagwise.Live.Typical(samples, factor)
+  if #samples == 0 then return nil end
+  if #samples < 3 then
+    local lowest = samples[1]
+    for i = 2, #samples do if samples[i] < lowest then lowest = samples[i] end end
+    return lowest
+  end
+  local limit = median(samples) * factor
+  local kept = {}
+  for i = 1, #samples do
+    if samples[i] <= limit then kept[#kept + 1] = samples[i] end
+  end
+  return math.floor(median(kept))
 end
 
 --- Whether the recent days all agree on the price: at least two recorded days in
@@ -111,16 +141,8 @@ function Bagwise.Live.IsSteady(item, auctionator)
   return count >= 2 and lowest > 0 and highest <= lowest * 1.25
 end
 
---- Which average judges an item. Blue gear is dearer and sells less often, so a
--- dip matters more: it is judged on the highs. Anything cheaper on the middle of
--- each day's range, which is what an item typically goes for without counting
--- one lucky dip or one dear moment.
-local RARE_QUALITY = 3
-function Bagwise.Live.FieldFor(item)
-  return (item.quality or 0) >= RARE_QUALITY and "high" or "mid"
-end
-
 --- The fresh auction price in copper for one item, and its age in days, or nil.
+-- Also, when the newest price is too old to judge by, that stale price and its age.
 -- Soulbound items cannot be sold at auction, so they never get one.
 -- @param item table  needs link and isBound
 -- @param api  table|nil  Auctionator's API, for tests; defaults to the real one
@@ -135,11 +157,14 @@ function Bagwise.Live.FreshPrice(item, api, auctionator)
   local now = GetTime and GetTime() or nil
   local cached = not injected and now and priceCache[item.link]
   if cached and now - cached.at < CACHE_SECONDS then
-    return cached.price, cached.age, cached.steady
+    return cached.price, cached.age, cached.steady, cached.stale, cached.staleAge
   end
-  local price, age, steady = Bagwise.Live.ReadPrice(item, api, auctionator)
-  if not injected and now then priceCache[item.link] = { at = now, price = price, age = age, steady = steady } end
-  return price, age, steady
+  local price, age, steady, stale, staleAge = Bagwise.Live.ReadPrice(item, api, auctionator)
+  if not injected and now then
+    priceCache[item.link] = { at = now, price = price, age = age, steady = steady,
+                              stale = stale, staleAge = staleAge }
+  end
+  return price, age, steady, stale, staleAge
 end
 
 --- Forget kept prices (a test hook, and used when Auctionator's data may have changed).
@@ -159,11 +184,15 @@ function Bagwise.Live.ReadPrice(item, api, auctionator)
   if not ok or type(price) ~= "number" or price <= 0 then return nil end
 
   local ageOk, age = pcall(api.GetAuctionAgeByItemLink, CALLER_ID, item.link)
-  if not ageOk or type(age) ~= "number" or age < 0 or age > Bagwise.Live.MAX_AGE_DAYS then
+  if not ageOk or type(age) ~= "number" or age < 0 or age > Bagwise.Live.MAX_STALE_DAYS then
     return nil
   end
-  local average = Bagwise.Live.RecentAverage(item, auctionator, Bagwise.Live.FieldFor(item))
-  if average and average > price then price = average end
+  -- Typical, not highest: a lone overpriced listing never lifts the price.
+  local factor = Bagwise.Curves.OutlierFactor(Bagwise.Curves.TypeOf(item))
+  local typical = Bagwise.Live.Typical(Bagwise.Live.Samples(item, price, auctionator), factor)
+  if typical and typical > 0 then price = typical end
+  -- Too old to judge by: handed back apart, as the stale price and its age.
+  if age > Bagwise.Live.MAX_AGE_DAYS then return nil, nil, nil, price, age end
   return price, age, Bagwise.Live.IsSteady(item, auctionator)
 end
 
@@ -182,10 +211,11 @@ function Bagwise.Live.Describe(item, api)
   return "Auctionator says: price " .. ask(api.GetAuctionPriceByItemLink) .. " copper, last seen "
       .. ask(api.GetAuctionAgeByItemLink) .. " days ago, exact item "
       .. ask(api.IsAuctionDataExactByItemLink)
-      .. ", 3-day averages: lows " .. tostring(Bagwise.Live.RecentAverage(item, nil, "low"))
-      .. ", middle " .. tostring(Bagwise.Live.RecentAverage(item, nil, "mid"))
-      .. ", highs " .. tostring(Bagwise.Live.RecentAverage(item, nil, "high")) .. " copper"
-      .. " (judged on the " .. Bagwise.Live.FieldFor(item) .. ")"
+      .. ", typical over the last days " .. tostring(Bagwise.Live.Typical(
+          Bagwise.Live.Samples(item, tonumber((select(2, pcall(api.GetAuctionPriceByItemLink, CALLER_ID, item.link)))) or 0, nil),
+          Bagwise.Curves.OutlierFactor(Bagwise.Curves.TypeOf(item))))
+      .. " copper (readings above " .. Bagwise.Curves.OutlierFactor(Bagwise.Curves.TypeOf(item))
+      .. "x the median are left out; " .. Bagwise.Curves.TypeOf(item) .. ")"
       .. (Bagwise.Live.IsSteady(item) and ", steady over the last days" or "")
       .. (item.bonusKey and "; versioned item: Auctionator cannot tell versions apart, so this is the cheapest version's price" or "")
       .. Bagwise.Live.HistoryText(item)

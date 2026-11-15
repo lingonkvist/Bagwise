@@ -7,8 +7,9 @@
 Bagwise = nil
 local DATA_FILES = {
   "reagent_professions", "reagent_chains", "vendor_reagents", "class_reagents",
-  "quest_items", "mana_consumables", "protected_items", "auction_prices", "library_books", "quest_availability",
-  "weapon_skills",
+  "quest_items", "mana_consumables", "protected_items", "auction_prices_us_alliance", "auction_prices_us_horde",
+  "auction_prices_eu_alliance", "auction_prices_eu_horde", "library_books", "quest_availability",
+  "weapon_skills", "locked_items",
 }
 for _, file in ipairs(DATA_FILES) do
   dofile("data/" .. file .. ".lua")

@@ -125,6 +125,29 @@ end
 
 --- Gather player state once per scan.
 -- @return table  State table matching what Verdict.Evaluate expects
+-- Pick Lock, the rogue spell that opens lockboxes.
+local PICK_LOCK_SPELL_ID = 1804
+
+--- Whether the player can pick locks (a rogue who has learned Pick Lock).
+local function canPickLocks()
+  for _, known in ipairs({ "IsSpellKnown", "IsPlayerSpell" }) do
+    local check = _G[known]
+    if check then
+      local ok, result = pcall(check, PICK_LOCK_SPELL_ID)
+      if ok and result then return true end
+    end
+  end
+  return false
+end
+
+--- Days since the shipped auction snapshot was read, or nil when unknown.
+-- The verdict reads an old snapshot as a little pricier (src/curves.lua).
+local function snapshotAgeDays()
+  local date = Bagwise.Data and Bagwise.Data.AuctionPricesDate
+  local okNow, now = pcall(time)
+  return okNow and Bagwise.Curves.SnapshotAgeDays(date, now) or nil
+end
+
 local function getPlayerState()
   local class, playerClass = UnitClass("player")
   local race = UnitRace("player")
@@ -171,6 +194,8 @@ local function getPlayerState()
     faction = faction,
     level = level,
     maxHealth = UnitHealthMax and UnitHealthMax("player") or nil,
+    priceAgeDays = snapshotAgeDays(),
+    canPickLocks = canPickLocks(),
     professionSkillLines = skillLines,
     professionNames = professionNames,
     professionRanks = professionRanks,
@@ -358,6 +383,7 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     count = count,
     maxStack = maxStack,
     hasLoot = hasLoot and true or false, -- right-click opens it (clams, lockboxes, bags of loot)
+    isLocked = Bagwise.Data and Bagwise.Data.LockedItems and Bagwise.Data.LockedItems[itemID] or false,
     startsQuestID = startsQuestID,
     startsQuestCompleted = startsQuestCompleted,
     startsQuestName = startsQuestName,
@@ -513,6 +539,46 @@ local function readRestores(bag, slot)
   return restores, givesBuff, restoresMana and not restoresHealth
 end
 
+-- Words in an effect line that make an elixir or flask about stats, health or
+-- mana. English only, like the rest of the tooltip reading: on other clients the
+-- answer stays "no" and nothing is flagged. Utility effects (water breathing,
+-- speed, stealth detection) match none of these.
+local STAT_WORDS = { "strength", "agility", "stamina", "intellect", "spirit", "armor",
+  "attack power", "spell damage", "spell power", "healing", "health", "mana",
+  "critical", "dodge", "defense" }
+-- Wording of an effect that carries its own level limit.
+local LEVEL_LIMIT_PHRASES = { "up to level", "cannot be used", "can only be used",
+  "above level", "below level", "after level", "until level", "or lower", "or below" }
+
+--- What a consumable's tooltip says about its effect.
+-- @return boolean givesStats  an effect line names a stat, health or mana
+-- @return boolean levelLimited  an effect line carries its own level limit
+local function readConsumableTraits(bag, slot)
+  if not (CreateFrame and UIParent) then return false, false end
+  if not skillTip then
+    skillTip = CreateFrame("GameTooltip", "BagwiseSkillTip", nil, "GameTooltipTemplate")
+  end
+  skillTip:SetOwner(UIParent, "ANCHOR_NONE")
+  skillTip:ClearLines()
+  skillTip:SetBagItem(bag, slot)
+  local givesStats, levelLimited = false, false
+  for line = 2, skillTip:NumLines() do
+    local text = _G["BagwiseSkillTipTextLeft" .. line]
+    local content = text and text:GetText()
+    local lower = content and content:lower()
+    -- Only the effect lines ("Use: ..."), not the item's own "Requires Level".
+    if lower and (lower:find("^use:") or lower:find("^equip:")) then
+      for _, word in ipairs(STAT_WORDS) do
+        if lower:find(word, 1, true) then givesStats = true break end
+      end
+      for _, phrase in ipairs(LEVEL_LIMIT_PHRASES) do
+        if lower:find(phrase, 1, true) then levelLimited = true break end
+      end
+    end
+  end
+  return givesStats, levelLimited
+end
+
 --- How much a bandage heals, from its tooltip ("Heals 400 damage over 8 sec").
 local function readHealAmount(bag, slot)
   if not (CreateFrame and UIParent) then return nil end
@@ -545,8 +611,8 @@ local function gatherItem(bag, slot, state)
     containerInfo.stackCount, containerInfo.hasLoot)
   if item then
     item.link = containerInfo.hyperlink
-    item.bonusKey = Bagwise.Verdict.BonusKey(containerInfo.hyperlink)
-    item.livePrice, item.liveAge, item.liveSteady = Bagwise.Live.FreshPrice(item)
+    item.bonusKey = Bagwise.Auction.BonusKey(containerInfo.hyperlink)
+    item.livePrice, item.liveAge, item.liveSteady, item.stalePrice, item.staleAge = Bagwise.Live.FreshPrice(item)
   end
   if item and item.isEquippable then
     item.hasEffect = readHasEffect(bag, slot)
@@ -558,6 +624,9 @@ local function gatherItem(bag, slot, state)
     item.restoresHealthOrMana, item.givesBuff, item.restoresManaOnly = readRestores(bag, slot)
   elseif item and item.classID == CONSUMABLE_CLASS_ID and item.subClassID == BANDAGE_SUBCLASS_ID then
     item.healAmount = readHealAmount(bag, slot)
+  end
+  if item and item.classID == CONSUMABLE_CLASS_ID then
+    item.givesStats, item.levelLimited = readConsumableTraits(bag, slot)
   end
   return item
 end
@@ -606,20 +675,21 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
       .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana) .. ":" .. tostring(item.givesBuff)
+      .. ":" .. tostring(item.givesStats) .. ":" .. tostring(item.levelLimited)
       .. ":" .. tostring(item.restoresManaOnly)
       .. ":" .. tostring(item.hasEffect)
       .. ":" .. tostring(item.healAmount) .. ":" .. tostring(item.healAmount and state.maxHealth and math.floor(state.maxHealth / 250))
       .. ":" .. equippedKey(item)
       .. ":" .. tostring(item.bonusKey)
       .. ":" .. tostring(item.livePrice) .. ":" .. tostring(item.liveAge) .. ":" .. tostring(item.liveSteady)
+      .. ":" .. tostring(item.stalePrice)
+      .. ":" .. tostring(state.priceAgeDays)
+      .. ":" .. tostring(item.isLocked and state.canPickLocks)
       .. ":" .. profKey
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
-  local verdict, reason, detail, tag, rule, heading, auctionNote = Bagwise.Verdict.Evaluate(item, state)
-  local result = { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
-                   heading = heading, sellable = Bagwise.Verdict.Sellable(item, verdict),
-                   auctionNote = auctionNote }
+  local result = Bagwise.Verdict.Judge(item, state)
   verdictCache[cacheKey] = result
   return result
 end
@@ -863,9 +933,9 @@ local function lootItem(itemID, link)
   local state = getPlayerState()
   local item = buildItem(itemID, false, nil, state, nil, false)
   if not item then return nil end
-  item.bonusKey = Bagwise.Verdict.BonusKey(link)
+  item.bonusKey = Bagwise.Auction.BonusKey(link)
   item.link = link
-  item.livePrice, item.liveAge, item.liveSteady = Bagwise.Live.FreshPrice(item)
+  item.livePrice, item.liveAge, item.liveSteady, item.stalePrice, item.staleAge = Bagwise.Live.FreshPrice(item)
   return item, state
 end
 
@@ -894,9 +964,9 @@ local function isPriorityLoot(info)
     if not item then return true end
     local result = Bagwise.Scanner.EvaluateItem(info.itemID, false, info.link)
     if result and UNNEEDED_REAGENT_RULES[result.rule] then
-      return false, Bagwise.Verdict.SaleValue(item)
+      return false, Bagwise.Auction.SaleValue(item)
     end
-    local value = Bagwise.Verdict.SaleValue(item)
+    local value = Bagwise.Auction.SaleValue(item)
     if value > 0 then return false, value end
     return true
   end
@@ -1158,9 +1228,9 @@ function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot, link)
   local state = getPlayerState()
   local item = buildItem(itemID, false, nil, state, nil, opensForLoot)
   if not item then return nil end
-  item.bonusKey = Bagwise.Verdict.BonusKey(link)
+  item.bonusKey = Bagwise.Auction.BonusKey(link)
   item.link = link
-  item.livePrice, item.liveAge, item.liveSteady = Bagwise.Live.FreshPrice(item)
+  item.livePrice, item.liveAge, item.liveSteady, item.stalePrice, item.staleAge = Bagwise.Live.FreshPrice(item)
   return evaluateCached(item, state, professionCacheKey(state))
 end
 

@@ -1,6 +1,8 @@
 -- Bagwise: the Auctionator price reader.
 
 _G.Bagwise = nil
+dofile("src/curves.lua")
+dofile("src/auction.lua")
 dofile("src/live.lua")
 
 describe("Live prices: reading Auctionator", function()
@@ -65,36 +67,78 @@ describe("Live prices: reading Auctionator", function()
     { rawDay = "2501", minSeen = 900, maxSeen = 900 },
   }
 
-  it("averages the daily lows or highs of the last 3 days of data, ignoring older days", function()
-    -- days 2505 and 2504 count, 2501 is too old
-    assert.are.equal(450, Bagwise.Live.RecentAverage(item, fakeAuctionator(days), "low"))
-    assert.are.equal(600, Bagwise.Live.RecentAverage(item, fakeAuctionator(days), "high"))
-  end)
-
-  it("judges green and cheaper items on the middle of each day and blue on the highs", function()
-    -- middles: 2505 (300+500)/2 = 400, 2504 (600+700)/2 = 650, average 525
+  it("judges on the typical reading of the last days, the same for every quality", function()
+    -- readings: now 300, 2505 300 and 500, 2504 600 and 700. Median 500.
     local green, blue = { link = item.link, quality = 2 }, { link = item.link, quality = 3 }
-    assert.are.equal(525, (Bagwise.Live.FreshPrice(green, api(300, 0), fakeAuctionator(days))))
-    assert.are.equal(600, (Bagwise.Live.FreshPrice(blue, api(300, 0), fakeAuctionator(days))))
+    assert.are.equal(500, (Bagwise.Live.FreshPrice(green, api(300, 0), fakeAuctionator(days))))
+    assert.are.equal(500, (Bagwise.Live.FreshPrice(blue, api(300, 0), fakeAuctionator(days))))
   end)
 
-  it("judges on that average when it is above the price Auctionator shows, never below", function()
-    assert.are.equal(525, (Bagwise.Live.FreshPrice(item, api(300, 0), fakeAuctionator(days))))
-    assert.are.equal(900, (Bagwise.Live.FreshPrice(item, api(900, 0), fakeAuctionator(days))))
+  it("a lone overpriced reading never lifts the price", function()
+    local history = {
+      { rawDay = "2505", minSeen = 300, maxSeen = 320 },
+      { rawDay = "2504", minSeen = 290, maxSeen = 4000 },
+      { rawDay = "2503", minSeen = 310, maxSeen = 330 },
+    }
+    -- the 4000 reading is far above the median and is dropped
+    assert.are.equal(305, (Bagwise.Live.FreshPrice(item, api(300, 0), fakeAuctionator(history))))
+  end)
+
+  it("a stackable is trimmed harder than gear", function()
+    local history = {
+      { rawDay = "2505", minSeen = 300, maxSeen = 320 },
+      { rawDay = "2504", minSeen = 290, maxSeen = 700 },
+      { rawDay = "2503", minSeen = 310, maxSeen = 330 },
+    }
+    local stack = { link = item.link, maxStack = 20 }
+    local gear = { link = item.link, classID = 4, maxStack = 1 }
+    local stackPrice = Bagwise.Live.FreshPrice(stack, api(300, 0), fakeAuctionator(history))
+    local gearPrice = Bagwise.Live.FreshPrice(gear, api(300, 0), fakeAuctionator(history))
+    assert.is_truthy(stackPrice <= gearPrice)
+  end)
+
+  describe("Typical", function()
+    it("takes the median of what is left once the highs are gone", function()
+      assert.are.equal(110, Bagwise.Live.Typical({ 100, 110, 120, 5000 }, 3))
+    end)
+    it("drops nothing a reasonable spread explains", function()
+      assert.are.equal(150, Bagwise.Live.Typical({ 100, 150, 200 }, 3))
+    end)
+    it("with one or two readings, takes the lowest, never a lone high", function()
+      assert.are.equal(400, Bagwise.Live.Typical({ 400 }, 3))
+      assert.are.equal(400, Bagwise.Live.Typical({ 9000, 400 }, 3))
+    end)
+    it("has nothing for no readings", function()
+      assert.is_nil(Bagwise.Live.Typical({}, 3))
+    end)
+  end)
+
+  it("hands back a price too old to judge by apart, and nothing past two weeks", function()
+    local function api(price, age)
+      return {
+        GetAuctionPriceByItemLink = function() return price end,
+        GetAuctionAgeByItemLink = function() return age end,
+        IsAuctionDataExactByItemLink = function() return true end,
+      }
+    end
+    local price, age, _, stale, staleAge = Bagwise.Live.ReadPrice(item, api(30, 4), {})
+    assert.is_nil(price)
+    assert.is_nil(age)
+    assert.are.equal(30, stale)
+    assert.are.equal(4, staleAge)
+    assert.is_nil((Bagwise.Live.ReadPrice(item, api(30, 20), {})))
+    assert.are.equal(30, (Bagwise.Live.ReadPrice(item, api(30, 2), {})))
   end)
 
   it("uses the shown price when the history cannot be read", function()
     assert.are.equal(300, (Bagwise.Live.FreshPrice(item, api(300, 0), {})))
     local broken = fakeAuctionator(days)
     broken.Database.GetPriceHistory = function() error("changed") end
-    assert.is_nil(Bagwise.Live.RecentAverage(item, broken))
     assert.are.equal(300, (Bagwise.Live.FreshPrice(item, api(300, 0), broken)))
-    assert.is_nil(Bagwise.Live.RecentAverage(item, fakeAuctionator({})))
   end)
 
   it("finds the newest day whatever order the history comes in", function()
     local shuffled = { days[3], days[2], days[1] }
-    assert.are.equal(450, Bagwise.Live.RecentAverage(item, fakeAuctionator(shuffled), "low"))
     assert.are.equal(2505, Bagwise.Live.History(item, fakeAuctionator(shuffled))[1].day)
   end)
 

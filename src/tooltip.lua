@@ -359,7 +359,7 @@ local function dotEscape(verdict)
   return "|T" .. DOT_TEXTURES[verdict] .. ":" .. DOT_ESCAPE_SIZE .. ":" .. DOT_ESCAPE_SIZE .. "|t"
 end
 
-local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, specific)
+local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, specific, hasPriceLine)
   local color = VERDICT_COLORS[verdict]
   if not reason then return end
 
@@ -373,6 +373,8 @@ local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, spec
 
   addLine(tooltip, dotEscape(verdict) .. " " .. heading, color.r, color.g, color.b)
   if not reason then return end
+  -- "Worth very little" repeats what the price line right under the heading shows.
+  if hasPriceLine and verdict == "green" and reason == Bagwise.Verdict.WORTH_LITTLE_REASON then return end
 
   -- Break long reasons at the last comma before the wrap threshold so
   -- multi-profession lists don't make the tooltip wider than the item's own.
@@ -476,7 +478,8 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       and Bagwise.Data.ProtectedItems[itemID]
 
   if verdict then
-    renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading)
+    renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading,
+        result and result.auctionNote ~= nil)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       addLine(tooltip, result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)

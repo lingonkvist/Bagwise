@@ -25,6 +25,8 @@ _G.Bagwise = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
+dofile("src/curves.lua")
+dofile("src/auction.lua")
 dofile("src/verdict.lua")
 dofile("src/bank.lua")
 dofile("src/tooltip.lua")
@@ -326,6 +328,32 @@ describe("tooltip basic output", function()
     local tt = makeTooltip("|cff...|Hitem:16646:...|h[Page 2]|h|r", "ContainerFrame1", 0, 5)
     Bagwise.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[#tt.lines].text))
+  end)
+
+  it("a worth-very-little green shows the price line instead of its own reason", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = Bagwise.Verdict.WORTH_LITTLE_REASON,
+                 auctionNote = "Vendor 20c, auction about 26c" }
+      end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:6470:...|h[Deviate Scale]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal(2, #tt.lines)
+    assert.are.equal("Vendor 20c, auction about 26c", plainCoins(tt.lines[2].text))
+  end)
+
+  it("a worth-very-little green with no price line keeps its reason", function()
+    Bagwise.Data.ReagentProfessions = {}
+    Bagwise.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = Bagwise.Verdict.WORTH_LITTLE_REASON }
+      end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:6470:...|h[Deviate Scale]|h|r", "ContainerFrame1", 0, 5)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal("Worth very little", plainCoins(tt.lines[2].text))
   end)
 
   it("shows profession info even when scan result is nil", function()

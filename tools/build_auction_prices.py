@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build data/auction_prices.lua from the Blizzard WoW Forever auction house API.
+Build data/auction_prices_<region>_<faction>.lua (one per market) from the Blizzard WoW Forever auction house API.
 
 Prices are kept per market: a region (us or eu) and a faction (Alliance or
 Horde). The neutral houses are left out. A player reads only the market of
@@ -15,8 +15,14 @@ gets a ceiling per version, so a cheap version is judged by its own price and
 not by the pricey ones. Bagwise compares that with the vendor price, and tells
 you to sell green tradeable gear that the auction house pays about the vendor
 price for.
-Ordinary auctions (mostly gear) and commodities (stackable materials) are both
-read. Only items under a price cap get a price, to keep the file small. Items
+Versions seen in too few listings to price are remembered in tools/variant_memory.json,
+so that several weekly runs can add up to enough (8 listings in 2 houses, counted once
+by auction id). The memory forgets listings not seen for 6 weeks and holds at most
+5000 per market, oldest first out.
+Listings are weighed by the units they hold, and hopeful highs above 3x the median
+(2x for commodities) are dropped before any percentile is read, so a lone
+overpriced listing never moves a price. Ordinary auctions (mostly gear) and
+commodities (stackable materials) are both read. Only items under a price cap get a price, to keep the file small. Items
 that have enough listings but sit over the cap are listed in AuctionAboveCap, so
 "worth more than the cap" can be told apart from "nobody lists it".
 
@@ -24,6 +30,7 @@ Usage:
     BNET_CLIENT_ID=... BNET_CLIENT_SECRET=... python3 tools/build_auction_prices.py
     python3 tools/build_auction_prices.py --regions us,eu --max-copper 50000
     python3 tools/build_auction_prices.py --summary         (also print what the data looks like)
+    python3 tools/build_auction_prices.py --no-memory       (price versions from this run only)
     python3 tools/build_auction_prices.py --selftest        (no network, no keys)
 
 Keys come from https://develop.battle.net (a free client). The Forever auction
@@ -42,6 +49,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -50,6 +58,8 @@ RULESET = 1  # the ruleset to read; --ruleset changes it. Rulesets 1, 2, 3 and 5
 HOUSE_LABELS = []  # one label per kept house, in the order fetch_region returns them
 HOUSE_REGIONS = []   # the same houses: "us" or "eu"
 HOUSE_FACTIONS = []  # the same houses: "Alliance", "Horde" or None for a neutral house
+HOUSE_IDS = []       # the same houses: the API's house id
+HOUSE_VARIANT_ROWS = []  # the same houses: {(item id, variant key): [(auction id, unit, quantity)]}
 DEFAULT_REGIONS = "us,eu"
 DEFAULT_MAX_COPPER = 50000  # 5 gold: items priced above this are not stored
 PERCENTILE = 0.25         # the cheap end: cheap listings sell first, so that is what you would get
@@ -60,13 +70,19 @@ COMMODITY_PERCENTILE = 0.25
 # A listing priced above this many times its house's median for the item is a
 # hopeful outlier, not the market: it is dropped before any percentile is read.
 # Only done where there are enough listings for a median to mean something.
-TRIM_FACTOR = 5
+# Listings are weighed by the units they hold, not one each: a lone 1-unit
+# listing at ten times the price says little next to stacks of 200. Tight markets
+# (commodities, priced per unit, undercut to the penny) get less room than
+# ordinary auctions. Mirrors outlierFactor in src/curves.lua.
+ORDINARY_TRIM_FACTOR = 3
+COMMODITY_TRIM_FACTOR = 2
+TRIM_MIN_LISTINGS = 3  # a median of fewer than this says nothing, so nothing is dropped
 MIN_LISTINGS_PER_HOUSE = 10  # fewer listings and a house says nothing
 MIN_HOUSES = 2  # houses in one market (a region and a faction) that must list an item
 VARIANT_PERCENTILE = 0.75   # a version is judged on its own, pooled over the market, nearer the pricey end
 MIN_VARIANT_LISTINGS = 8
 MIN_VARIANT_HOUSES = 2
-OUTPUT = os.path.join(os.path.dirname(__file__), "..", "data", "auction_prices.lua")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
 
 class ApiError(Exception):
@@ -81,8 +97,30 @@ def percentile(sorted_prices, fraction):
     return sorted_prices[index]
 
 
+def unit_of(listing):
+    """The unit price of a listing: a (price, quantity) pair, or a bare price."""
+    return listing[0] if isinstance(listing, tuple) else listing
+
+
+def quantity_of(listing):
+    return listing[1] if isinstance(listing, tuple) else 1
+
+
+def weighted_percentile(sorted_listings, fraction):
+    """Nearest-rank percentile of an ascending list of listings, counted in units:
+    a listing of 200 counts 200 times. For bare prices this is `percentile`."""
+    total = sum(quantity_of(listing) for listing in sorted_listings)
+    target = max(1, math.ceil(fraction * total))
+    seen = 0
+    for listing in sorted_listings:
+        seen += quantity_of(listing)
+        if seen >= target:
+            return unit_of(listing)
+    return unit_of(sorted_listings[-1])
+
+
 def unit_prices(auctions):
-    """item id -> unit buyout prices in copper, skipping bid-only auctions."""
+    """item id -> (unit buyout price in copper, quantity) per auction, skipping bid-only auctions."""
     result = {}
     for auction in auctions:
         item = auction.get("item") or {}
@@ -91,22 +129,23 @@ def unit_prices(auctions):
         quantity = auction.get("quantity") or 1
         if not item_id or not buyout:
             continue
-        result.setdefault(item_id, []).append(buyout // quantity)
+        result.setdefault(item_id, []).append((buyout // quantity, quantity))
     return result
 
 
-def trim_outliers(sorted_prices, min_listings, factor=TRIM_FACTOR):
-    """(prices without the hopeful outliers, how many were dropped).
+def trim_outliers(sorted_listings, min_listings=TRIM_MIN_LISTINGS, factor=ORDINARY_TRIM_FACTOR):
+    """(listings without the hopeful outliers, how many were dropped).
 
-    sorted_prices is ascending. With fewer than min_listings there is no
+    sorted_listings is ascending. The median is counted in units, so a lone
+    overpriced listing never moves it. With fewer than min_listings there is no
     trustworthy median, so nothing is dropped. The cheap end is never touched:
     only listings above factor times the median go.
     """
-    if len(sorted_prices) < min_listings:
-        return sorted_prices, 0
-    limit = percentile(sorted_prices, 0.5) * factor
-    kept = [price for price in sorted_prices if price <= limit]
-    return kept, len(sorted_prices) - len(kept)
+    if len(sorted_listings) < min_listings:
+        return sorted_listings, 0
+    limit = weighted_percentile(sorted_listings, 0.5) * factor
+    kept = [listing for listing in sorted_listings if unit_of(listing) <= limit]
+    return kept, len(sorted_listings) - len(kept)
 
 
 def commodity_unit_prices(entries):
@@ -118,7 +157,7 @@ def commodity_unit_prices(entries):
         price = entry.get("unit_price")
         if not item_id or not price:
             continue
-        result.setdefault(item_id, []).append(price)
+        result.setdefault(item_id, []).append((price, entry.get("quantity") or 1))
     return result
 
 
@@ -139,8 +178,8 @@ def variant_key(item):
     return "-".join(str(b) for b in sorted(bonus))
 
 
-def variant_prices(auctions):
-    """(item id, variant key) -> unit buyout prices, for listings with bonus ids."""
+def variant_rows(auctions):
+    """(item id, variant key) -> [(auction id, unit buyout price, quantity)], for listings with bonus ids."""
     result = {}
     for auction in auctions:
         item = auction.get("item") or {}
@@ -150,8 +189,29 @@ def variant_prices(auctions):
         key = variant_key(item)
         if not item_id or not buyout or not key:
             continue
-        result.setdefault((item_id, key), []).append(buyout // quantity)
+        result.setdefault((item_id, key), []).append((auction.get("id"), buyout // quantity, quantity))
     return result
+
+
+def variant_prices(auctions):
+    """(item id, variant key) -> (unit price, quantity) per listing, for listings with bonus ids."""
+    return {pair: [(unit, quantity) for _, unit, quantity in rows] for pair, rows in variant_rows(auctions).items()}
+
+
+def pool_variants(variant_houses):
+    """(pooled prices per (item, variant), number of houses it was seen in)."""
+    pooled = {}
+    seen_in = {}
+    for house in variant_houses:
+        for pair, prices in house.items():
+            pooled.setdefault(pair, []).extend(prices)
+            seen_in[pair] = seen_in.get(pair, 0) + 1
+    return pooled, seen_in
+
+
+def variant_qualifies(prices, houses_seen):
+    """A version has enough listings in enough houses to be priced."""
+    return len(prices) >= MIN_VARIANT_LISTINGS and houses_seen >= MIN_VARIANT_HOUSES
 
 
 def variant_ceilings(variant_houses, item_ceilings, max_copper):
@@ -165,25 +225,87 @@ def variant_ceilings(variant_houses, item_ceilings, max_copper):
     cap are kept for an item that has a ceiling (they block a green) and dropped
     otherwise (nothing to block).
     """
-    pooled = {}
-    seen_in = {}
-    for house in variant_houses:
-        for pair, prices in house.items():
-            pooled.setdefault(pair, []).extend(prices)
-            seen_in[pair] = seen_in.get(pair, 0) + 1
+    pooled, seen_in = pool_variants(variant_houses)
     result = {}
     for (item_id, key), prices in pooled.items():
         versions = result.setdefault(item_id, {})
-        if len(prices) < MIN_VARIANT_LISTINGS or seen_in[(item_id, key)] < MIN_VARIANT_HOUSES:
+        if not variant_qualifies(prices, seen_in[(item_id, key)]):
             continue
-        kept, _ = trim_outliers(sorted(prices), MIN_VARIANT_LISTINGS)
-        ceiling = percentile(kept, VARIANT_PERCENTILE)
+        kept, _ = trim_outliers(sorted(prices))
+        ceiling = weighted_percentile(kept, VARIANT_PERCENTILE)
         if ceiling > max_copper and item_id not in item_ceilings:
             continue
         versions[key] = ceiling
     # Nothing to say about an item that has no price at all and no priced version.
     return {item_id: versions for item_id, versions in result.items()
             if versions or item_id in item_ceilings}
+
+
+# Versions seen in too few listings to price are remembered between runs, so that
+# a few weeks of runs can add up to enough. The memory is capped; the oldest
+# listings go first when it is full, and anything not seen for a while expires.
+MEMORY_PATH = os.path.join(os.path.dirname(__file__), "variant_memory.json")
+MEMORY_WINDOW_DAYS = 42
+MEMORY_CAP = 5000  # remembered listings per market
+
+
+def load_memory(path):
+    """{market: [[house id, item id, variant key, auction id, unit, quantity, day]]}; empty if none."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    markets = data.get("markets") if isinstance(data, dict) else None
+    return markets if isinstance(markets, dict) else {}
+
+
+def save_memory(path, markets):
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump({"version": 1, "markets": markets}, handle, sort_keys=True, separators=(",", ":"))
+        handle.write("\n")
+
+
+def merge_with_memory(remembered, today_rows, today, window_days=None, cap=None):
+    """Combine one market's remembered listings with today's.
+
+    remembered: rows as saved. today_rows: {house id: {(item id, variant): [(auction id, unit, quantity)]}}.
+    Returns (variant_houses, new_memory): the per-house tables variant_ceilings reads,
+    with the remembered listings added to their houses (a listing is counted once, by
+    house and auction id), and the rows to remember for next time: every listing of a
+    version that does not qualify on today's listings alone, the newest `cap` of them.
+    """
+    window_days = MEMORY_WINDOW_DAYS if window_days is None else window_days
+    cap = MEMORY_CAP if cap is None else cap
+    rows = {}
+    for house_id, table in today_rows.items():
+        for (item_id, key), listings in table.items():
+            for auction_id, unit, quantity in listings:
+                rows[(house_id, item_id, key, auction_id)] = (unit, quantity, today)
+    for house_id, item_id, key, auction_id, unit, quantity, day in remembered:
+        if today - day > window_days:
+            continue
+        rows.setdefault((house_id, item_id, key, auction_id), (unit, quantity, day))
+
+    tables = {}
+    for (house_id, item_id, key, _), (unit, quantity, _) in rows.items():
+        tables.setdefault(house_id, {}).setdefault((item_id, key), []).append((unit, quantity))
+    variant_houses = [tables[house_id] for house_id in sorted(tables)]
+
+    alone_pooled, alone_seen = pool_variants(
+        [{pair: [(unit, quantity) for _, unit, quantity in listings] for pair, listings in table.items()}
+         for table in today_rows.values()])
+    keep = [(row, value) for row, value in rows.items()
+            if not variant_qualifies(alone_pooled.get((row[1], row[2]), []), alone_seen.get((row[1], row[2]), 0))]
+    # Newest first. Within a day, versions with the most listings first: they are the
+    # ones closest to qualifying, so a full memory drops one-listing versions before them.
+    per_version = {}
+    for row, _ in keep:
+        per_version[(row[1], row[2])] = per_version.get((row[1], row[2]), 0) + 1
+    keep.sort(key=lambda pair: (-pair[1][2], -per_version[(pair[0][1], pair[0][2])],
+                                pair[0][1], pair[0][2], pair[0][0], str(pair[0][3])))
+    new_memory = [[row[0], row[1], row[2], row[3], value[0], value[1], value[2]] for row, value in keep[:cap]]
+    return variant_houses, new_memory
 
 
 def all_ceilings(houses, commodity_items=None, stats=None):
@@ -207,14 +329,15 @@ def all_ceilings(houses, commodity_items=None, stats=None):
         for prices in per_house:
             if len(prices) < MIN_LISTINGS_PER_HOUSE:
                 continue
-            kept, dropped = trim_outliers(prices, MIN_LISTINGS_PER_HOUSE)
+            factor = COMMODITY_TRIM_FACTOR if item_id in commodity_items else ORDINARY_TRIM_FACTOR
+            kept, dropped = trim_outliers(prices, factor=factor)
             stats["listings"] = stats.get("listings", 0) + len(prices)
             stats["trimmed"] = stats.get("trimmed", 0) + dropped
             counted.append(kept)
         if len(counted) < MIN_HOUSES:
             continue
         fraction = COMMODITY_PERCENTILE if item_id in commodity_items else PERCENTILE
-        house_figures = sorted(percentile(prices, fraction) for prices in counted)
+        house_figures = sorted(weighted_percentile(prices, fraction) for prices in counted)
         ceilings[item_id] = house_figures[len(house_figures) // 2]
     return ceilings
 
@@ -273,7 +396,8 @@ def render_lua(markets, max_copper, generated, house_count):
     """markets: {"eu.Horde": {"items": {id: ceiling}, "variants": {...}, "above_cap": [ids]}}."""
     lines = [
         "-- Generated by tools/build_auction_prices.py from the Blizzard auction house API.",
-        "-- AuctionMarkets: \"region.Faction\" -> the prices of that region and faction only.",
+        "-- AuctionMarkets: \"region.Faction\" -> the prices of that region and faction only. One file per",
+        "--   market (the packager skips files over 500 KB), each adding its own entry.",
         "--   Ceiling: item id -> a ceiling for its auction price, in copper: the median over the",
         "--     market's houses of each house's cheap-end (25th percentile) buyout. Items over %d copper are left out." % max_copper,
         "--   Variant: item id -> { bonus ids of a version -> its own ceiling }. An item listed",
@@ -286,12 +410,12 @@ def render_lua(markets, max_copper, generated, house_count):
         "",
         'Bagwise.Data.AuctionPricesDate = "%s"' % generated,
         "",
-        "Bagwise.Data.AuctionMarkets={",
+        "Bagwise.Data.AuctionMarkets = Bagwise.Data.AuctionMarkets or {}",
     ]
     for key in sorted(markets):
         market = markets[key]
         # No spaces inside an entry: the file is about 40% smaller, one entry per line.
-        lines.append('["%s"]={' % key)
+        lines.append('Bagwise.Data.AuctionMarkets["%s"]={' % key)
         lines.append("Ceiling={")
         items = market["items"]
         lines += ["[%d]=%d," % (item_id, items[item_id]) for item_id in sorted(items)]
@@ -306,9 +430,30 @@ def render_lua(markets, max_copper, generated, house_count):
         lines.append("AboveCap={")
         lines += ["[%d]=true," % item_id for item_id in sorted(market.get("above_cap") or [])]
         lines.append("},")
-        lines.append("},")
-    lines.append("}")
+        lines.append("}")
     return "\n".join(lines) + "\n"
+
+
+MARKET_KEYS = ("us.Alliance", "us.Horde", "eu.Alliance", "eu.Horde")
+MAX_FILE_BYTES = 450 * 1024  # the packager skips files over 500 KB; stay clear of it
+
+
+def market_file(folder, key):
+    """data/auction_prices_eu_horde.lua for "eu.Horde"."""
+    return os.path.join(folder, "auction_prices_%s.lua" % key.replace(".", "_").lower())
+
+
+def write_market_files(markets, folder, max_copper, generated, house_count):
+    """One file per market, every market written (an empty file for one without data), so
+    the .toc can always list all of them. Returns {path: size in bytes}."""
+    sizes = {}
+    for key in MARKET_KEYS:
+        text = render_lua({key: markets[key]} if key in markets else {}, max_copper, generated, house_count)
+        path = market_file(folder, key)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        sizes[path] = len(text.encode("utf-8"))
+    return sizes
 
 
 # ----- talking to the API -----
@@ -441,7 +586,11 @@ def fetch_region(region, token):
         HOUSE_LABELS.append("%s %d %s" % (region, house_id, house_names.get(house_id, "?")[:9]))
         HOUSE_REGIONS.append(region)
         HOUSE_FACTIONS.append(faction_of(house_names.get(house_id, "")))
-        variant_houses.append(variant_prices(auctions))
+        rows = variant_rows(auctions)
+        variant_houses.append({pair: [(unit, quantity) for _, unit, quantity in listings]
+                               for pair, listings in rows.items()})
+        HOUSE_IDS.append(house_id)
+        HOUSE_VARIANT_ROWS.append(rows)
     return houses, variant_houses, commodity_items
 
 
@@ -454,9 +603,10 @@ def explain_item(houses, item_id, variant_houses=None):
         if not prices:
             print("  %-22s none" % label)
             continue
-        print("  %-22s %3d listings, min %d, p25 %d, median %d, p90 %d, max %d"
-              % (label, len(prices), prices[0], percentile(prices, PERCENTILE), percentile(prices, 0.5),
-                 percentile(prices, 0.9), prices[-1]))
+        print("  %-22s %3d listings, %d units, min %d, p25 %d, median %d, p90 %d, max %d"
+              % (label, len(prices), sum(quantity_of(l) for l in prices), unit_of(prices[0]),
+                 weighted_percentile(prices, PERCENTILE), weighted_percentile(prices, 0.5),
+                 weighted_percentile(prices, 0.9), unit_of(prices[-1])))
     if not variant_houses:
         return
     pooled = {}
@@ -466,10 +616,11 @@ def explain_item(houses, item_id, variant_houses=None):
                 pooled.setdefault(key, []).extend(prices)
     if pooled:
         print("Per version (bonus ids), all houses pooled:")
-        for key in sorted(pooled, key=lambda k: percentile(sorted(pooled[k]), VARIANT_PERCENTILE)):
+        for key in sorted(pooled, key=lambda k: weighted_percentile(sorted(pooled[k]), VARIANT_PERCENTILE)):
             prices = sorted(pooled[key])
             print("  %-14s %4d listings, min %d, median %d, ceiling (p75) %d"
-                  % (key, len(prices), prices[0], percentile(prices, 0.5), percentile(prices, VARIANT_PERCENTILE)))
+                  % (key, len(prices), unit_of(prices[0]), weighted_percentile(prices, 0.5),
+                     weighted_percentile(prices, VARIANT_PERCENTILE)))
 
 
 # ----- what the data looks like (for tuning the rules) -----
@@ -676,10 +827,21 @@ def selftest():
     spread = [house({1: [100, 200, 300, 400]}) for _ in range(5)]  # 100..400, nothing past 5x
     assert price_ceilings(spread, 50000)[1] == 100
 
-    # trimming: only above 5x the median, only with enough listings, and the stats count it
-    assert trim_outliers([100] * 9 + [5000] * 3, 10) == ([100] * 9, 3)
-    assert trim_outliers([100] * 9 + [500], 10) == ([100] * 9 + [500], 0)   # exactly 5x stays
-    assert trim_outliers([100, 100, 5000], 10) == ([100, 100, 5000], 0)      # too few to judge
+    # trimming: only above 3x the median, only with enough listings, and the stats count it
+    assert trim_outliers([100] * 9 + [5000] * 3) == ([100] * 9, 3)
+    assert trim_outliers([100] * 9 + [300]) == ([100] * 9 + [300], 0)   # exactly 3x stays
+    assert trim_outliers([100] * 9 + [301]) == ([100] * 9, 1)
+    assert trim_outliers([100, 5000]) == ([100, 5000], 0)                 # too few to judge
+    assert trim_outliers([100, 100, 5000]) == ([100, 100], 1)             # three are enough
+    assert trim_outliers([100] * 9 + [250], factor=2) == ([100] * 9, 1)   # commodities get less room
+
+    # counted in units: a lone 1-unit listing at ten times the price never moves the median,
+    # and a stack of 200 outweighs a handful of single items
+    stacks = [(100, 200), (110, 200), (120, 200), (1000, 1)]
+    assert trim_outliers(stacks) == (stacks[:3], 1)
+    assert weighted_percentile([(100, 1), (500, 200)], 0.5) == 500
+    assert weighted_percentile([(100, 200), (500, 1)], 0.5) == 100
+    assert weighted_percentile([1, 2, 3, 4], 0.75) == 3                  # bare prices count once each
     stats = {}
     all_ceilings(variants, None, stats)
     assert stats == {"listings": 60, "trimmed": 15}, stats
@@ -691,7 +853,7 @@ def selftest():
         {"item": {"id": 7}, "bid": 50, "quantity": 1},
         {"item": {}, "buyout": 10, "quantity": 1},
     ]
-    assert unit_prices(auctions) == {7: [100, 500]}
+    assert unit_prices(auctions) == {7: [(100, 3), (500, 1)]}
 
     assert percentile([1, 2, 3, 4], 0.75) == 3
     assert percentile([5], 0.75) == 5
@@ -710,13 +872,49 @@ def selftest():
     assert variant_ceilings(vh, {5: 800}, 50000) == {5: {"12744": 800, "12722": 27000}}
     # an over-cap version of an item with no ceiling is dropped
     assert variant_ceilings(vh, {}, 5000) == {5: {"12744": 800}}
+
+    # memory: thin versions add up over runs, are counted once, expire and are capped
+    def listings(house_id, first_id, count, price=1000):
+        return {house_id: {(5, "12730"): [(first_id + n, price, 1) for n in range(count)]}}
+    houses1, memory1 = merge_with_memory([], listings(1, 100, 4), today=100)
+    assert variant_ceilings(houses1, {5: 800}, 50000) == {5: {}}   # 4 listings, one house: nothing yet
+    assert len(memory1) == 4
+    houses2, memory2 = merge_with_memory(memory1, listings(2, 200, 4), today=107)
+    assert variant_ceilings(houses2, {5: 800}, 50000) == {5: {"12730": 1000}}  # 8 listings, 2 houses
+    assert len(memory2) == 8   # still remembered: today's listings alone do not qualify
+    # the same auction seen again is counted once
+    _, again = merge_with_memory(memory1, listings(1, 100, 4), today=107)
+    assert len(again) == 4
+    # a listing not seen for longer than the window is forgotten
+    _, expired = merge_with_memory(memory1, {}, today=100 + MEMORY_WINDOW_DAYS + 1)
+    assert expired == []
+    # a full memory lets the oldest go first
+    _, capped = merge_with_memory(memory1, listings(2, 200, 4), today=107, cap=5)
+    assert len(capped) == 5 and sorted(row[3] for row in capped)[-4:] == [200, 201, 202, 203]
+    # on one day, a full memory keeps the version closest to qualifying
+    close = {1: {(5, "12730"): [(n, 1000, 1) for n in range(3)], (9, "12999"): [(900, 1000, 1)]}}
+    _, trimmed = merge_with_memory([], close, today=100, cap=3)
+    assert sorted({(row[1], row[2]) for row in trimmed}) == [(5, "12730")]
+    # a version that qualifies on today's listings alone needs no memory
+    _, solid = merge_with_memory([], {1: {(5, "12730"): [(n, 1000, 1) for n in range(8)]},
+                                      2: {(5, "12730"): [(n, 1000, 1) for n in range(100, 108)]}}, today=100)
+    assert solid == []
+    # the file round-trips, and a missing or broken one is an empty memory
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "memory.json")
+        assert load_memory(path) == {}
+        save_memory(path, {"eu.Horde": memory2})
+        assert load_memory(path) == {"eu.Horde": memory2}
+        with open(path, "w") as handle:
+            handle.write("not json")
+        assert load_memory(path) == {}
     assert variant_key({"bonus_lists": [12744, 12700]}) == "12700-12744"
     assert variant_key({"id": 5}) is None
 
     # commodities are priced per unit already, and merge with ordinary listings
     assert commodity_unit_prices([{"item": {"id": 9}, "unit_price": 40, "quantity": 20},
                                   {"item": {"id": 9}, "unit_price": 55, "quantity": 1},
-                                  {"item": {"id": 9}, "quantity": 1}, {"item": {}, "unit_price": 3}]) == {9: [40, 55]}
+                                  {"item": {"id": 9}, "quantity": 1}, {"item": {}, "unit_price": 3}]) == {9: [(40, 20), (55, 1)]}
     assert commodity_unit_prices(None) == {}
     assert merge_prices({1: [5], 2: [7]}, {1: [6]}) == {1: [5, 6], 2: [7]}
 
@@ -773,12 +971,23 @@ def selftest():
     data = {"eu.Horde": {"items": {9: 120, 3: 80}, "variants": {5: {"12744": 800}}, "above_cap": [7, 4]},
             "us.Alliance": {"items": {2: 5}, "variants": {}, "above_cap": []}}
     text = render_lua(data, 50000, "2026-11-10", 5)
-    assert text.index('["eu.Horde"]') < text.index('["us.Alliance"]')
-    assert "Bagwise.Data.AuctionMarkets={" in text and "AboveCap={" in text
+    assert text.index('AuctionMarkets["eu.Horde"]') < text.index('AuctionMarkets["us.Alliance"]')
+    assert "Bagwise.Data.AuctionMarkets = Bagwise.Data.AuctionMarkets or {}" in text and "AboveCap={" in text
     assert text.index("[4]=true,") < text.index("[7]=true,")
     assert '[5]={["12744"]=800},' in text
     assert text.index("[3]=80,") < text.index("[9]=120,") and text.endswith("}\n")
     assert chr(0x2014) not in text
+    # one file per market, all four written, an empty one for a market without data
+    with tempfile.TemporaryDirectory() as folder:
+        sizes = write_market_files(data, folder, 50000, "2026-11-10", 5)
+        assert sorted(os.path.basename(path) for path in sizes) == [
+            "auction_prices_eu_alliance.lua", "auction_prices_eu_horde.lua",
+            "auction_prices_us_alliance.lua", "auction_prices_us_horde.lua"]
+        with open(market_file(folder, "eu.Horde"), encoding="utf-8") as handle:
+            horde = handle.read()
+        assert 'AuctionMarkets["eu.Horde"]={' in horde and "us.Alliance" not in horde
+        with open(market_file(folder, "eu.Alliance"), encoding="utf-8") as handle:
+            assert "AuctionMarkets[" not in handle.read().split("or {}")[1]
     print("selftest ok")
 
 
@@ -788,7 +997,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--regions", default=DEFAULT_REGIONS)
     parser.add_argument("--max-copper", type=int, default=DEFAULT_MAX_COPPER)
-    parser.add_argument("--output", default=OUTPUT)
+    parser.add_argument("--output-dir", default=OUTPUT_DIR,
+                        help="Where the per-market files go (default: data/).")
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--raw", type=int, help="Print the raw fields of auction entries for this item id, then stop.")
     parser.add_argument("--item", type=int, help="Also print per-house listing figures for this item id.")
@@ -799,6 +1009,10 @@ def main():
                         help="Print the raw auction house list for rulesets 1 to 6 in each region, then stop.")
     parser.add_argument("--outliers", action="store_true",
                         help="Also list cheap-to-vendor items that auction for much more (needs the item tables, like --summary).")
+    parser.add_argument("--memory", default=MEMORY_PATH,
+                        help="Where thin versions are remembered between runs (default: tools/variant_memory.json).")
+    parser.add_argument("--no-memory", action="store_true",
+                        help="Price versions from this run's listings only, and leave the memory file alone.")
     parser.add_argument("--summary", action="store_true",
                         help="Also print what the data looks like, split by quality when the item tables can be read.")
     parser.add_argument("--build", help="With --summary: the game build for the item tables (default: latest).")
@@ -874,8 +1088,18 @@ def main():
 
     trim_stats = {}
     markets = {}
+    memory = {} if args.no_memory else load_memory(args.memory)
+    new_memory = {}
+    today = int(time.time() // 86400)
+    rows_by_market = {}
+    for house_id, rows, region, faction in zip(HOUSE_IDS, HOUSE_VARIANT_ROWS, HOUSE_REGIONS, HOUSE_FACTIONS):
+        if faction is not None:
+            rows_by_market.setdefault("%s.%s" % (region, faction), {})[house_id] = rows
     for key, (market_houses, market_variants) in sorted(
             split_markets(houses, variant_houses, HOUSE_REGIONS, HOUSE_FACTIONS).items()):
+        if not args.no_memory:
+            market_variants, new_memory[key] = merge_with_memory(
+                memory.get(key, []), rows_by_market.get(key, {}), today)
         data = market_data(market_houses, market_variants, args.max_copper, commodity_items, trim_stats)
         if data is None:
             print("  market %s: %d houses, no item had enough listings, left out" % (key, len(market_houses)))
@@ -888,13 +1112,21 @@ def main():
         print("Stopped, nothing written: no market had enough listings. The thresholds or the data are off.")
         return 1
 
-    with open(args.output, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(render_lua(markets, args.max_copper, time.strftime("%Y-%m-%d", time.gmtime()), len(houses)))
-    print("Wrote %d markets from %d auction houses to %s" % (len(markets), len(houses), args.output))
+    sizes = write_market_files(markets, args.output_dir, args.max_copper,
+                               time.strftime("%Y-%m-%d", time.gmtime()), len(houses))
+    print("Wrote %d markets from %d auction houses to %s" % (len(markets), len(houses), args.output_dir))
+    for path, size in sorted(sizes.items()):
+        print("  %s: %d KB%s" % (os.path.basename(path), size // 1024,
+                                 "  TOO LARGE, lower --max-copper" if size > MAX_FILE_BYTES else ""))
+    if not args.no_memory:
+        save_memory(args.memory, new_memory)
+        print("Remembered %d thin version listings in %s"
+              % (sum(len(rows) for rows in new_memory.values()), args.memory))
     if trim_stats.get("listings"):
-        print("Trimmed %d of %d listings (%.1f%%) priced above %dx their house's median."
+        print("Trimmed %d of %d listings (%.1f%%) priced above %dx (commodities %dx) their house's median."
               % (trim_stats["trimmed"], trim_stats["listings"],
-                 100.0 * trim_stats["trimmed"] / trim_stats["listings"], TRIM_FACTOR))
+                 100.0 * trim_stats["trimmed"] / trim_stats["listings"],
+                 ORDINARY_TRIM_FACTOR, COMMODITY_TRIM_FACTOR))
     if args.outliers:
         facts = load_item_facts(args.build, args.cache_dir)
         print("")

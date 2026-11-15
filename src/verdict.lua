@@ -8,8 +8,6 @@ local LEVEL_GAP_YELLOW = 10
 local LEVEL_GAP_GREEN = 20
 local RARE_QUALITY = 3
 -- bindType values from GetItemInfo.
-local BIND_ON_PICKUP = 1
-local BIND_QUEST = 4
 local UNCOMMON_QUALITY = 2
 
 --- Can the player sell this instead of destroying it? Any green on something a
@@ -613,29 +611,72 @@ local function reagentUses(itemID)
   return order
 end
 
--- A reagent the player's own professions will not use for a good while: every
--- profession of theirs that uses it starts needing it far above their skill.
+-- Each use of a reagent on its own: the recipes that take it directly, and the
+-- recipes that take something made from it, kept apart. Merged into one range
+-- they hide a gap ("used up to 65, then again from 200"), and the gap is what
+-- tells a spent stack from one to bank.
+local reagentSegmentMemo = setmetatable({}, { __mode = "k" })
+local function reagentSegments(itemID)
+  local direct = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[itemID]
+  if not direct then return nil end
+  local chains = Bagwise.Data.ReagentChains and Bagwise.Data.ReagentChains[itemID]
+  local memo = reagentSegmentMemo[direct]
+  if memo and memo.chains == chains then return memo.segments end
+  local segments = {}
+  local function add(name, minSkill, maxSkill, greenSkill)
+    if greenSkill == 0 then greenSkill = nil end
+    segments[#segments + 1] = { name = name, minSkill = minSkill, maxSkill = maxSkill, greenSkill = greenSkill }
+  end
+  for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4], direct[i][5]) end
+  if chains then
+    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3], chains[i][4]) end
+  end
+  reagentSegmentMemo[direct] = { chains = chains, segments = segments }
+  return segments
+end
+
+local Auction = Bagwise.Auction
+-- Below this a slot is not worth a bank slot, or a hint to bank it: rebuying it
+-- later costs next to nothing. It grows with the level, since so does money.
+local WORTH_LITTLE_FLOOR_PER_SLOT = 50
+local WORTH_LITTLE_PER_LEVEL = 5
+local function worthLittleCopper(state)
+  return math.max(WORTH_LITTLE_FLOOR_PER_SLOT, (state.level or 1) * WORTH_LITTLE_PER_LEVEL)
+end
+
+-- A reagent the player's own professions will not use for a good while. Every
+-- use of theirs is either far above their skill or already behind them (past
+-- the point where its recipes turn green), and at least one is still ahead.
 local function evaluateDistantReagent(item, state)
-  local entries = reagentUses(item.id)
-  if not entries or state.professionsKnown == false then return nil end
+  local segments = reagentSegments(item.id)
+  if not segments or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
 
-  local nearest -- the smallest gap to a profession of theirs
-  for i = 1, #entries do
-    local name, minSkill = entries[i].name, entries[i].minSkill
+  local nearest -- the smallest gap to a use of theirs that is still ahead
+  for i = 1, #segments do
+    local name, minSkill = segments[i].name, segments[i].minSkill
     if state.professionNames[name] then
       local rank = state.professionRanks[name]
       if not rank or not minSkill then return nil end
-      local quiet = (state.professionIdle and state.professionIdle[name])
-          or (state.professionSettling and state.professionSettling[name])
-      local gap = quiet and BANK_QUIET_SKILL_GAP or BANK_SKILL_GAP
-      if minSkill <= rank + gap then return nil end
-      if not nearest or minSkill - rank < nearest.gap then
-        nearest = { gap = minSkill - rank, name = name, minSkill = minSkill, rank = rank }
+      local green = segments[i].greenSkill
+      local behind = green and rank >= green
+          or (not green and segments[i].maxSkill and rank > segments[i].maxSkill + OUTLEVELED_FALLBACK_GAP)
+      if not behind then
+        local quiet = (state.professionIdle and state.professionIdle[name])
+            or (state.professionSettling and state.professionSettling[name])
+        local gap = quiet and BANK_QUIET_SKILL_GAP or BANK_SKILL_GAP
+        if minSkill <= rank + gap then return nil end
+        if not nearest or minSkill - rank < nearest.gap then
+          nearest = { gap = minSkill - rank, name = name, minSkill = minSkill, rank = rank }
+        end
       end
     end
   end
   if not nearest then return nil end
+  -- Banking a stack that costs next to nothing to buy again is only clutter.
+  -- Needs a known price: an item nobody lists may be rare, and says nothing.
+  local value = Auction.SlotValueIfKnown(item, state)
+  if value and value <= worthLittleCopper(state) then return nil end
   return yellow("bank_used_from", nearest.name, nearest.minSkill)
 end
 
@@ -674,12 +715,6 @@ local function evaluateOutleveledReagent(item, state)
   return yellow("outleveled_reagent", newest.name, newest.skill, newest.green)
 end
 
--- Can this be listed at the auction house? Not once it is soulbound or bound to
--- a quest.
-local function isTradeable(item)
-  return not (item.isBound or item.bindType == BIND_ON_PICKUP or item.bindType == BIND_QUEST)
-end
-
 -- The primary professions: a character holds two, so with both taken a
 -- reagent for any other profession is not coming into use.
 local PRIMARY_PROFESSIONS = {
@@ -712,7 +747,7 @@ local function evaluateOtherProfessionReagent(item, state)
   if item.classID ~= TRADE_GOODS_CLASS_ID then return nil end
   local entries = reagentUses(item.id)
   if not entries or state.professionsKnown == false or not state.professionNames then return nil end
-  if not isTradeable(item) then return nil end
+  if not Auction.IsTradeable(item) then return nil end
   if heldByOpenQuest(item, state) then return nil end
   local data = Bagwise.Data
   if data.VendorReagents and data.VendorReagents[item.id] then return nil end
@@ -731,8 +766,11 @@ end
 
 -- Something you right-click to open (clams, bags of loot). It takes a slot now
 -- and what is inside often stacks, so opening it usually frees room.
-local function evaluateOpenable(item)
+local function evaluateOpenable(item, state)
   if not item.hasLoot then return nil end
+  -- A lockbox opens only for a rogue who can pick it, so for anyone else
+  -- "open it" would be a hint they cannot act on.
+  if item.isLocked and not (state and state.canPickLocks) then return nil end
   return yellow("open_it")
 end
 
@@ -743,6 +781,8 @@ local OUTLEVELED_SUBCLASSES = { [1] = true, [2] = true, [3] = true, [4] = true, 
 local OUTLEVELED_GAP = 20
 local CONSUMABLE_NOUNS = { [1] = "potion", [2] = "elixir", [3] = "flask", [4] = "scroll", [5] = "food", [7] = "bandage" }
 local FOOD_SUBCLASS = 5
+local ELIXIR_SUBCLASS = 2
+local FLASK_SUBCLASS = 3
 local SCROLL_SUBCLASS = 4
 local BANDAGE_SUBCLASS = 7
 -- A bandage that heals less than this share of your health is a weak one.
@@ -792,6 +832,15 @@ local function evaluateOutleveledConsumable(item, state)
   -- soft hints, and the item may be worth far more as a keepsake than as a hint.
   if item.startsQuestID then return nil end
   if item.onOpenQuest and heldByOpenQuest(item, state) then return nil end
+  -- An effect with its own level limit ("cannot be used above level 20", "cures
+  -- diseases up to level 25") says when it stops working: the item's level
+  -- tells nothing.
+  if item.levelLimited == true then return nil end
+  -- Elixirs and flasks are judged by level only when they give stats, health or
+  -- mana. Water breathing, speed and the like work at any level. Unknown (the
+  -- tooltip was not read) is left alone.
+  if (item.subClassID == ELIXIR_SUBCLASS or item.subClassID == FLASK_SUBCLASS)
+      and item.givesStats ~= true then return nil end
   if item.subClassID == SCROLL_SUBCLASS then
     if not STAT_SCROLLS[item.id] then return nil end
     -- An Enchanter may still want it: some scrolls are reagents for Enchanting.
@@ -961,221 +1010,11 @@ end
 --   the reagent rules decide by profession or class themselves
 -- Anything not listed is protected from that rule.
 -- Tradeable green gear that the auction house pays about the vendor price for:
--- selling it to a vendor loses nothing. The price data (data/auction_prices.lua)
+-- selling it to a vendor loses nothing. The price data (data/auction_prices_*.lua)
 -- is a ceiling per item, so the call is only made when even that is close to the
 -- vendor price. After the auction house's 5% cut, a higher price is worth a look.
 -- Every check above this rule still runs first, and the upgrade check holds.
 local EQUIPMENT_CLASSES = { [2] = true, [4] = true }
--- How far above the vendor price the AH ceiling may sit and still read as "about
--- the same". The margin shrinks as the price grows: a few copper does not
--- justify a repost, but a quarter of a gold does. Each step: below `below`
--- copper of vendor price, the ceiling may be `factor` times it.
-local AH_VENDOR_STEPS = {
-  { below = 500,  factor = 2.0 },
-  { below = 2000, factor = 1.35 },
-  { below = 5000, factor = 1.2 },
-}
-local AH_VENDOR_LAST_FACTOR = 1.1
-local AH_VENDOR_SLACK = 400 -- or this many copper above it: two lost deposits, the cut and some time
-
--- A few copper never decide between a vendor and the auction house, so both
--- prices are rounded before they are compared, always towards "just vendor it":
--- the vendor price up to the next half silver (3s 24c counts as 3s 50c, 3s 70c
--- as 4s) and the auction price down to whole silver (7s 78c counts as 7s). Under
--- a silver the auction price is left alone, or it would round down to nothing.
-local VENDOR_ROUND_UP_COPPER = 50
-local AUCTION_ROUND_DOWN_COPPER = 100
-
-local function roundedVendor(vendorPrice)
-  return math.ceil(vendorPrice / VENDOR_ROUND_UP_COPPER) * VENDOR_ROUND_UP_COPPER
-end
-
-local function roundedAuction(auctionPrice)
-  if auctionPrice < AUCTION_ROUND_DOWN_COPPER then return auctionPrice end
-  return math.floor(auctionPrice / AUCTION_ROUND_DOWN_COPPER) * AUCTION_ROUND_DOWN_COPPER
-end
-
--- Stackables are sold by the stack, so a few copper per unit add up and the
--- gear allowances do not apply: no rounding up of the vendor price, no flat
--- slack. A 4c reagent that auctions for 1s 75c is worth listing by the stack.
-local function isStackable(item)
-  return (item.maxStack or 1) > 1
-end
-
-local function sellLimit(vendorPrice, stackable)
-  if stackable then
-    local factor = AH_VENDOR_LAST_FACTOR
-    for i = 1, #AH_VENDOR_STEPS do
-      if vendorPrice < AH_VENDOR_STEPS[i].below then
-        factor = AH_VENDOR_STEPS[i].factor
-        break
-      end
-    end
-    return math.ceil(vendorPrice * factor)
-  end
-  local vendor = roundedVendor(vendorPrice)
-  local factor = AH_VENDOR_LAST_FACTOR
-  for i = 1, #AH_VENDOR_STEPS do
-    if vendor < AH_VENDOR_STEPS[i].below then
-      factor = AH_VENDOR_STEPS[i].factor
-      break
-    end
-  end
-  return math.max(vendor * factor, vendor + AH_VENDOR_SLACK)
-end
-
---- The bonus ids of an item link as "12744" or "12727-12800" (sorted), or nil
--- when it has none or the link is not in the shape we expect. Links read
--- itemID:enchant:gem1..gem4:suffix:unique:linkLevel:spec:modifiersMask:context:
--- numBonusIDs:bonus1... so the count is the 13th field.
-local BONUS_COUNT_FIELD = 13
-function Bagwise.Verdict.BonusKey(link)
-  if type(link) ~= "string" then return nil end
-  local body = link:match("item:([^|]*)")
-  if not body then return nil end
-  local fields, position = {}, 1
-  while true do
-    local colon = body:find(":", position, true)
-    fields[#fields + 1] = body:sub(position, colon and colon - 1 or #body)
-    if not colon then break end
-    position = colon + 1
-  end
-  local count = tonumber(fields[BONUS_COUNT_FIELD])
-  if not count or count < 1 then return nil end
-  local ids = {}
-  for i = 1, count do
-    local id = tonumber(fields[BONUS_COUNT_FIELD + i])
-    if not id then return nil end
-    ids[#ids + 1] = id
-  end
-  table.sort(ids)
-  return table.concat(ids, "-")
-end
-
---- The auction ceiling for this very item. Random-suffix gear is one item id
--- with very different prices, so when the data lists versions of the item,
--- only the player's own version counts: a version the data has no price for
--- gives nothing (it may be the rare, expensive one), never the item's price.
--- @return number|nil ceiling, string source ("version", "item" or "unknown")
-local function snapshotCeilingFor(item)
-  local data = Bagwise.Data or {}
-  local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
-  if versions then
-    local own = item.bonusKey and versions[item.bonusKey]
-    if own then return own, "version" end
-    return nil, "unknown"
-  end
-  local prices = data.AuctionPriceCeiling
-  return prices and prices[item.id], "item"
-end
-
--- A fresh price from the player's own auction house (item.livePrice, set by the
--- scanner only when Auctionator saw the item in the last few days). It is the
--- lowest listing, so one cheap listing can make an item look worth less than it
--- is. The snapshot is the check: a live price far below the snapshot's cheap end
--- is not trusted, and the careful snapshot rules decide instead.
-local LIVE_LOWBALL_FRACTION = 0.5
--- Days: a live price with no snapshot price next to it must be this fresh.
-local LIVE_UNBACKED_MAX_AGE_DAYS = 1
-
---- The live price to use for this item, or nil.
--- @return number|nil price, string|nil why it was not used (for /bagwise why)
-local function liveCeiling(item)
-  local live = item.livePrice
-  if type(live) ~= "number" or live <= 0 then return nil end
-  local snapshot, source = snapshotCeilingFor(item)
-  local backed = snapshot and source ~= "unknown"
-  -- Without a snapshot price to compare against, only a very fresh price counts.
-  if not backed and (type(item.liveAge) ~= "number"
-      or item.liveAge > LIVE_UNBACKED_MAX_AGE_DAYS) then
-    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
-        .. " is not confirmed by the snapshot and is over a day old, so it is ignored"
-  end
-  -- (a versioned item is not ignored here: its live price is floored in ceilingFor)
-  -- A price that several recent days agree on (item.liveSteady) is the market's
-  -- own, not a one-off lowball, even when it differs from the snapshot.
-  if backed and not item.bonusKey and not item.liveSteady and live < snapshot * LIVE_LOWBALL_FRACTION then
-    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
-        .. " is far below the snapshot (" .. Bagwise.Verdict.FormatMoney(snapshot)
-        .. "), so it may be a lowball and is ignored"
-  end
-  return live
-end
-
--- A version's snapshot price is the pricey end of that version (the 75th
--- percentile of its listings, build_auction_prices.py), a margin kept on purpose
--- to be careful. Its cheap end, about what a seller gets, is roughly this
--- fraction of it. A live price can bring the ceiling of a versioned item down to
--- this floor and no further, since Auctionator's price is the cheapest version's.
-local VERSION_FLOOR_FRACTION = 0.6
-
--- Versions the data must list before the dearest of them stands in for a
--- version it has no price for. A handful of listed versions means the market
--- was seen well; a single one proves nothing about the rest.
-local MIN_LISTED_VERSIONS = 3
-
---- The dearest listed version of a random-suffix item, for the player's version
--- when the data has no price for it. Most such items cost about the same in
--- every version or are all worth selling, and the dearest version can only keep
--- a green away, never give one that the dearest version would not.
--- @return number|nil
-local function dearestVersionCeiling(item)
-  local data = Bagwise.Data or {}
-  local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
-  if not versions then return nil end
-  local count, dearest = 0, 0
-  for _, price in pairs(versions) do
-    count = count + 1
-    if price > dearest then dearest = price end
-  end
-  if count < MIN_LISTED_VERSIONS or dearest <= 0 then return nil end
-  return dearest
-end
-
--- @return number|nil ceiling, string source ("live", "version", "versions", "item" or "unknown")
-local function ceilingFor(item)
-  local live = liveCeiling(item)
-  local snapshot, source = snapshotCeilingFor(item)
-  if source == "unknown" then
-    local dearest = dearestVersionCeiling(item)
-    if dearest then snapshot, source = dearest, "versions" end
-  end
-  if not live then return snapshot, source end
-  -- Auctionator files every version of a random-suffix item under one key, so
-  -- its price is the cheapest version's. For a versioned item (the link carries
-  -- bonus ids) it may lower the snapshot's price only down to a floor: the
-  -- snapshot is the pricey end of this version (see VERSION_FLOOR_FRACTION), and
-  -- the floor is roughly its cheap end. With no snapshot price it decides nothing.
-  if item.bonusKey then
-    if not snapshot or source == "unknown" then return snapshot, source end
-    local fraction = source == "item" and LIVE_LOWBALL_FRACTION or VERSION_FLOOR_FRACTION
-    return math.max(live, snapshot * fraction), source
-  end
-  return live, "live"
-end
-
--- What an auction price is worth to someone selling: the live price less the 5%
--- cut, or the snapshot's pricey end scaled down to its cheap end.
-local LIVE_AFTER_CUT = 0.95
-
---- What one of this item fetches when sold the better way, careful about the
--- auction side so that a loot decision never leans on a price that is too high.
--- Used to weigh loot against the junk it would replace.
--- @return number copper per item (the vendor price at least)
-function Bagwise.Verdict.SaleValue(item)
-  local vendor = item.sellPrice or 0
-  if not isTradeable(item) then return vendor end
-  local ceiling, source = ceilingFor(item)
-  if not ceiling or source == "unknown" then return vendor end
-  local auction
-  if source == "live" then
-    auction = ceiling * LIVE_AFTER_CUT
-  else
-    auction = ceiling * VERSION_FLOOR_FRACTION
-  end
-  return math.max(vendor, math.floor(auction))
-end
-
 --- Everything the sell-at-vendor rule looks at, in one place: the rule and
 -- /bagwise why both read this, so they cannot disagree.
 -- @return table|nil nil for items the rule never considers (not gear);
@@ -1188,19 +1027,23 @@ local function checkSellAtVendor(item, state)
   local check = { passes = false, notes = {} }
   local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
 
-  local ceiling, source = ceilingFor(item)
-  local _, ignored = liveCeiling(item)
+  local ceiling, source = Auction.CeilingFor(item)
+  local _, ignored = Auction.LiveCeiling(item)
   if ignored then note_(ignored) end
+  if source ~= "live" and Auction.SnapshotTooOld(state) then
+    note_("the price data is over " .. Bagwise.Curves.STALE_SNAPSHOT_DAYS .. " days old, so no verdict")
+    return check
+  end
   if source == "live" and item.liveSteady then
-    local snapshot, snapshotSource = snapshotCeilingFor(item)
-    if snapshot and snapshotSource ~= "unknown" and ceiling < snapshot * LIVE_LOWBALL_FRACTION then
+    local snapshot, snapshotSource = Auction.SnapshotCeilingFor(item)
+    if snapshot and snapshotSource ~= "unknown" and ceiling < snapshot * Auction.LIVE_LOWBALL_FRACTION then
       note_("live price " .. money(ceiling) .. " is far below the snapshot (" .. money(snapshot)
           .. ") but steady over the last days, so it is trusted")
     end
   end
   if ceiling and item.bonusKey and type(item.livePrice) == "number" and source ~= "live" and not ignored then
     note_("Auctionator's " .. money(item.livePrice) .. " is the cheapest version's price; it can lower the"
-        .. " snapshot price of this version to " .. math.floor(VERSION_FLOOR_FRACTION * 100) .. "% of it at most")
+        .. " snapshot price of this version to " .. math.floor(Auction.VERSION_FLOOR_FRACTION * 100) .. "% of it at most")
   end
 
   -- Green gear is judged on the snapshot. With a fresh live price the price is
@@ -1225,6 +1068,7 @@ local function checkSellAtVendor(item, state)
     return check
   end
 
+  local within = false
   if not ceiling then
     if source == "unknown" then
       note_("this version has no auction price on file (bonus "
@@ -1233,20 +1077,18 @@ local function checkSellAtVendor(item, state)
       note_("no auction price on file (vendor " .. money(item.sellPrice) .. ")")
     end
     return check
+  else
+    local limit = Auction.SellLimit(item, source, state)
+    check.ceiling, check.limit, check.source = ceiling, limit, source
+    within = ceiling <= limit
+    note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
+        .. (source == "live" and " (live price from Auctionator)"
+            or source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")"
+            or source == "versions" and " (this version has no price on file, so the dearest listed version)"
+            or " (whole item)")
+        .. ", limit " .. money(limit)
+        .. (within and " (within)" or " (auction pays too much)"))
   end
-
-  local limit = sellLimit(item.sellPrice)
-  check.ceiling, check.limit, check.source = ceiling, limit, source
-  local compared = roundedAuction(ceiling)
-  local within = compared <= limit
-  note_("vendor " .. money(item.sellPrice) .. ", auction ceiling " .. money(ceiling)
-      .. (source == "live" and " (live price from Auctionator)"
-          or source == "version" and " (this version, bonus " .. tostring(item.bonusKey) .. ")"
-          or source == "versions" and " (this version has no price on file, so the dearest listed version)"
-          or " (whole item)")
-      .. ", limit " .. money(limit) .. " (vendor counted as " .. money(roundedVendor(item.sellPrice))
-      .. ", auction as " .. money(compared) .. ")"
-      .. (within and " (within)" or " (auction pays too much)"))
 
   if not item.equippedInSlots then
     note_("worn gear in this slot could not be read, so no verdict")
@@ -1301,85 +1143,49 @@ local RULES = {
   { name = "class_reagent",      evaluate = evaluateClassReagent, checksAuction = true,
     overrides = { spell_reagent = true, recipe_reagent = true } },
   { name = "openable",           evaluate = evaluateOpenable },
-  { name = "recipe",             evaluate = evaluateRecipe },
+  { name = "recipe",             evaluate = evaluateRecipe, showsAuctionPrice = true,
+    worthlessIsGreen = true, worthlessNeedsHint = true, dropsAuctionDetail = true,
+    worthlessOverridesRecipes = true },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
-  { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent, showsAuctionPrice = true },
-  { name = "other_profession_reagent", evaluate = evaluateOtherProfessionReagent, showsAuctionPrice = true },
+  { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent, showsAuctionPrice = true,
+    worthlessIsGreen = true },
+  { name = "other_profession_reagent", evaluate = evaluateOtherProfessionReagent, showsAuctionPrice = true,
+    worthlessIsGreen = true },
   { name = "poor_quality",      evaluate = evaluatePoorQuality },
   { name = "no_recipe_use",      evaluate = evaluateNoRecipeUse, checksAuction = true },
   { name = "sell_at_vendor",     evaluate = evaluateSellAtVendor },
 }
 
---- Why a green must not stand because the auction house may pay more than a
--- vendor. Only for items that can be traded at all: a soulbound or quest-bound
--- item cannot be listed. Where the data has no price for an item, nobody lists
--- it often enough to matter, so the green stands. A version the data does not
--- know (it may be the pricey one) is silenced, as in the sell rule.
--- @return string|nil the reason it is blocked, for /bagwise why
--- @return string|nil a short "Vendor 5c, auction about 8s" for the tooltip, only
---   when the block is about the price (not an unknown version or market)
---- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
-local function priceNote(item, ceiling, source)
-  local money = Bagwise.Verdict.FormatMoney
-  -- A live price is the real price now ("about"); the snapshot is a cheap-end
-  -- ceiling ("up to").
-  local approx = source == "live" and "about " or "up to "
-  local vendor = item.sellPrice or 0
-  local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
-  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction " .. approx .. money(ceiling)
-end
-
-local function auctionBlocker(item)
-  if not isTradeable(item) then return nil end
-  local ceiling, source = ceilingFor(item)
-  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
-    return "no auction prices for your region and faction"
-  end
-  if source == "unknown" then
-    return "this version may sell for more at auction"
-  end
-  local vendor = item.sellPrice or 0
-  local stackable = isStackable(item)
-  local compared = stackable and ceiling or (ceiling and roundedAuction(ceiling))
-  if not ceiling or compared <= sellLimit(vendor, stackable) then return nil end
-  -- The same facts for the tooltip, which tells the player why there is no dot.
-  local note = priceNote(item, ceiling, source)
-  return "it may be worth more at auction (" .. note:sub(1, 1):lower() .. note:sub(2) .. ")", note
-end
-
--- Under this a stack is not worth the trip to the auction house, whatever a
--- vendor pays: a reagent that lists for a couple of copper is vendor trash.
-local MIN_LISTING_COPPER = 50
-
---- The price line for a hint that suggests selling at the auction house. It
--- only shows when the auction is worth it: the price is at least the listing
--- floor and clearly above what the same sell check allows over a vendor. A
--- price that is known but not worth it returns nothing and says so, so the hint
--- can stop suggesting the auction house. Never blocks anything.
--- @return string|nil the price line
--- @return boolean true when the price is known and not worth listing
-local function auctionPriceLine(item)
-  if not isTradeable(item) then return nil end
-  local ceiling, source = ceilingFor(item)
-  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then return nil end
-  if not ceiling or source == "unknown" then return nil end
-  local stackable = isStackable(item)
-  local compared = stackable and ceiling or roundedAuction(ceiling)
-  if ceiling >= MIN_LISTING_COPPER and compared > sellLimit(item.sellPrice or 0, stackable) then
-    return priceNote(item, ceiling, source)
-  end
-  return nil, true
-end
+-- Only these protections may be overridden when a hint turns into "worth very
+-- little": a reagent for a profession the player does not use is what
+-- recipe_reagent guards, and a recipe for one is what essential_item (all
+-- recipes) guards. Nothing else is let through.
+local WORTHLESS_OVERRIDES = { recipe_reagent = true }
+local WORTHLESS_RECIPE_OVERRIDES = { recipe_reagent = true, essential_item = true }
 
 --- Run one rule and apply the safety check to a green.
 -- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "yellow" and rule.showsAuctionPrice then
-    local note, notWorth = auctionPriceLine(item)
+    local note, notWorth = Auction.PriceLine(item, state)
     if notWorth then
-      -- The auction pays too little to suggest it.
+      -- The auction pays too little to suggest it. When the whole stack is also
+      -- worth next to nothing, it is safe to just vendor it.
+      local hinted = reason:find("May sell at the auction house$") ~= nil
+      if rule.worthlessIsGreen and (hinted or not rule.worthlessNeedsHint) then
+        local value = Auction.SlotValueIfKnown(item, state)
+        if value and value <= worthLittleCopper(state)
+            and not Bagwise.Safety.Blocker(item,
+                rule.worthlessOverridesRecipes and WORTHLESS_RECIPE_OVERRIDES or WORTHLESS_OVERRIDES) then
+          local ceiling, source = Auction.CeilingFor(item)
+          return "green", Bagwise.Verdict.WORTH_LITTLE_REASON, nil, nil, nil, nil,
+              note or (ceiling and Auction.PriceNote(item, ceiling, source)) or nil
+        end
+      end
       reason = reason:gsub("%. May sell at the auction house$", "")
+      -- "Try the auction house" is not advice once the price says otherwise.
+      if rule.dropsAuctionDetail and heading then heading = { title = heading.title } end
     end
     return verdict, reason, detail, tag, nil, heading, note
   end
@@ -1387,7 +1193,7 @@ local function runRule(rule, item, state)
     local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
     if blocker then return verdict, reason, detail, tag, blocker, heading end
     if rule.checksAuction then
-      local pricey, note = auctionBlocker(item)
+      local pricey, note = Auction.Blocker(item, state)
       if pricey then return verdict, reason, detail, tag, pricey, heading, note end
     end
   end
@@ -1399,10 +1205,10 @@ local CONSUMABLE_CLASS_ID = 0
 --- Evaluate a single item and return a verdict.
 -- Player overrides win over every rule: a kept item is always silent,
 -- a flagged item is always yellow.
--- Consumables (food, drink, potions, bandages) never get a rule verdict: they
--- are used up in play, so "you don't need this" is never safe to say. Some
--- are also vendor reagents (water, milk) and would otherwise read as green.
--- Scrolls may earn their own rules later.
+-- Consumables (food, drink, potions, bandages) never get a green: they are
+-- used up in play, so "you don't need this" is never safe to say. Some are also
+-- vendor reagents (water, milk) and would otherwise read as green. They get
+-- yellow hints only, when they are far outleveled or useless to the class.
 -- The seventh value is a "Vendor 5c, auction about 8s" note, set when a green was
 -- dropped because the auction pays clearly more: the player sees no green dot,
 -- and the tooltip uses the note to say why there is none.
@@ -1415,7 +1221,7 @@ function Bagwise.Verdict.Evaluate(item, state)
   if item.classID == CONSUMABLE_CLASS_ID then
     local verdict, reason, _, _, heading = evaluateItemHint(item, state)
     if verdict then return verdict, reason, nil, nil, "item_hint", heading end
-    verdict, reason, _, _, heading = evaluateOpenable(item)
+    verdict, reason, _, _, heading = evaluateOpenable(item, state)
     if verdict then return verdict, reason, nil, nil, "openable", heading end
     verdict, reason, _, _, heading = evaluateManaConsumable(item, state)
     if verdict then return verdict, reason, nil, nil, "mana_consumable", heading end
@@ -1423,7 +1229,7 @@ function Bagwise.Verdict.Evaluate(item, state)
     if not verdict then return nil end
     -- Consumables often sell well: say so when the auction house pays clearly
     -- more than a vendor, so a hint never reads as "throw it away".
-    local note = auctionPriceLine(item)
+    local note = Auction.PriceLine(item, state)
     return verdict, reason, nil, nil, "outleveled_consumable", heading, note
   end
 
@@ -1434,7 +1240,7 @@ function Bagwise.Verdict.Evaluate(item, state)
   for i = 1, #RULES do
     local verdict, reason, detail, tag, blockedBy, heading, note = runRule(RULES[i], item, state)
     if verdict == "green" and not blockedBy then
-      return verdict, reason, detail, tag, RULES[i].name
+      return verdict, reason, detail, tag, RULES[i].name, heading, note
     end
     if note and not auctionNote then auctionNote = note end
     if verdict == "yellow" and not hint then
@@ -1443,6 +1249,21 @@ function Bagwise.Verdict.Evaluate(item, state)
   end
   if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6], auctionNote end
   return nil, nil, nil, nil, nil, nil, auctionNote
+end
+
+-- The reason of a green that says only "the stack is worth next to nothing". The
+-- tooltip leaves it out when a price line under the heading already shows it.
+Bagwise.Verdict.WORTH_LITTLE_REASON = "Worth very little"
+
+--- Evaluate an item and return the answer by name, which is what callers other
+-- than the tests should use: Evaluate's positional values are easy to misorder.
+-- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, sellable }
+--   verdict is "green", "yellow" or nil; rule names the rule that decided
+function Bagwise.Verdict.Judge(item, state)
+  local verdict, reason, detail, tag, rule, heading, auctionNote = Bagwise.Verdict.Evaluate(item, state)
+  return { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
+           heading = heading, auctionNote = auctionNote,
+           sellable = Bagwise.Verdict.Sellable(item, verdict) }
 end
 
 --- Every rule that had something to say about an item, including greens that

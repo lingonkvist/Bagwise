@@ -7,6 +7,8 @@ dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/progress.lua")
 dofile("src/notes.lua")
+dofile("src/curves.lua")
+dofile("src/auction.lua")
 dofile("src/verdict.lua")
 dofile("src/bank.lua")
 dofile("src/makeroom.lua")
@@ -68,6 +70,8 @@ local function setUp(layout, free, lootWindow)
   _G.GetNumLootItems = function() return #loot end
   _G.GetLootSlotLink = function(slot) return "|Hitem:" .. loot[slot].id .. "|h" end
   _G.GetLootSlotInfo = function(slot) return nil, nil, loot[slot].qty end
+  dofile("src/curves.lua")
+  dofile("src/auction.lua")
   dofile("src/live.lua")
   dofile("src/scanner.lua")
 end

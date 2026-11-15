@@ -3,6 +3,8 @@
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
+dofile("src/curves.lua")
+dofile("src/auction.lua")
 dofile("src/verdict.lua")
 dofile("src/bank.lua")
 dofile("src/makeroom.lua")

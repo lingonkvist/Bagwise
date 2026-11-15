@@ -19,6 +19,13 @@ local BANK_DROPS = {
   other_profession_reagent = true, -- the bank is where mats for another character wait
 }
 
+-- These only ever turn green as "worth very little": a hint to vendor something
+-- that is already banked, and banked for a reason, so it is dropped like the rest.
+local BANK_DROPS_GREEN = {
+  recipe = true,
+  outleveled_reagent = true,
+}
+
 --- Turn a verdict result into what the bank should show.
 -- The warband bank exists to share items between your characters, so there
 -- even soulbound-looking gear may be meant for an alt: nothing is kept there
@@ -31,6 +38,7 @@ function Bagwise.Verdict.ForBank(result, isWarband)
   if not result or not result.verdict then return result end
   if result.heading and result.heading.title == Bagwise.Notes.BANK_IT_TITLE then return {} end
   if BANK_DROPS[result.rule] then return {} end
+  if result.verdict == "green" and BANK_DROPS_GREEN[result.rule] then return {} end
   -- Nobody needs a vendor suggestion for something already banked.
   if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
     return { verdict = result.verdict, reason = result.reason, detail = result.detail,

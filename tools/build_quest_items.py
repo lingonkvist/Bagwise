@@ -563,7 +563,7 @@ def main():
     if not source_path.exists():
         print(f"Error: source file not found: {source_path}", file=sys.stderr)
         print(f"\nPlace Questie's classicQuestDB.lua at:\n  {source_path}")
-        print(f"\nOr specify a path with --source")
+        print("\nOr specify a path with --source")
         sys.exit(1)
 
     print(f"Reading {source_path.name}...")

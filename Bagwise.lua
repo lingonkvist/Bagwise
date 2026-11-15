@@ -36,6 +36,33 @@ end
 -- A bank tab the client draws that Bagwise did not know about: scan it.
 Bagwise.Bags.onNewBankBag = function() rescanSoon() end
 
+-- Auctionator keeps its prices in a database it fills while the auction house is
+-- open (a scan, a search, listing something). Nothing tells Bagwise, so the dots
+-- would keep the old verdicts until the bags next changed. Hook the point where a
+-- price is stored and rescan a moment after, once per burst.
+local AUCTION_PRICES_RESCAN_DELAY_SECONDS = 2
+local auctionPricesPending = false
+local auctionatorHooked = false
+
+local function auctionPricesChanged()
+  if auctionPricesPending or not (C_Timer and C_Timer.After) then return end
+  auctionPricesPending = true
+  C_Timer.After(AUCTION_PRICES_RESCAN_DELAY_SECONDS, function()
+    auctionPricesPending = false
+    Bagwise.Live.ClearCache()
+    rescanAll()
+  end)
+end
+
+local function hookAuctionatorPrices()
+  if auctionatorHooked then return end
+  local database = _G.Auctionator and _G.Auctionator.Database
+  if not (database and database.SetPrice and hooksecurefunc) then return end
+  if pcall(hooksecurefunc, database, "SetPrice", auctionPricesChanged) then
+    auctionatorHooked = true
+  end
+end
+
 local function invalidateAndRescan()
   Bagwise.Scanner.ClearCache()
   rescanAll()
@@ -71,17 +98,34 @@ end
 -- were closed, close them again when the loot window goes away.
 local openedBagsForLoot = false
 
+-- Is a bag window showing? Checks the frames themselves rather than trusting
+-- IsAnyBagOpen alone, which can say yes while nothing is on screen.
 local function anyBagOpen()
-  if IsAnyBagOpen then return IsAnyBagOpen() end
-  return ContainerFrameCombinedBags and ContainerFrameCombinedBags:IsShown() or false
+  if ContainerFrameCombinedBags and ContainerFrameCombinedBags:IsShown() then return true end
+  for i = 1, 13 do
+    local frame = _G["ContainerFrame" .. i]
+    if frame and frame:IsShown() then return true end
+  end
+  return false
 end
 
-local function onLootOpened(self, ...)
-  onLootChanged(self, ...)
+local function openBagsForLoot()
   if BagwiseDB and BagwiseDB.autoOpenBags == false then return end
   if not Bagwise.Scanner.MakeRoomSummary().active then return end
   if anyBagOpen() or not OpenAllBags then return end
   if pcall(OpenAllBags) then openedBagsForLoot = true end
+end
+
+local function onLootOpened(self, ...)
+  onLootChanged(self, ...)
+  openBagsForLoot()
+  -- The client can still be settling when the loot window opens (free slots,
+  -- item info), so look once more on the next frame.
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.1, function()
+      if Bagwise.Scanner.HasLoot() then openBagsForLoot() end
+    end)
+  end
 end
 
 local function onLootClosed()
@@ -149,12 +193,24 @@ local function onPlayerLogin(self)
       GetCurrentRegion and read(GetCurrentRegion)),
     UnitFactionGroup and read(UnitFactionGroup, "player"))
 
+  hookAuctionatorPrices()
+  -- Auctionator may load after Bagwise, and its database is made at the first
+  -- auction house visit on some builds: try again whenever the house opens.
+  -- Closing it also settles prices a scan was still storing.
+  pcall(self.RegisterEvent, self, "AUCTION_HOUSE_SHOW")
+  pcall(self.RegisterEvent, self, "AUCTION_HOUSE_CLOSED")
+
   Bagwise.Tooltip.Init()
   Bagwise.Commands.Init()
   Bagwise.Overlay.Init() -- <-- Registers the Baganator corner widget
 
   print("|cff54de7d[Bagwise]|r v" .. Bagwise.Commands.Version()
     .. " loaded. Type /bagwise help for commands.")
+
+  local okNow, now = pcall(time)
+  local notice = okNow and Bagwise.Curves.SnapshotNotice(
+    Bagwise.Curves.SnapshotAgeDays(Bagwise.Data and Bagwise.Data.AuctionPricesDate, now))
+  if notice then print("|cff54de7d[Bagwise]|r " .. notice) end
 end
 
 local EVENT_HANDLERS = {
@@ -178,6 +234,8 @@ local EVENT_HANDLERS = {
       C_Timer.After(0.5, function() Bagwise.Overlay.UpdateAll() end)
     end
   end,
+  AUCTION_HOUSE_SHOW     = hookAuctionatorPrices,
+  AUCTION_HOUSE_CLOSED   = auctionPricesChanged,
   BANKFRAME_CLOSED       = rescanSoon,
   PLAYERBANKSLOTS_CHANGED = rescanSoon,
   PLAYERBANKBAGSLOTS_CHANGED = rescanSoon,

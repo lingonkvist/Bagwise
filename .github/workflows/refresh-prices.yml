@@ -22,7 +22,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git diff --quiet -- data/auction_prices.lua; then
+          if git diff --quiet -- 'data/auction_prices_*.lua' tools/variant_memory.json && [ -z "$(git ls-files --others --exclude-standard tools/variant_memory.json)" ]; then
             echo "No change."
             exit 0
           fi
@@ -30,7 +30,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
           git checkout -b "$branch"
-          git add data/auction_prices.lua
+          git add data/auction_prices_*.lua tools/variant_memory.json
           git commit -m "Refresh auction house prices"
           git push origin "$branch"
           gh pr create --title "Refresh auction house prices" \

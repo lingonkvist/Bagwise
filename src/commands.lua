@@ -10,20 +10,6 @@ local function say(text)
   print(PREFIX .. text)
 end
 
---- How old the shipped auction prices are, in whole days.
--- @param dateString string  "YYYY-MM-DD", as written into the price data
--- @param nowSeconds number  the current time in seconds
--- @return number|nil nil when the date is missing or not in that shape
-function Bagwise.Commands.PriceAgeDays(dateString, nowSeconds)
-  local year, month, day = tostring(dateString or ""):match("^(%d+)-(%d+)-(%d+)$")
-  if not year then return nil end
-  local toTime = _G.time or os.time
-  local stamp = toTime({ year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = 12 })
-  return math.floor((nowSeconds - stamp) / 86400)
-end
-
-local PRICE_STALE_DAYS = 28
-
 --- Turn the text after a command into an item ID.
 -- Accepts a shift-clicked item link, a bare numeric ID, or an item name
 -- (names only resolve for items the client has cached, such as bag items).
@@ -230,8 +216,8 @@ local COMMAND_HANDLERS = {
       .. size(Bagwise.Data.ReagentProfessions) .. " recipe reagents")
     local priceDate = Bagwise.Data.AuctionPricesDate
     if priceDate then
-      local age = Bagwise.Commands.PriceAgeDays(priceDate, (_G.time or os.time)())
-      local note = age and age > PRICE_STALE_DAYS and ", getting old, update the addon" or ""
+      local age = Bagwise.Curves.SnapshotAgeDays(priceDate, (_G.time or os.time)())
+      local note = age and age > Bagwise.Curves.REMIND_SNAPSHOT_DAYS and ", update the addon" or ""
       print("  Auction prices: " .. priceDate .. (age and (", " .. age .. " days old") or "") .. note)
     else
       print("  Auction prices: no date in the data")
