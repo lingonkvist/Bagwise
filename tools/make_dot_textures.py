@@ -3,10 +3,12 @@
 the shadowless tooltip pearls (pearl_green.tga, pearl_yellow.tga) and
 the border glow (textures/glow.tga).
 
-Each dot is a lit sphere (soft body shading, a broad glossy sheen and a small
+Each dot is a lit, glossy shape (soft body shading, a broad sheen and a small
 hot spot, a little bounce light low on the far side) sitting in a soft
-drop shadow. The colour is baked in: a white highlight can't survive a
-vertex-colour tint, which only multiplies.
+drop shadow. Green is a round pearl and yellow is a rounded diamond, so the
+two verdicts differ in shape as well as colour and can be told apart by
+someone who cannot tell the colours apart. The colour is baked in: a white
+highlight can't survive a vertex-colour tint, which only multiplies.
 
 Usage: python3 tools/make_dot_textures.py [--out textures]
 Needs Pillow-free numpy only for the maths; writes plain 32-bit TGA files.
@@ -28,6 +30,12 @@ COLORS = {
     "green": (0.33, 0.87, 0.49),
     "yellow": (0.97, 0.82, 0.16),
 }
+# Each verdict's shape: "disc" (round pearl) or "diamond" (rounded square turned 45 degrees).
+SHAPES = {"green": "disc", "yellow": "diamond"}
+DIAMOND_HALF = 20.5          # half the side of the square before it is turned
+DIAMOND_CORNER = 4.0         # corner rounding; also trims the tips so the shadow fits the frame
+DIAMOND_FACET = 0.35         # 0 is a smooth dome, 1 is a sharp four-sided pyramid
+DIAMOND_CENTER = (0.0, -4.0) # a little higher than the disc, because the tips reach further
 PEARL_SHEEN = np.array([1.0, 0.96, 0.98])   # faint warm-pink white
 RING_WIDTH = 4.6     # near-black outline, about 1 px on screen at the 13 px dot size
 RING_COLOR = np.array([0.03, 0.02, 0.02])
@@ -41,7 +49,43 @@ def normalize(v):
     return v / np.linalg.norm(v)
 
 
-def render(color, shadow_on=True, center=DISC_CENTER):
+def diamond_distance(x, y):
+    """Signed distance to a rounded square turned 45 degrees: negative inside."""
+    u = (x + y) / np.sqrt(2)
+    v = (y - x) / np.sqrt(2)
+    qx = np.abs(u) - (DIAMOND_HALF - DIAMOND_CORNER)
+    qy = np.abs(v) - (DIAMOND_HALF - DIAMOND_CORNER)
+    return (np.hypot(np.maximum(qx, 0), np.maximum(qy, 0))
+            + np.minimum(np.maximum(qx, qy), 0) - DIAMOND_CORNER)
+
+
+def shape_distance(shape, x, y):
+    """Signed distance to the shape's edge, in texture pixels: negative inside."""
+    if shape == "diamond":
+        return diamond_distance(x, y)
+    return np.hypot(x, y) - DISC_RADIUS
+
+
+def surface_normal(shape, x, y, sdf):
+    """Unit surface normal of the dome: a sphere for the disc, a pillow for the diamond."""
+    if shape == "diamond":
+        # A pillow: tilts away from the middle, steepest at the edge.
+        gy, gx = np.gradient(sdf, 1 / SUPERSAMPLE)
+        length = np.maximum(np.hypot(gx, gy), 1e-6)
+        slope = np.clip(1 + sdf / DIAMOND_HALF, 0, 1)
+        edge_x, edge_y = gx / length * slope, gy / length * slope
+        # Blend toward a plain dome so the pillow's creases do not show as a cross.
+        nx = DIAMOND_FACET * edge_x + (1 - DIAMOND_FACET) * x / (DIAMOND_HALF * 1.4)
+        ny = DIAMOND_FACET * edge_y + (1 - DIAMOND_FACET) * y / (DIAMOND_HALF * 1.4)
+    else:
+        nx, ny = x / DISC_RADIUS, y / DISC_RADIUS
+    nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0, 1))
+    return nx, ny, nz
+
+
+def render(color, shape="disc", shadow_on=True, center=None):
+    if center is None:
+        center = DIAMOND_CENTER if shape == "diamond" else DISC_CENTER
     n = SIZE * SUPERSAMPLE
     ys, xs = np.mgrid[0:n, 0:n]
     cx = cy = (n - 1) / 2
@@ -49,11 +93,11 @@ def render(color, shadow_on=True, center=DISC_CENTER):
     fy = (ys - cy) / SUPERSAMPLE
     x = fx - center[0]
     y = fy - center[1]
-    r = np.hypot(x, y)
+    sdf = shape_distance(shape, x, y)
+    r = DISC_RADIUS + sdf          # "radius" as the ring and bevel code below measure it
 
-    inside = r <= DISC_RADIUS
-    nx, ny = x / DISC_RADIUS, y / DISC_RADIUS
-    nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0, 1))
+    inside = sdf <= 0
+    nx, ny, nz = surface_normal(shape, x, y, sdf)
 
     light = normalize((-0.5, -0.62, 0.62))
     diffuse = np.clip(nx * light[0] + ny * light[1] + nz * light[2], 0, 1)
@@ -92,7 +136,7 @@ def render(color, shadow_on=True, center=DISC_CENTER):
 
     # Drop shadow: solid under the disc, then a short fade, offset down and
     # right. It must reach zero before the frame edge so nothing is clipped.
-    sr = np.hypot(x - SHADOW_OFFSET[0], y - SHADOW_OFFSET[1])
+    sr = DISC_RADIUS + shape_distance(shape, x - SHADOW_OFFSET[0], y - SHADOW_OFFSET[1])
     tail = np.clip(1 - (sr - DISC_RADIUS) / SHADOW_FADE, 0, 1) ** 1.6
     shadow = SHADOW_STRENGTH * np.where(sr <= DISC_RADIUS, 1.0, tail)
     if not shadow_on:
@@ -161,12 +205,12 @@ def main():
     args = parser.parse_args()
     for name, color in COLORS.items():
         path = f"{args.out}/dot_{name}.tga"
-        write_tga(path, render(color))
+        write_tga(path, render(color, SHAPES[name]))
         print("wrote", path)
         # The tooltip's inline copy: no shadow and dead centre in its frame, so
         # it sits level with the text instead of riding high.
         path = f"{args.out}/pearl_{name}.tga"
-        write_tga(path, render(color, shadow_on=False, center=(0.0, 0.0)))
+        write_tga(path, render(color, SHAPES[name], shadow_on=False, center=(0.0, 0.0)))
         print("wrote", path)
     write_tga(f"{args.out}/glow.tga", render_glow())
     print("wrote", f"{args.out}/glow.tga")

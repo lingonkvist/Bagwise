@@ -12,8 +12,8 @@ Bagwise checks every item against your quests, professions, class, level and wha
 
 | Dot | Meaning |
 |---|---|
-| Green | Safe to delete, or safe to vendor when it has a sell price. The tooltip says which, and why. |
-| Yellow | Worth a glance. The tooltip says what to look at. |
+| Green (round) | Safe to delete, or safe to vendor when it has a sell price. The tooltip says which, and why. |
+| Yellow (diamond) | Worth a glance. The tooltip says what to look at. |
 | None | No signal. Bagwise does not know, or you still need the item. |
 
 Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it. Prices show the numbers in white and `g`, `s` and `c` in the usual coin colours.

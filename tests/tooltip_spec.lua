@@ -1187,6 +1187,20 @@ describe("tooltip in the loot window", function()
     assert.are.equal("Mining recipes use it up to 125", tt.lines[2].text)
   end)
 
+  it("tells a yellow gray to be saved for the vendor, with the value on one line", function()
+    setup()
+    local reason, heading = Bagwise.Verdict.PoorQualityReason(500, true, true)
+    installScanner({ verdict = "yellow", reason = reason, heading = heading })
+
+    local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
+    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    teardown()
+
+    assert.is_truthy(tt.lines[1].text:find("Save for vendor$"))
+    assert.are.equal("Cheapest gray, but worth 5s", plainCoins(tt.lines[2].text))
+    assert.are.equal(2, #tt.lines)
+  end)
+
   it("shows only the heading when a yellow has no detail", function()
     setup()
     installScanner({ verdict = "yellow", reason = "Flagged by you", heading = { title = "Flagged by you" } })

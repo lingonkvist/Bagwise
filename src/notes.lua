@@ -36,8 +36,10 @@ local NOTES = {
     return "Quest is far below you, probably not worth taking", "Low-level quest", "Probably not worth it"
   end,
   gray_worth = function(value, isCheapest)
-    return (isCheapest and "Cheapest gray" or "Gray") .. ", but worth " .. value,
-        isCheapest and "Cheapest gray" or "Gray item", "Sells for " .. value
+    -- The detail line is the reason itself, so it reads like the green gray's
+    -- ("Cheapest gray, sells for 5c") and keeps "but worth", which says why it is not green.
+    local reason = (isCheapest and "Cheapest gray" or "Gray") .. ", but worth " .. value
+    return reason, "Save for vendor", reason
   end,
   no_known_use = function(value)
     return "Not used for any quest or recipe, sells for " .. value, "No known use", nil

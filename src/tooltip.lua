@@ -22,7 +22,7 @@ local VERDICT_COLORS        = {
 -- Bagwise detail row, so all of it reads as one family.
 local DETAIL_COLOR          = INFO_COLOR
 
--- The tooltip header carries the same pearl as the bag slot, without the
+-- The tooltip header carries the same shape as the bag slot (round for green, a diamond for yellow), without the
 -- shadow and centred in its frame (colour is baked into each texture).
 local DOT_TEXTURES          = {
   green  = "Interface\\AddOns\\Bagwise\\textures\\pearl_green",
