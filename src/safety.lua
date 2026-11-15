@@ -52,7 +52,7 @@ local function data()
 end
 
 -- Each protection: a name (used by rules to say which they may override, and
--- shown by /bagwise why) and a test. Order is the order they are reported.
+-- shown by /makespace why) and a test. Order is the order they are reported.
 local PROTECTIONS = {
   { name = "essential_item", test = function(item)
       return ESSENTIAL_ITEMS[item.id] or ESSENTIAL_CLASSES[item.classID] or false

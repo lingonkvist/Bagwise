@@ -86,7 +86,7 @@ local MAX_AGE_UNCERTAINTY = 0.15
 -- Days after which the shipped auction prices are no longer a basis for a green:
 -- an unreviewed snapshot that old is a guess about a market that has moved.
 Bagwise.Curves.STALE_SNAPSHOT_DAYS = 14
--- Days after which the player is reminded, at login and in /bagwise status, to
+-- Days after which the player is reminded, at login and in /makespace status, to
 -- update the addon before the cutoff.
 Bagwise.Curves.REMIND_SNAPSHOT_DAYS = 7
 
@@ -155,10 +155,10 @@ function Bagwise.Curves.SnapshotNotice(ageDays)
   local cutoff = Bagwise.Curves.STALE_SNAPSHOT_DAYS
   if ageDays > cutoff then
     return "The auction price data is " .. ageDays .. " days old and is no longer used for"
-        .. " recommendations. Update Bagwise for up-to-date prices."
+        .. " recommendations. Update Make Space for up-to-date prices."
   end
   local left = cutoff - ageDays
-  return "The auction price data is " .. ageDays .. " days old. Update Bagwise within "
+  return "The auction price data is " .. ageDays .. " days old. Update Make Space within "
       .. left .. (left == 1 and " day" or " days") .. " for up-to-date prices, or recommendations"
       .. " that rely on it will stop."
 end

@@ -1016,7 +1016,7 @@ end
 -- Every check above this rule still runs first, and the upgrade check holds.
 local EQUIPMENT_CLASSES = { [2] = true, [4] = true }
 --- Everything the sell-at-vendor rule looks at, in one place: the rule and
--- /bagwise why both read this, so they cannot disagree.
+-- /makespace why both read this, so they cannot disagree.
 -- @return table|nil nil for items the rule never considers (not gear);
 --   otherwise { passes = boolean, ceiling, limit, notes = { lines } }
 local function checkSellAtVendor(item, state)
@@ -1116,7 +1116,7 @@ local function evaluateSellAtVendor(item, state)
 end
 
 --- The facts behind the sell-at-vendor rule for one item, as short lines for
--- /bagwise why. Empty for non-gear.
+-- /makespace why. Empty for non-gear.
 function Bagwise.Verdict.SellAtVendorFacts(item, state)
   local check = checkSellAtVendor(item, state)
   return check and check.notes or {}
@@ -1267,7 +1267,7 @@ function Bagwise.Verdict.Judge(item, state)
 end
 
 --- Every rule that had something to say about an item, including greens that
--- Safety dropped. For /bagwise why and for tests.
+-- Safety dropped. For /makespace why and for tests.
 -- @return table list of { rule, verdict, reason, blockedBy }
 function Bagwise.Verdict.Trace(item, state)
   local trace = {}

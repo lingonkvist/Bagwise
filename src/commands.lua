@@ -4,7 +4,7 @@
 Bagwise = Bagwise or {}
 Bagwise.Commands = {}
 
-local PREFIX = "|cff54de7d[Bagwise]|r "
+local PREFIX = "|cff54de7d[Make Space]|r "
 
 local function say(text)
   print(PREFIX .. text)
@@ -172,21 +172,21 @@ end
 local COMMAND_HANDLERS = {
   help = function()
     say("commands:")
-    print("  /bagwise keep [item]    - Never show a dot on this item")
-    print("  /bagwise flag [item]    - Always show a yellow dot on this item")
-    print("  /bagwise reset [item]   - Return this item to the normal rules")
-    print("  /bagwise list           - Show your kept and flagged items")
-    print("  /bagwise autoopen       - Turn on or off opening your bags when loot needs room")
-    print("  /bagwise summary        - What the dots in your bags add up to")
-    print("  /bagwise help           - Show this message")
+    print("  /makespace keep [item]    - Never show a dot on this item")
+    print("  /makespace flag [item]    - Always show a yellow dot on this item")
+    print("  /makespace reset [item]   - Return this item to the normal rules")
+    print("  /makespace list           - Show your kept and flagged items")
+    print("  /makespace autoopen       - Turn on or off opening your bags when loot needs room")
+    print("  /makespace summary        - What the dots in your bags add up to")
+    print("  /makespace help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
     print("Troubleshooting (paste the output when something looks wrong):")
-    print("  /bagwise report         - Copyable report of your bags, verdicts and setup")
-    print("  /bagwise why [item]     - Why an item does or doesn't get a dot")
-    print("  /bagwise loot           - What the make-room plan sees (loot window open)")
-    print("  /bagwise glow           - Test the delete glow on your first item")
-    print("  /bagwise status         - Version, bag UI and counts")
-    print("  /bagwise bank           - What Bagwise sees of the bank")
+    print("  /makespace report         - Copyable report of your bags, verdicts and setup")
+    print("  /makespace why [item]     - Why an item does or doesn't get a dot")
+    print("  /makespace loot           - What the make-room plan sees (loot window open)")
+    print("  /makespace glow           - Test the delete glow on your first item")
+    print("  /makespace status         - Version, bag UI and counts")
+    print("  /makespace bank           - What Make Space sees of the bank")
   end,
   summary = function()
     Bagwise.Commands.PrintSummary(false)
@@ -238,7 +238,7 @@ local COMMAND_HANDLERS = {
   why = function(argument)
     local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
-      say("Usage: /bagwise why [item]")
+      say("Usage: /makespace why [item]")
       return
     end
     local explained = Bagwise.Scanner.Explain(itemID)
@@ -339,19 +339,19 @@ local COMMAND_HANDLERS = {
     end
     Bagwise.Overlay.UpdateAll()
     say("Test glow on bag:slot " .. key .. " until your bags next change.")
-    print("  Seen it: the glow draws fine, so the make-room plan is not starting. Open a loot window and run /bagwise loot.")
+    print("  Seen it: the glow draws fine, so the make-room plan is not starting. Open a loot window and run /makespace loot.")
     print("  Not seen: the glow itself cannot draw on your bag UI. Tell me which bag addon you use.")
   end,
   report = function() openReport() end,
   dump = function() openReport() end,
-  keep = overrideCommand("/bagwise keep [item]",
+  keep = overrideCommand("/makespace keep [item]",
     Bagwise.Overrides.AddKeep, "%s will never get a dot."),
-  flag = overrideCommand("/bagwise flag [item]",
+  flag = overrideCommand("/makespace flag [item]",
     Bagwise.Overrides.AddFlag, "%s will always get a yellow dot."),
   reset = function(argument)
     local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
-      say("Usage: /bagwise reset [item]")
+      say("Usage: /makespace reset [item]")
       return
     end
     local name = itemNameOf(itemID)
@@ -378,7 +378,7 @@ local COMMAND_HANDLERS = {
   end,
 }
 
---- Split what was typed after /bagwise into a command word and its argument.
+--- Split what was typed after /makespace into a command word and its argument.
 -- The command is the leading letters only, so an item shift-clicked straight
 -- after the word ("why|cnIQ1:|Hitem:...") still splits where the link starts.
 -- The argument keeps its original case (item names).
@@ -390,7 +390,9 @@ function Bagwise.Commands.SplitInput(msg)
 end
 
 function Bagwise.Commands.Init()
-  SLASH_BAGWISE1 = "/bagwise"
+  SLASH_BAGWISE1 = "/makespace"
+  SLASH_BAGWISE2 = "/ms"
+  SLASH_BAGWISE3 = "/bagwise"
   SlashCmdList["BAGWISE"] = function(msg)
     local cmd, argument = Bagwise.Commands.SplitInput(msg)
     if cmd == "" then cmd = "help" end

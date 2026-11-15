@@ -477,7 +477,7 @@ local function readHasEffect(bag, slot)
 end
 
 --- The tooltip lines of an item in your bags, as the skill reader sees them, for
--- /bagwise why when a recipe's required skill was not found.
+-- /makespace why when a recipe's required skill was not found.
 -- @return table|nil list of strings
 function Bagwise.Scanner.TooltipTextOf(itemID)
   if not (CreateFrame and UIParent and C_Container) then return nil end
@@ -887,7 +887,7 @@ function Bagwise.Scanner.ScanAll()
   resultsChanged = changed
 end
 
---- What Bagwise thinks your professions are, for /bagwise report.
+--- What Bagwise thinks your professions are, for /makespace report.
 function Bagwise.Scanner.ProfessionSummary()
   local state = getPlayerState()
   local parts = {}
@@ -1007,7 +1007,7 @@ function Bagwise.Scanner.RefreshLoot(clearedSlot)
   end
 end
 
---- What the make-room plan saw on the last scan (for /bagwise loot).
+--- What the make-room plan saw on the last scan (for /makespace loot).
 function Bagwise.Scanner.MakeRoomSummary()
   local takes, leaving, noRoom = 0, 0, 0
   for _ in pairs(lootPlan.take) do takes = takes + 1 end
@@ -1112,7 +1112,7 @@ function Bagwise.Scanner.ClearCache()
   verdictCache = {}
 end
 
---- Count scanned slots by verdict (for /bagwise status).
+--- Count scanned slots by verdict (for /makespace status).
 -- @return table { items = n, green = n, yellow = n }
 function Bagwise.Scanner.Counts()
   local counts = { items = 0, green = 0, yellow = 0 }
@@ -1155,7 +1155,7 @@ local function professionNamesFor(itemID)
   return names
 end
 
---- Snapshot of everything in bags 0-4 plus the player, for /bagwise dump.
+--- Snapshot of everything in bags 0-4 plus the player, for /makespace dump.
 -- Raw facts only; Bagwise.Dump turns it into text. Rescans first so the
 -- verdict columns match what the bags show right now.
 -- @return table { player = {...}, rows = { ... }, uncached = n }
@@ -1234,7 +1234,7 @@ function Bagwise.Scanner.EvaluateItem(itemID, opensForLoot, link)
   return evaluateCached(item, state, professionCacheKey(state))
 end
 
---- Everything the verdict rules see for one item, for /bagwise why.
+--- Everything the verdict rules see for one item, for /makespace why.
 -- @return table|nil  { item, result, faction, quests = { {id,name,faction,done} } }
 function Bagwise.Scanner.Explain(itemID)
   local state = getPlayerState()

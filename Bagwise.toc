@@ -1,8 +1,8 @@
 ## Interface: 16001
-## Title: Bagwise
+## Title: Make Space
 ## Notes: Colored dots on bag items that mark what to delete, vendor, bank or keep
 ## Author: lingonkvist
-## Version: 0.6.4
+## Version: 0.6.5
 ## IconTexture: Interface\AddOns\Bagwise\textures\icon
 ## SavedVariablesPerCharacter: BagwiseDB
 ## OptionalDeps: Baganator, Bagnon, Auctionator

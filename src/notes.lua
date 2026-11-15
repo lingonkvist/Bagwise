@@ -1,7 +1,7 @@
 -- Bagwise: the words behind every yellow verdict.
 --
 -- Every yellow Bagwise can show is defined here once: the full reason (for the
--- report and /bagwise why), a short heading of three or four words, and the
+-- report and /makespace why), a short heading of three or four words, and the
 -- detail line under it. A rule returns the heading with its verdict, so the
 -- tooltip never has to guess it from the reason text.
 Bagwise = Bagwise or {}

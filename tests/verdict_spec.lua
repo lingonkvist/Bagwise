@@ -2134,7 +2134,7 @@ describe("Yellow headings", function()
   end)
 end)
 
-describe("Sell-at-vendor facts for /bagwise why", function()
+describe("Sell-at-vendor facts for /makespace why", function()
   local function joined(item)
     return table.concat(Bagwise.Verdict.SellAtVendorFacts(item), "\n")
   end
@@ -2480,7 +2480,7 @@ describe("The limit has no cliffs", function()
     end
   end)
 
-  it("tells /bagwise why the real prices and the limit", function()
+  it("tells /makespace why the real prices and the limit", function()
     local saved = Bagwise.Data.AuctionPriceCeiling
     Bagwise.Data.AuctionPriceCeiling = { [41200] = 778 }
     local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(gear(577)), "\n")
@@ -3101,7 +3101,7 @@ describe("Live prices from Auctionator", function()
     end)
   end)
 
-  it("explains in /bagwise why how a live price was used on a versioned item", function()
+  it("explains in /makespace why how a live price was used on a versioned item", function()
     withSnapshot({}, function()
       Bagwise.Data.AuctionVariantCeiling = { [42001] = { ["12744"] = 900, ["12745"] = 900, ["12746"] = 900 } }
       local facts = table.concat(Bagwise.Verdict.SellAtVendorFacts(boe({ bonusKey = "12744", livePrice = 350 }), state), "\n")

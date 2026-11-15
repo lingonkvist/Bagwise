@@ -74,7 +74,7 @@ function Bagwise.Dump.Format(snapshot, context)
   context = context or {}
   local player = snapshot.player or {}
   local lines = {
-    "# Bagwise inventory dump",
+    "# Make Space inventory dump",
     "# bagwise=" .. cell(context.version) .. " wow=" .. cell(context.build),
     "# class=" .. cell(player.class) .. " race=" .. cell(player.race)
         .. " faction=" .. cell(player.faction) .. " level=" .. cell(player.level),
@@ -121,7 +121,7 @@ local function buildFrame()
 
   local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("TOPLEFT", 20, -16)
-  title:SetText("Bagwise inventory dump: Ctrl+C to copy, Esc to close")
+  title:SetText("Make Space inventory dump: Ctrl+C to copy, Esc to close")
 
   local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -4, -4)

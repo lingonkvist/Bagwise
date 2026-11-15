@@ -3,7 +3,7 @@ std = "lua51"
 max_line_length = false
 unused_args = false
 exclude_files = { "data/*", "tests/*" }
-globals = { "Bagwise", "BagwiseDB", "SLASH_BAGWISE1", "SlashCmdList" }
+globals = { "Bagwise", "BagwiseDB", "SLASH_BAGWISE1", "SLASH_BAGWISE2", "SLASH_BAGWISE3", "SlashCmdList" }
 read_globals = {
   "Baganator", "Bagnon", "C_AddOns", "C_Bank", "C_Container", "C_Item", "C_QuestLog", "C_SkillInfo", "C_Spell", "C_Timer",
   "BankFrame", "ChatFontNormal", "CloseAllBags", "ContainerFrame1", "ContainerFrameCombinedBags", "CreateFrame",

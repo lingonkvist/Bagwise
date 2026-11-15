@@ -204,13 +204,13 @@ local function onPlayerLogin(self)
   Bagwise.Commands.Init()
   Bagwise.Overlay.Init() -- <-- Registers the Baganator corner widget
 
-  print("|cff54de7d[Bagwise]|r v" .. Bagwise.Commands.Version()
-    .. " loaded. Type /bagwise help for commands.")
+  print("|cff54de7d[Make Space]|r v" .. Bagwise.Commands.Version()
+    .. " loaded. Type /makespace help for commands.")
 
   local okNow, now = pcall(time)
   local notice = okNow and Bagwise.Curves.SnapshotNotice(
     Bagwise.Curves.SnapshotAgeDays(Bagwise.Data and Bagwise.Data.AuctionPricesDate, now))
-  if notice then print("|cff54de7d[Bagwise]|r " .. notice) end
+  if notice then print("|cff54de7d[Make Space]|r " .. notice) end
 end
 
 local EVENT_HANDLERS = {

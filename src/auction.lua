@@ -84,7 +84,7 @@ local LIVE_LOWBALL_FRACTION = 0.5
 local LIVE_UNBACKED_MAX_AGE_DAYS = 1
 
 --- The live price to use for this item, or nil.
--- @return number|nil price, string|nil why it was not used (for /bagwise why)
+-- @return number|nil price, string|nil why it was not used (for /makespace why)
 local function liveCeiling(item)
   local live = item.livePrice
   if type(live) ~= "number" or live <= 0 then return nil end
@@ -193,7 +193,7 @@ end
 -- has no price for an item, nobody lists it often enough to matter, so the green
 -- stands. A version the data does not know (it may be the pricey one) is
 -- silenced, as in the sell rule.
--- @return string|nil the reason it is blocked, for /bagwise why
+-- @return string|nil the reason it is blocked, for /makespace why
 -- @return string|nil a short "Vendor 5c, auction about 8s" for the tooltip, only
 --   when the block is about the price (not an unknown version or market)
 local function blocker(item, state)

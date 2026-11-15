@@ -26,7 +26,7 @@ const WOW = new Set(("Baganator Bagnon C_AddOns C_Bank C_Container C_Item C_Ques
   "UISpecialFrames UnitClass UnitFactionGroup UnitHealthMax UnitLevel UnitName UnitRace hooksecurefunc time tinsert").split(" "));
 
 // The only globals the addon may create.
-const OURS = new Set(["Bagwise", "BagwiseDB", "SLASH_BAGWISE1"]);
+const OURS = new Set(["Bagwise", "BagwiseDB", "SLASH_BAGWISE1", "SLASH_BAGWISE2", "SLASH_BAGWISE3"]);
 
 const root = path.resolve(__dirname, "..");
 const files = fs.readdirSync(path.join(root, "src")).filter(f => f.endsWith(".lua"))

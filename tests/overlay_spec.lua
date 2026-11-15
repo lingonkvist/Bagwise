@@ -302,7 +302,7 @@ describe("Blizzard tabbed bank (Forever)", function()
     teardown()
   end)
 
-  it("reports what it sees of the bank for /bagwise bank", function()
+  it("reports what it sees of the bank for /makespace bank", function()
     local button = makeBankButton(6, 2)
     installBankPanel({ button })
     installScanner({ ["6:2"] = { verdict = "yellow" } })

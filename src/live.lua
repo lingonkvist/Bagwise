@@ -196,7 +196,7 @@ function Bagwise.Live.ReadPrice(item, api, auctionator)
   return price, age, Bagwise.Live.IsSteady(item, auctionator)
 end
 
---- What Auctionator reports for an item, unfiltered, for /bagwise why.
+--- What Auctionator reports for an item, unfiltered, for /makespace why.
 -- @return string one line
 function Bagwise.Live.Describe(item, api)
   api = api or Bagwise.Live.Api()
@@ -221,7 +221,7 @@ function Bagwise.Live.Describe(item, api)
       .. Bagwise.Live.HistoryText(item)
 end
 
---- The recorded days as text for /bagwise why: "day 2505: 3s-5s, day 2504: ...".
+--- The recorded days as text for /makespace why: "day 2505: 3s-5s, day 2504: ...".
 function Bagwise.Live.HistoryText(item, auctionator)
   local days = Bagwise.Live.History(item, auctionator)
   if not days then return "" end

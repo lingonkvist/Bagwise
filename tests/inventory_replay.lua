@@ -1,4 +1,4 @@
--- Replays a /bagwise dump through the verdict rules, so a real inventory can
+-- Replays a /makespace dump through the verdict rules, so a real inventory can
 -- be used as a test fixture or as a "what if I were level 40" scenario.
 -- Pure: reads a dump file, never touches the game.
 

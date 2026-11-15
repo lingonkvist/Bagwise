@@ -246,7 +246,7 @@ end
 local function paintFrame(frame)
   if not (frame and frame:IsVisible()) then return end
   if frame.EnumerateValidItems or bankPanelFrames[frame] then
-    -- A bank painting error must not stop the other bags; /bagwise bank shows it.
+    -- A bank painting error must not stop the other bags; /makespace bank shows it.
     local ok, err = pcall(paintEnumerated, frame)
     Bagwise.Overlay.lastBankError = (not ok) and tostring(err) or nil
   else
@@ -403,7 +403,7 @@ local function initBaganator()
   )
 
   if not ok then
-    print("|cff54de7d[Bagwise]|r Baganator corner widget registration failed: " .. tostring(err))
+    print("|cff54de7d[Make Space]|r Baganator corner widget registration failed: " .. tostring(err))
   end
 
   return ok
@@ -595,7 +595,7 @@ function Bagwise.Overlay.BagWindows()
   return windows
 end
 
---- What Bagwise sees of the Blizzard bank, for /bagwise bank.
+--- What Make Space sees of the Blizzard bank, for /makespace bank.
 -- @return table  list of lines
 local function bankDiagnosticLines()
   local lines = {}
@@ -654,7 +654,7 @@ function Bagwise.Overlay.BankDiagnostics()
   return { "Diagnostics failed: " .. tostring(lines) }
 end
 
---- Which bag UIs Bagwise can currently paint (for /bagwise status).
+--- Which bag UIs Bagwise can currently paint (for /makespace status).
 -- @return table  list of names
 function Bagwise.Overlay.DetectedBagAddons()
   local found = {}
