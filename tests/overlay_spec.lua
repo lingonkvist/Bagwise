@@ -1,7 +1,7 @@
--- Bagwise: overlay tests (EllesmereUI Bags adapter and recycled buttons)
--- Run with: python3 -I tests/run_tests.py (from the Bagwise/ root)
+-- MakeSpace: overlay tests (EllesmereUI Bags adapter and recycled buttons)
+-- Run with: python3 -I tests/run_tests.py (from the MakeSpace/ root)
 
-_G.Bagwise = nil
+_G.MakeSpace = nil
 dofile("src/bags.lua")
 dofile("src/overlay.lua")
 
@@ -59,7 +59,7 @@ end
 
 -- results is keyed "bag:slot"
 local function installScanner(results)
-  Bagwise.Scanner = {
+  MakeSpace.Scanner = {
     GetResult = function(bag, slot) return results[bag .. ":" .. slot] end,
   }
 end
@@ -74,7 +74,7 @@ describe("Ellesmere Bags adapter", function()
       ["2:5"] = { verdict = "yellow" },
     })
 
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
 
     assert.are.equal(1, #first.dots)
     assert.is_truthy(first.dots[1].shown)
@@ -90,7 +90,7 @@ describe("Ellesmere Bags adapter", function()
     installEllesmere({ button })
     installScanner({ ["0:3"] = { verdict = "yellow", glow = true } })
 
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     -- dot 1 is the verdict dot; the rest are the glow layers (rings, wash, frame)
     assert.is_truthy(#button.dots >= 8)
     for i = 2, #button.dots do
@@ -99,7 +99,7 @@ describe("Ellesmere Bags adapter", function()
     end
 
     installScanner({ ["0:3"] = { verdict = "yellow" } })
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     for i = 2, #button.dots do
       assert.are.equal(false, button.dots[i].shown)
       assert.are.equal(false, button.dots[i].group.playing)
@@ -111,13 +111,13 @@ describe("Ellesmere Bags adapter", function()
     local button = makeButton(0, 3)
     installEllesmere({ button })
     installScanner({ ["0:3"] = { verdict = "green", glow = true } })
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     assert.is_truthy(button.dots[2].shown)
 
     -- The junk is deleted: the slot has no result, and the addon does not paint it.
     installEllesmere({})
     installScanner({})
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     for i = 2, #button.dots do
       assert.are.equal(false, button.dots[i].shown)
       assert.are.equal(false, button.dots[i].group.playing)
@@ -130,7 +130,7 @@ describe("Ellesmere Bags adapter", function()
     installEllesmere({ button })
     installScanner({ ["0:3"] = { verdict = "green", quiet = true } })
 
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     assert.are.equal(false, button.dots[1].shown)
     _G.EllesmereUI = nil
   end)
@@ -139,11 +139,11 @@ describe("Ellesmere Bags adapter", function()
     local button = makeButton(1, 7)
     installEllesmere({ button })
     installScanner({ ["1:7"] = { verdict = "green" } })
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     assert.is_truthy(button.dots[1].shown)
 
     installScanner({})
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
 
     assert.are.equal(1, #button.dots)
     assert.is_truthy(not button.dots[1].shown)
@@ -160,7 +160,7 @@ describe("Ellesmere Bags adapter", function()
       ["99:1"] = { verdict = "green" },
     })
 
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
 
     assert.are.equal(0, #hidden.dots)
     assert.are.equal(0, #bankBag.dots)
@@ -171,14 +171,14 @@ describe("Ellesmere Bags adapter", function()
   it("does nothing, and does not error, when EllesmereUI is not installed", function()
     _G.EllesmereUI = nil
     installScanner({})
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     assert.is_nil(_G.EllesmereUI)
   end)
 
   it("does nothing when the pool is missing (a renamed internal)", function()
     _G.EllesmereUI = { _ModuleNS = { EllesmereUIBags = { _bagsInternals = {} } } }
     installScanner({})
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     _G.EllesmereUI = nil
   end)
 end)
@@ -191,7 +191,7 @@ describe("Bank bags", function()
     installEllesmere({ bank, empty })
     installScanner({ ["6:2"] = { verdict = "yellow" } })
 
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     _G.EllesmereUI = nil
 
     assert.are.equal(1, #bank.dots)
@@ -203,9 +203,9 @@ end)
 
 describe("Blizzard tabbed bank (Forever)", function()
   -- A bank button knows its own tab and slot; its parent frame carries no bag ID.
-  local realIsScanned = Bagwise.Bags.IsScanned
+  local realIsScanned = MakeSpace.Bags.IsScanned
   local function teardown()
-    Bagwise.Bags.IsScanned = realIsScanned
+    MakeSpace.Bags.IsScanned = realIsScanned
     _G.BankFrame, _G.hooksecurefunc = nil, nil
   end
   local function makeBankButton(tabID, slotID)
@@ -243,8 +243,8 @@ describe("Blizzard tabbed bank (Forever)", function()
     local first = makeBankButton(6, 4)
     installBankPanel({ first })
     installScanner({ ["6:4"] = { verdict = "yellow" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
     assert.are.equal(1, #first.dots)
     assert.is_truthy(first.dots[1].shown)
     teardown()
@@ -254,11 +254,11 @@ describe("Blizzard tabbed bank (Forever)", function()
     local first = makeBankButton(6, 4)
     installBankPanel({ first }, true)
     installScanner({ ["6:4"] = { verdict = "green" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
     assert.are.equal(1, #first.dots)
     assert.is_truthy(first.dots[1].shown)
-    for _, line in ipairs(Bagwise.Overlay.BankDiagnostics()) do
+    for _, line in ipairs(MakeSpace.Overlay.BankDiagnostics()) do
       assert.is_truthy(not line:find("failed"))
     end
     teardown()
@@ -268,8 +268,8 @@ describe("Blizzard tabbed bank (Forever)", function()
     local button = makeBankButton(7, 2)
     local panel = installBankPanel({ button })
     installScanner({ ["7:2"] = { verdict = "green" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
     button.dots[1].shown = false
     panel:GenerateItemSlotsForSelectedTab()
     assert.is_truthy(button.dots[1].shown)
@@ -281,8 +281,8 @@ describe("Blizzard tabbed bank (Forever)", function()
     local panel = installBankPanel({ button })
     _G.BankFrame = { GetChildren = function() return panel end }
     installScanner({ ["6:1"] = { verdict = "green" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
     assert.are.equal(1, #button.dots)
     teardown()
   end)
@@ -294,8 +294,8 @@ describe("Blizzard tabbed bank (Forever)", function()
                     GetChildren = function() return other, button end }
     _G.BankPanel = panel
     installScanner({ ["6:5"] = { verdict = "green" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
     _G.BankPanel = nil
     assert.are.equal(1, #button.dots)
     assert.are.equal(0, #other.dots)
@@ -306,8 +306,8 @@ describe("Blizzard tabbed bank (Forever)", function()
     local button = makeBankButton(6, 2)
     installBankPanel({ button })
     installScanner({ ["6:2"] = { verdict = "yellow" } })
-    Bagwise.Bags.IsScanned = function() return true end
-    local text = table.concat(Bagwise.Overlay.BankDiagnostics(), "\n")
+    MakeSpace.Bags.IsScanned = function() return true end
+    local text = table.concat(MakeSpace.Overlay.BankDiagnostics(), "\n")
     assert.is_truthy(text:find("Bank panels with item buttons: 1", 1, true))
     assert.is_truthy(text:find("tab 6 slot 2 scanned verdict yellow", 1, true))
     teardown()
@@ -315,7 +315,7 @@ describe("Blizzard tabbed bank (Forever)", function()
 
   it("lists the bank among the painted bag UIs", function()
     installBankPanel({})
-    local found = table.concat(Bagwise.Overlay.DetectedBagAddons(), ",")
+    local found = table.concat(MakeSpace.Overlay.DetectedBagAddons(), ",")
     assert.is_truthy(found:find("Blizzard bank", 1, true))
     teardown()
   end)
@@ -359,7 +359,7 @@ describe("Bagnon adapter", function()
   it("paints a live bag slot when Bagnon refreshes it", function()
     installBagnon()
     installScanner({ ["0:3"] = { verdict = "green" } })
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
     local button = makeBagnonButton(0, 3, { cached = false })
 
     refresh(button)
@@ -373,7 +373,7 @@ describe("Bagnon adapter", function()
   it("never paints another character's cached slot, even with a matching bag and slot", function()
     installBagnon()
     installScanner({ ["0:3"] = { verdict = "green" } })
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
     local cached = makeBagnonButton(0, 3, { cached = true })
 
     refresh(cached)
@@ -385,7 +385,7 @@ describe("Bagnon adapter", function()
   it("clears a dot left on a button that now shows cached items", function()
     installBagnon()
     installScanner({ ["0:3"] = { verdict = "green" } })
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
     local button = makeBagnonButton(0, 3, { cached = false })
     refresh(button)
     assert.is_truthy(button.dots[1].shown)
@@ -400,7 +400,7 @@ describe("Bagnon adapter", function()
   it("ignores guild bank and void storage buttons", function()
     installBagnon()
     installScanner({ ["1:1"] = { verdict = "green" } })
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
     local guild = makeBagnonButton(1, 1, { container = false })
 
     refresh(guild)
@@ -412,13 +412,13 @@ describe("Bagnon adapter", function()
   it("repaints remembered buttons when a scan finishes after Bagnon drew them", function()
     installBagnon()
     installScanner({})
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
     local button = makeBagnonButton(0, 3, { cached = false })
     refresh(button)
     assert.are.equal(0, #button.dots)
 
     installScanner({ ["0:3"] = { verdict = "yellow" } })
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
 
     assert.is_truthy(button.dots[1].shown)
     assert.is_truthy(button.dots[1].texture:find("dot_yellow$"))
@@ -431,8 +431,8 @@ describe("Bagnon adapter", function()
       return { RegisterEvent = function() end, SetScript = function() end }
     end
     installScanner({})
-    Bagwise.Overlay.Init()
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.Init()
+    MakeSpace.Overlay.UpdateAll()
     _G.CreateFrame = nil
   end)
 end)
@@ -447,7 +447,7 @@ describe("Baganator adapter", function()
     _G.C_Container = { GetContainerItemID = function(bag, slot) return bag == 0 and slot == 3 and 111 or nil end }
     _G.C_Item = { GetItemInfoInstant = function(link) return tonumber(link:match("item:(%d+)")) end }
     installScanner({ ["0:3"] = { verdict = "green" } })
-    Bagwise.Overlay.Init()
+    MakeSpace.Overlay.Init()
   end
 
   local function paint(details)
@@ -551,7 +551,7 @@ describe("Loot banner", function()
     sharedBanner = sharedBanner or fakeFrame()
     _G.UIParent = {}
     _G.CreateFrame = function() return sharedBanner end
-    Bagwise.Scanner = { MakeRoomSummary = function() return summary end }
+    MakeSpace.Scanner = { MakeRoomSummary = function() return summary end }
     return function() return sharedBanner end
   end
 
@@ -561,7 +561,7 @@ describe("Loot banner", function()
 
   it("shows what to do while bags are full", function()
     local frame = install({ active = true, deletes = 1, leaving = 0 })
-    Bagwise.Overlay.UpdateBanner()
+    MakeSpace.Overlay.UpdateBanner()
     assert.is_truthy(frame().shown)
     assert.is_truthy(frame().text.value:find("delete the glowing item", 1, true))
     tearDown()
@@ -569,9 +569,9 @@ describe("Loot banner", function()
 
   it("hides again once the plan is over", function()
     local frame = install({ active = true, deletes = 1, leaving = 0 })
-    Bagwise.Overlay.UpdateBanner()
-    Bagwise.Scanner = { MakeRoomSummary = function() return { active = false, deletes = 0 } end }
-    Bagwise.Overlay.UpdateBanner()
+    MakeSpace.Overlay.UpdateBanner()
+    MakeSpace.Scanner = { MakeRoomSummary = function() return { active = false, deletes = 0 } end }
+    MakeSpace.Overlay.UpdateBanner()
     assert.is_truthy(not frame().shown)
     tearDown()
   end)
@@ -580,7 +580,7 @@ describe("Loot banner", function()
     local frame = install({ active = true, deletes = 1, leaving = 0 })
     _G.LootFrame = { IsShown = function() return true end }
     frame().points = {}
-    Bagwise.Overlay.UpdateBanner()
+    MakeSpace.Overlay.UpdateBanner()
     assert.are.equal("BOTTOM", frame().points[1][1])
     tearDown()
   end)

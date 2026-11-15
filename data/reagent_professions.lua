@@ -1,4 +1,4 @@
--- Bagwise: reagent-to-profession mapping with recipe stats
+-- MakeSpace: reagent-to-profession mapping with recipe stats
 -- For each reagent item: which professions use it, how many
 -- recipes, the skill range they are learnable at, and the skill
 -- where the last of them turns green (0 when unknown).
@@ -6,11 +6,11 @@
 --
 -- 588 reagent items across 9 professions.
 
-Bagwise                         = Bagwise or {}
-Bagwise.Data                    = Bagwise.Data or {}
+MakeSpace                         = MakeSpace or {}
+MakeSpace.Data                    = MakeSpace.Data or {}
 
 -- Format: [itemID] = { { profession, recipe_count, min_level, max_level, green_level }, ... }
-Bagwise.Data.ReagentProfessions = {
+MakeSpace.Data.ReagentProfessions = {
   -- Alchemy
   [765] = { { "Alchemy", 7, 10, 90, 100 } },  -- Silverleaf
   [2449] = { { "Alchemy", 9, 20, 175, 195 } },  -- Earthroot

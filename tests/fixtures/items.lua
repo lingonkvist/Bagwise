@@ -1,4 +1,4 @@
--- Bagwise: test item fixtures
+-- MakeSpace: test item fixtures
 -- Fake item data for unit tests. No WoW API needed.
 
 return {

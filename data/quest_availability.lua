@@ -3,16 +3,16 @@
 --
 -- QuestRequiredLevels: quest ID -> the level you must be to accept the quest.
 -- Not the quest's own level (QuestInfo): a level 60 quest can be taken at 30.
--- A quest with no entry is unknown or open from a low level, and Bagwise
+-- A quest with no entry is unknown or open from a low level, and MakeSpace
 -- never calls it far above you.
 --
 -- QuestEvents: quest ID -> the event that offers the quest, which can only be
 -- done while that event runs.
 
-Bagwise = Bagwise or {}
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.QuestRequiredLevels = {
+MakeSpace.Data.QuestRequiredLevels = {
   [2] = 20,
   [10] = 39,
   [17] = 38,
@@ -2794,7 +2794,7 @@ Bagwise.Data.QuestRequiredLevels = {
   [99200] = 50,
 }
 
-Bagwise.Data.QuestEvents = {
+MakeSpace.Data.QuestEvents = {
   [1657] = "seasonal event",
   [6962] = "seasonal event",
   [6983] = "seasonal event",

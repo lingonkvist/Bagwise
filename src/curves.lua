@@ -1,10 +1,10 @@
--- Bagwise: how much more than a vendor the auction house may pay before a
+-- MakeSpace: how much more than a vendor the auction house may pay before a
 -- "just vendor it" verdict is withheld.
 --
 -- Two curves, because the two kinds of price are not equally trustworthy:
 --   live      Auctionator's price from the player's own realm, read in the last
 --             days. It is what the item costs now, so it is taken as it is.
---   snapshot  The price file shipped with Bagwise: the cheap end of a market
+--   snapshot  The price file shipped with MakeSpace: the cheap end of a market
 --             (a region and faction) on the day it was read. Another realm and
 --             another week can differ, so the price is read as possibly higher
 --             than it says before it is compared.
@@ -16,13 +16,13 @@
 -- listing costs more than it earns, small for dear ones) plus a flat amount for
 -- the trip itself. Both parts grow with the vendor price, so the limit never
 -- falls as the vendor price rises.
--- Three kinds of auction are treated on their own terms (Bagwise.Curves.Config):
+-- Three kinds of auction are treated on their own terms (MakeSpace.Curves.Config):
 --   stackable  Sold by the stack, priced per unit, a tight market of undercutters.
 --   gear       Weapons and armor sold one at a time: random versions, slow sales.
 --   other      Everything else sold one at a time (bags, recipes, quest items):
 --              thin markets, so the price is the least certain.
-Bagwise = Bagwise or {}
-Bagwise.Curves = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Curves = {}
 
 local NET_OF_CUT = 0.95 -- what a seller keeps at a faction auction house
 
@@ -54,13 +54,13 @@ local CONFIG = {
   gear      = row{ uncertainty = 1.10, outlierFactor = 3, saleFraction = 0.8 },
   other     = row{ uncertainty = 1.12, outlierFactor = 3, saleFraction = 0.75 },
 }
-Bagwise.Curves.Config = CONFIG
+MakeSpace.Curves.Config = CONFIG
 
 local GEAR_CLASSES = { [2] = true, [4] = true }
 
 --- Which kind of auction an item is: "stackable", "gear" or "other". The one place
 -- that decides it, so every price check treats an item the same way.
-function Bagwise.Curves.TypeOf(item)
+function MakeSpace.Curves.TypeOf(item)
   if (item.maxStack or 1) > 1 then return "stackable" end
   if GEAR_CLASSES[item.classID] then return "gear" end
   return "other"
@@ -69,7 +69,7 @@ end
 local function configFor(kind) return CONFIG[kind] or CONFIG.other end
 
 --- How far above the typical price a listing may be before it is left out.
-function Bagwise.Curves.OutlierFactor(kind)
+function MakeSpace.Curves.OutlierFactor(kind)
   return configFor(kind).outlierFactor
 end
 
@@ -85,16 +85,16 @@ local MAX_AGE_UNCERTAINTY = 0.15
 
 -- Days after which the shipped auction prices are no longer a basis for a green:
 -- an unreviewed snapshot that old is a guess about a market that has moved.
-Bagwise.Curves.STALE_SNAPSHOT_DAYS = 14
+MakeSpace.Curves.STALE_SNAPSHOT_DAYS = 14
 -- Days after which the player is reminded, at login and in /makespace status, to
 -- update the addon before the cutoff.
-Bagwise.Curves.REMIND_SNAPSHOT_DAYS = 7
+MakeSpace.Curves.REMIND_SNAPSHOT_DAYS = 7
 
 --- How old the shipped auction prices are, in whole days (never negative).
 -- @param dateString string  "YYYY-MM-DD", as written into the price data
 -- @param nowSeconds number  the current time in seconds
 -- @return number|nil nil when the date is missing or not in that shape
-function Bagwise.Curves.SnapshotAgeDays(dateString, nowSeconds)
+function MakeSpace.Curves.SnapshotAgeDays(dateString, nowSeconds)
   local year, month, day = tostring(dateString or ""):match("^(%d+)-(%d+)-(%d+)$")
   local toTime = _G.time or os.time
   if not (year and type(nowSeconds) == "number") then return nil end
@@ -107,7 +107,7 @@ end
 --- The margin over the vendor price the auction must clear, per item, in copper.
 -- @param vendor number  vendor sell price of one item
 -- @param kind string  "stackable", "gear" or "other"
-function Bagwise.Curves.Margin(vendor, kind)
+function MakeSpace.Curves.Margin(vendor, kind)
   local c = configFor(kind)
   local share = c.shareDear + (c.shareCheap - c.shareDear) / (1 + vendor / c.shareKnee)
   return vendor * share + c.flatMargin / c.unitsPerListing
@@ -115,7 +115,7 @@ end
 
 --- How far the price may be off, as a factor the price is multiplied with.
 -- 1 for a live price.
-function Bagwise.Curves.Uncertainty(source, kind, snapshotAgeDays)
+function MakeSpace.Curves.Uncertainty(source, kind, snapshotAgeDays)
   if source == "live" then return 1 end
   local factor = PADDED_SOURCES[source] and 1 or configFor(kind).uncertainty
   local over = (snapshotAgeDays or 0) - FREE_AGE_DAYS
@@ -132,16 +132,16 @@ end
 -- @param source string  "live", or a snapshot source ("item", "version", "versions")
 -- @param kind string  "stackable", "gear" or "other"
 -- @param snapshotAgeDays number|nil  days since the snapshot was read
-function Bagwise.Curves.Limit(vendor, source, kind, snapshotAgeDays)
-  local needed = vendor + Bagwise.Curves.Margin(vendor, kind)
-  return needed / (NET_OF_CUT * Bagwise.Curves.Uncertainty(source, kind, snapshotAgeDays))
+function MakeSpace.Curves.Limit(vendor, source, kind, snapshotAgeDays)
+  local needed = vendor + MakeSpace.Curves.Margin(vendor, kind)
+  return needed / (NET_OF_CUT * MakeSpace.Curves.Uncertainty(source, kind, snapshotAgeDays))
 end
 
 --- What one item is expected to fetch at auction after the cut, for weighing
 -- loot against junk. Careful: a price that may be too high is scaled down.
 -- A version's price is the pricey end, so about 0.6 of it is the cheap end.
 local VERSION_SALE_FRACTION = 0.6
-function Bagwise.Curves.SaleValue(price, source, kind)
+function MakeSpace.Curves.SaleValue(price, source, kind)
   if source == "live" then return price * NET_OF_CUT end
   if PADDED_SOURCES[source] then return price * VERSION_SALE_FRACTION end
   return price * NET_OF_CUT * configFor(kind).saleFraction
@@ -150,9 +150,9 @@ end
 --- The login reminder about old price data, or nil when there is nothing to say.
 -- @param ageDays number|nil  from SnapshotAgeDays
 -- @return string|nil
-function Bagwise.Curves.SnapshotNotice(ageDays)
-  if type(ageDays) ~= "number" or ageDays <= Bagwise.Curves.REMIND_SNAPSHOT_DAYS then return nil end
-  local cutoff = Bagwise.Curves.STALE_SNAPSHOT_DAYS
+function MakeSpace.Curves.SnapshotNotice(ageDays)
+  if type(ageDays) ~= "number" or ageDays <= MakeSpace.Curves.REMIND_SNAPSHOT_DAYS then return nil end
+  local cutoff = MakeSpace.Curves.STALE_SNAPSHOT_DAYS
   if ageDays > cutoff then
     return "The auction price data is " .. ageDays .. " days old and is no longer used for"
         .. " recommendations. Update Make Space for up-to-date prices."

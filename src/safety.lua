@@ -1,4 +1,4 @@
--- Bagwise: safety
+-- MakeSpace: safety
 -- One place that knows which items must never be called safe to delete.
 --
 -- The rules in verdict.lua only ever *propose* a green. Before a green is
@@ -12,8 +12,8 @@
 --
 -- Pure: reads item fields and the data tables, never the game.
 
-Bagwise = Bagwise or {}
-Bagwise.Safety = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Safety = {}
 
 -- Items that matter whatever else is true about them: the hearthstone and
 -- the tools a profession needs to work at all.
@@ -48,7 +48,7 @@ local REAGENT_CLASS_ID = 5
 local QUEST_CLASS_ID = 12
 
 local function data()
-  return Bagwise.Data or {}
+  return MakeSpace.Data or {}
 end
 
 -- Each protection: a name (used by rules to say which they may override, and
@@ -98,7 +98,7 @@ local PROTECTIONS = {
 
 --- Every protection that applies to this item, in a fixed order.
 -- @return table list of protection names (empty when none)
-function Bagwise.Safety.Protections(item)
+function MakeSpace.Safety.Protections(item)
   local found = {}
   for i = 1, #PROTECTIONS do
     if PROTECTIONS[i].test(item) then found[#found + 1] = PROTECTIONS[i].name end
@@ -107,7 +107,7 @@ function Bagwise.Safety.Protections(item)
 end
 
 --- Is this item protected at all?
-function Bagwise.Safety.IsProtected(item)
+function MakeSpace.Safety.IsProtected(item)
   for i = 1, #PROTECTIONS do
     if PROTECTIONS[i].test(item) then return true end
   end
@@ -117,7 +117,7 @@ end
 --- The first protection a rule is not allowed to override, or nil.
 -- @param item table
 -- @param overrides table|nil set of protection names the rule may override
-function Bagwise.Safety.Blocker(item, overrides)
+function MakeSpace.Safety.Blocker(item, overrides)
   for i = 1, #PROTECTIONS do
     local protection = PROTECTIONS[i]
     if protection.test(item) and not (overrides and overrides[protection.name]) then
@@ -128,7 +128,7 @@ function Bagwise.Safety.Blocker(item, overrides)
 end
 
 --- All protection names, for tests and documentation.
-function Bagwise.Safety.Names()
+function MakeSpace.Safety.Names()
   local names = {}
   for i = 1, #PROTECTIONS do names[i] = PROTECTIONS[i].name end
   return names

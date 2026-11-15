@@ -3,7 +3,7 @@
 Build data/mana_consumables.lua from wago.tools DB2 tables.
 
 It lists consumables that restore mana and nothing else, so Rejuvenation-style
-items that also heal are left out. Bagwise uses it to hint that classes without
+items that also heal are left out. MakeSpace uses it to hint that classes without
 mana can sell mana potions. Re-run it when a new Forever build ships.
 
 Usage:
@@ -181,15 +181,15 @@ def build_mana_only(item_effects, spell_effects, item_classes):
 
 def generate_mana_lua(mana_only, item_names, build):
     out = [
-        "-- Bagwise: consumables that restore mana and nothing else",
+        "-- MakeSpace: consumables that restore mana and nothing else",
         "-- Rejuvenation-style items that also heal are left out on purpose.",
         f"-- Generated from wago.tools DB2 build {build}. Do not edit by hand.",
         f"-- {len(mana_only)} items.",
         "",
-        "Bagwise      = Bagwise or {}",
-        "Bagwise.Data = Bagwise.Data or {}",
+        "MakeSpace      = MakeSpace or {}",
+        "MakeSpace.Data = MakeSpace.Data or {}",
         "",
-        "Bagwise.Data.ManaOnlyConsumables = {",
+        "MakeSpace.Data.ManaOnlyConsumables = {",
     ]
     for item_id in sorted(mana_only):
         out.append("  [%d] = true, -- %s" % (item_id, item_names.get(item_id, "?")))

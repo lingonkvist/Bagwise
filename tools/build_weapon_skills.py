@@ -94,21 +94,21 @@ def lua_class_set(names):
 
 def generate_lua(weapons, ammo, build):
     out = [
-        "-- Bagwise: which classes can ever use each weapon type, and ammo.",
+        "-- MakeSpace: which classes can ever use each weapon type, and ammo.",
         "-- A class missing from a list can never learn that skill, so gear of that",
         "-- type is of no use to it. Read from SkillRaceClassInfo, not typed in.",
         f"-- Generated from wago.tools DB2 build {build}. Do not edit by hand.",
         "",
-        "Bagwise                      = Bagwise or {}",
-        "Bagwise.Data                 = Bagwise.Data or {}",
+        "MakeSpace                      = MakeSpace or {}",
+        "MakeSpace.Data                 = MakeSpace.Data or {}",
         "",
         "-- Format: [item subclass of a weapon] = { CLASS = true, ... }",
-        "Bagwise.Data.WeaponClasses = {",
+        "MakeSpace.Data.WeaponClasses = {",
     ]
     for subclass in sorted(weapons):
         out.append(f"  [{subclass}] = {lua_class_set(weapons[subclass])},")
     out += ["}", "", "-- Format: [item subclass of ammo, 2 arrows 3 bullets] = { CLASS = true, ... }",
-            "Bagwise.Data.AmmoClasses = {"]
+            "MakeSpace.Data.AmmoClasses = {"]
     for subclass in sorted(ammo):
         out.append(f"  [{subclass}] = {lua_class_set(ammo[subclass])},")
     out += ["}", ""]
@@ -136,7 +136,7 @@ def selftest():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Generate Bagwise weapon_skills.lua from wago.tools")
+    ap = argparse.ArgumentParser(description="Generate MakeSpace weapon_skills.lua from wago.tools")
     ap.add_argument("--build", help="Exact build, e.g. 1.60.1.70938. Omit to find the latest Forever build.")
     ap.add_argument("--expansion", default="forever")
     ap.add_argument("--output", default=DEFAULT_OUTPUT)

@@ -43,7 +43,7 @@ Yellow:
 - Unused trade goods that sell for a fair price.
 - A gray that is worth some silver (the cheapest one only).
 - Things you open: clams and bags of loot, and lockboxes for a rogue who has learned Pick Lock. Nobody else gets the hint on a lockbox, since they cannot open it. The list of locked items is `data/locked_items.lua` (`tools/build_locked_items.py`).
-- Recipes for a profession you do not have (unbound ones only). "Try the auction house" shows only while the price does not say otherwise, with the prices shown when it pays.
+- Recipes for a profession you do not have (unbound ones only). The vendor and auction prices show when the auction pays more.
 - "Bank it" for recipes and reagents far above your skill. A recipe is far above you when it needs more than 25 skill points. A reagent needs more than 50, or more than 25 once you have stopped leveling that profession for 6 hours. A profession counts as idle after 12 hours without a skill gain (and a new play session), and then any recipe out of reach is banked.
 - "Bank it" for a reagent when your skill is past one of its uses and the next one is far ahead, since every use is judged on its own (Linen Cloth with First Aid done and Blacksmithing 200 far off).
 - A reagent stack worth under the same 50c bar gets no bank hint, since banking it is only clutter. It needs a known price.
@@ -116,7 +116,7 @@ Loot that joins a stack you already carry does not count as needing a slot. Quiv
 
 ## Commands
 
-`/makespace`, `/ms` and `/bagwise` do the same thing. The examples below use `/makespace`.
+`/makespace` and `/bagwise` do the same thing. The examples below use `/makespace`.
 
 Everyday:
 - `/makespace keep [item]`: never show a dot on this item.
@@ -159,7 +159,7 @@ Troubleshooting:
 - `src/overlay.lua` paints dots and glows. `src/tooltip.lua` adds hover text.
 - `src/makeroom.lua` plans which junk to delete for loot. It is pure.
 - `tools/` regenerates the textures. Run `make_dot_textures.py` for the dots and glow and `make_icon.py` for the icon.
-- Release: bump `## Version` in `Bagwise.toc`, tag, and let the packager build it.
+- Release: bump `## Version` in `MakeSpace.toc`, tag, and let the packager build it.
 
 ## License
 

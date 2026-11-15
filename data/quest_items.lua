@@ -11,10 +11,10 @@
 --
 -- 3946 items across 3861 quests.
 
-Bagwise = Bagwise or {}
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.QuestItems = {
+MakeSpace.Data.QuestItems = {
 
     [159] = { 16, 99050 },
     [182] = { 6 },
@@ -3964,7 +3964,7 @@ Bagwise.Data.QuestItems = {
     [287959] = { 98824 },
 }
 
-Bagwise.Data.QuestInfo = {
+MakeSpace.Data.QuestInfo = {
     [2] = { 30, "Ashenvale", "Sharptalon's Claw", "H" },
     [6] = { 5, "Northshire Valley", "Bounty on Garrick Padfoot", "A" },
     [8] = { 5, "Deathknell", "A Rogue's Deal", "H" },
@@ -7828,7 +7828,7 @@ Bagwise.Data.QuestInfo = {
     [99411] = { 7, "Mulgore", "Kyle's Gone Missing!", "H" },
 }
 
-Bagwise.Data.RepeatableQuests = {
+MakeSpace.Data.RepeatableQuests = {
     [16] = true,
     [117] = true,
     [308] = true,

@@ -3,11 +3,11 @@ std = "lua51"
 max_line_length = false
 unused_args = false
 exclude_files = { "data/*", "tests/*" }
-globals = { "Bagwise", "BagwiseDB", "SLASH_BAGWISE1", "SLASH_BAGWISE2", "SLASH_BAGWISE3", "SlashCmdList" }
+globals = { "MakeSpace", "MakeSpaceDB", "BagwiseDB", "SLASH_MAKESPACE1", "SLASH_MAKESPACE2", "SlashCmdList" }
 read_globals = {
   "Baganator", "Bagnon", "C_AddOns", "C_Bank", "C_Container", "C_Item", "C_QuestLog", "C_SkillInfo", "C_Spell", "C_Timer",
   "BankFrame", "ChatFontNormal", "CloseAllBags", "ContainerFrame1", "ContainerFrameCombinedBags", "CreateFrame",
-  "EUI_Bags", "EllesmereUI", "Enum", "GameTooltip", "GetAddOnMetadata", "GetBagName", "GetBuildInfo",
+  "EUI_Bags", "EllesmereUI", "Enum", "GameTooltip", "GetAddOnMetadata", "IsAddOnLoaded", "GetBagName", "GetBuildInfo",
   "GetInventoryItemLink", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink",
   "GetNumLootItems", "GetNumSkillLines", "GetProfessionInfo", "GetProfessions", "GetRealmName",
   "GetServerTime", "GetSpellInfo", "GetTime", "GetSkillLineInfo", "IsAnyBagOpen", "ITEM_OPENABLE", "ITEM_QUALITY_COLORS",

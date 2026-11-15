@@ -1,15 +1,15 @@
--- Bagwise: reagent uses through what a reagent is made into.
+-- MakeSpace: reagent uses through what a reagent is made into.
 -- Copper Bar is smelted into Bronze Bar, which smithing uses far above
 -- what copper recipes do. Used so a material is never called outleveled
 -- while something made from it is still in demand. green_level is the
 -- skill where the last of those recipes turns green.
 -- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
 
-Bagwise                      = Bagwise or {}
-Bagwise.Data                 = Bagwise.Data or {}
+MakeSpace                      = MakeSpace or {}
+MakeSpace.Data                 = MakeSpace.Data or {}
 
 -- Format: [itemID] = { { profession, min_level, max_level, green_level }, ... }
-Bagwise.Data.ReagentChains = {
+MakeSpace.Data.ReagentChains = {
   [118] = {  },
   [159] = {  },
   [723] = {  },

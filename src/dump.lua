@@ -1,10 +1,10 @@
--- Bagwise: inventory dump
+-- MakeSpace: inventory dump
 -- Turns a scanner snapshot into plain text a person can copy out of the
 -- game and paste somewhere else (for testing rules against real inventories).
 -- Format() is pure; Show() builds the copy window.
 
-Bagwise = Bagwise or {}
-Bagwise.Dump = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Dump = {}
 
 local COLUMNS = {
   "bag", "slot", "id", "name", "count", "maxStack", "quality", "ilvl", "reqLvl",
@@ -66,11 +66,11 @@ end
 
 --- Render a snapshot as text: a few header lines, then one pipe-separated
 -- row per item.
--- @param snapshot table  from Bagwise.Scanner.CollectInventory()
+-- @param snapshot table  from MakeSpace.Scanner.CollectInventory()
 -- @param context  table  { version = "...", build = "...", extra = { "key=value", ... } }
 --                         extra lines go in the header, for bug reports
 -- @return string
-function Bagwise.Dump.Format(snapshot, context)
+function MakeSpace.Dump.Format(snapshot, context)
   context = context or {}
   local player = snapshot.player or {}
   local lines = {
@@ -103,7 +103,7 @@ local frame
 local editBox
 
 local function buildFrame()
-  frame = CreateFrame("Frame", "BagwiseDumpFrame", UIParent, "BackdropTemplate")
+  frame = CreateFrame("Frame", "MakeSpaceDumpFrame", UIParent, "BackdropTemplate")
   frame:SetSize(640, 420)
   frame:SetPoint("CENTER")
   frame:SetFrameStrata("DIALOG")
@@ -126,7 +126,7 @@ local function buildFrame()
   local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -4, -4)
 
-  local scroll = CreateFrame("ScrollFrame", "BagwiseDumpScroll", frame,
+  local scroll = CreateFrame("ScrollFrame", "MakeSpaceDumpScroll", frame,
     "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", 18, -42)
   scroll:SetPoint("BOTTOMRIGHT", -36, 16)
@@ -145,11 +145,11 @@ local function buildFrame()
   scroll:SetScrollChild(editBox)
 
   -- Esc closes the window like other dialogs.
-  tinsert(UISpecialFrames, "BagwiseDumpFrame")
+  tinsert(UISpecialFrames, "MakeSpaceDumpFrame")
 end
 
 --- Show text in a selectable window.
-function Bagwise.Dump.Show(text)
+function MakeSpace.Dump.Show(text)
   if not frame then buildFrame() end
   -- Belt and braces: show any remaining pipe literally.
   editBox:SetText((text:gsub("|", "||")))

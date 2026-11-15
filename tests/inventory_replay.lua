@@ -2,7 +2,7 @@
 -- be used as a test fixture or as a "what if I were level 40" scenario.
 -- Pure: reads a dump file, never touches the game.
 
-Bagwise = nil
+MakeSpace = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
@@ -91,7 +91,7 @@ function Replay.Evaluate(snapshot, overrides)
       hasLoot = row.lootable == "1",
       questItemQuestIDs = questIDs, allQuestObjectivesCompleted = allDone,
     }
-    local verdict, reason = Bagwise.Verdict.Evaluate(item, state)
+    local verdict, reason = MakeSpace.Verdict.Evaluate(item, state)
     results[#results + 1] = { row = row, verdict = verdict, reason = reason }
   end
   return results

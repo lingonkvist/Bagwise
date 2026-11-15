@@ -8,8 +8,8 @@
 -- When the player's market is not in the data (an unknown region or faction),
 -- Data.AuctionMarketMissing is set and verdict.lua refuses to call a tradable
 -- item safe, because it cannot tell what the item sells for.
-Bagwise = Bagwise or {}
-Bagwise.Market = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Market = {}
 
 -- GetCurrentRegion() returns these for the regions the data covers.
 local REGION_BY_ID = { [1] = "us", [3] = "eu" }
@@ -17,7 +17,7 @@ local FACTIONS = { Alliance = true, Horde = true }
 
 --- The region from a realm name such as "CAMWOWEU4Realm2PvP", else from the
 -- region id the game reports. nil when neither says us or eu.
-function Bagwise.Market.RegionOf(realmName, regionID)
+function MakeSpace.Market.RegionOf(realmName, regionID)
   if type(realmName) == "string" then
     local code = realmName:upper():match("WOW(%u%u)")
     if code == "US" or code == "EU" then return code:lower() end
@@ -26,7 +26,7 @@ function Bagwise.Market.RegionOf(realmName, regionID)
 end
 
 --- "eu.Horde" for a region and faction the data can cover, else nil.
-function Bagwise.Market.Key(region, faction)
+function MakeSpace.Market.Key(region, faction)
   if not region or not FACTIONS[faction] then return nil end
   return region .. "." .. faction
 end
@@ -34,13 +34,13 @@ end
 --- Make the player's market the active price tables.
 -- Data without markets (an older data file) is left alone.
 -- @return string|nil the market key, nil when there is none
-function Bagwise.Market.Select(region, faction)
-  local data = Bagwise.Data
+function MakeSpace.Market.Select(region, faction)
+  local data = MakeSpace.Data
   local markets = data and data.AuctionMarkets
   if not markets then return nil end
   data.AuctionMarket, data.AuctionMarketMissing = nil, nil
   data.AuctionPriceCeiling, data.AuctionVariantCeiling, data.AuctionAboveCap = nil, nil, nil
-  local key = Bagwise.Market.Key(region, faction)
+  local key = MakeSpace.Market.Key(region, faction)
   local market = key and markets[key]
   if not market then
     data.AuctionMarketMissing = true

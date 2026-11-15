@@ -17,9 +17,9 @@
 -- Soul Shard (6265) is omitted: soulbound, created by Drain Soul, a
 -- non-warlock can never have one.
 
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.ClassReagents = {
+MakeSpace.Data.ClassReagents = {
 
   -- Mage (all vendor-sold)
   [17020] = { classes = { MAGE = true }, name = "Arcane Powder", verdict = "green" },

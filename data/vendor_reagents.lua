@@ -1,10 +1,10 @@
--- Bagwise: vendor reagent dataset
+-- MakeSpace: vendor reagent dataset
 -- Cheap vendor-bought crafting materials (vials, thread, flux, dyes, spices, etc.)
 -- Maps item IDs to the professions that use them, via locale-independent skillLine IDs.
 -- Hand-curated; edit freely.
 
-Bagwise                     = Bagwise or {}
-Bagwise.Data                = Bagwise.Data or {}
+MakeSpace                     = MakeSpace or {}
+MakeSpace.Data                = MakeSpace.Data or {}
 
 local SKILL_ALCHEMY         = 171
 local SKILL_BLACKSMITHING   = 164
@@ -14,7 +14,7 @@ local SKILL_ENGINEERING     = 202
 local SKILL_LEATHERWORKING  = 165
 local SKILL_TAILORING       = 197
 
-Bagwise.Data.VendorReagents = {
+MakeSpace.Data.VendorReagents = {
   -- Vials (Alchemy, some shared with Enchanting)
   [3371]  = { SKILL_ALCHEMY, excludeClasses = { ROGUE = true } },                   -- Empty Vial
   [3372]  = { SKILL_ALCHEMY, SKILL_ENCHANTING, excludeClasses = { ROGUE = true } }, -- Leaded Vial

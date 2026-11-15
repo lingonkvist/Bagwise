@@ -1,4 +1,4 @@
--- Bagwise: test player state fixtures
+-- MakeSpace: test player state fixtures
 
 return {
     warrior_30 = {

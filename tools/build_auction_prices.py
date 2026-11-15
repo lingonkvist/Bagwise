@@ -12,7 +12,7 @@ the median, across the market's auction houses, of each house's 25th-percentile
 unit buyout, which is about what a seller gets, since the cheap listings sell
 first. Gear with random-suffix versions (the same item id, different bonus ids) also
 gets a ceiling per version, so a cheap version is judged by its own price and
-not by the pricey ones. Bagwise compares that with the vendor price, and tells
+not by the pricey ones. MakeSpace compares that with the vendor price, and tells
 you to sell green tradeable gear that the auction house pays about the vendor
 price for.
 Versions seen in too few listings to price are remembered in tools/variant_memory.json,
@@ -219,7 +219,7 @@ def variant_ceilings(variant_houses, item_ceilings, max_copper):
 
     Prices of one version are pooled over all houses. A version is kept when it
     has enough listings in enough houses. An item that has versions always gets
-    an entry, empty if no version qualified: Bagwise reads "the item has an
+    an entry, empty if no version qualified: MakeSpace reads "the item has an
     entry but not for my version" as "unknown version, say nothing", so a rare,
     expensive version can never borrow the cheap item's price. Versions over the
     cap are kept for an item that has a ceiling (they block a green) and dropped
@@ -351,7 +351,7 @@ def price_ceilings(houses, max_copper, commodity_items=None):
 def above_cap_items(houses, max_copper, commodity_items=None):
     """Items with enough listings whose ceiling is over max_copper, as a sorted list.
 
-    They get no price, but Bagwise must tell "worth more than the cap" from
+    They get no price, but MakeSpace must tell "worth more than the cap" from
     "nobody lists it": a missing entry means the second, this list the first.
     """
     return sorted(item_id for item_id, ceiling in all_ceilings(houses, commodity_items).items()
@@ -403,19 +403,19 @@ def render_lua(markets, max_copper, generated, house_count):
         "--   Variant: item id -> { bonus ids of a version -> its own ceiling }. An item listed",
         "--     there with no entry for your version gets no verdict.",
         "--   AboveCap: item id -> true. Listed often enough, but over the cap above, so no price.",
-        "-- AuctionPricesDate: the day the prices were read, shown by /bagwise status.",
+        "-- AuctionPricesDate: the day the prices were read, shown by /makespace status.",
         "-- Generated %s from %d auction houses. Do not edit by hand." % (generated, house_count),
-        "Bagwise = Bagwise or {}",
-        "Bagwise.Data = Bagwise.Data or {}",
+        "MakeSpace = MakeSpace or {}",
+        "MakeSpace.Data = MakeSpace.Data or {}",
         "",
-        'Bagwise.Data.AuctionPricesDate = "%s"' % generated,
+        'MakeSpace.Data.AuctionPricesDate = "%s"' % generated,
         "",
-        "Bagwise.Data.AuctionMarkets = Bagwise.Data.AuctionMarkets or {}",
+        "MakeSpace.Data.AuctionMarkets = MakeSpace.Data.AuctionMarkets or {}",
     ]
     for key in sorted(markets):
         market = markets[key]
         # No spaces inside an entry: the file is about 40% smaller, one entry per line.
-        lines.append('Bagwise.Data.AuctionMarkets["%s"]={' % key)
+        lines.append('MakeSpace.Data.AuctionMarkets["%s"]={' % key)
         lines.append("Ceiling={")
         items = market["items"]
         lines += ["[%d]=%d," % (item_id, items[item_id]) for item_id in sorted(items)]
@@ -972,7 +972,7 @@ def selftest():
             "us.Alliance": {"items": {2: 5}, "variants": {}, "above_cap": []}}
     text = render_lua(data, 50000, "2026-11-10", 5)
     assert text.index('AuctionMarkets["eu.Horde"]') < text.index('AuctionMarkets["us.Alliance"]')
-    assert "Bagwise.Data.AuctionMarkets = Bagwise.Data.AuctionMarkets or {}" in text and "AboveCap={" in text
+    assert "MakeSpace.Data.AuctionMarkets = MakeSpace.Data.AuctionMarkets or {}" in text and "AboveCap={" in text
     assert text.index("[4]=true,") < text.index("[7]=true,")
     assert '[5]={["12744"]=800},' in text
     assert text.index("[3]=80,") < text.index("[9]=120,") and text.endswith("}\n")

@@ -1,4 +1,4 @@
-# Bagwise inventory dump
+# MakeSpace inventory dump
 # bagwise=0.4.1 wow=1.60.1 (70862)
 # class=DRUID race=Tauren faction=Horde level=18
 # professions=Alchemy,Herbalism

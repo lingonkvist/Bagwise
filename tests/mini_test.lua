@@ -1,15 +1,15 @@
--- mini_test.lua: minimal describe/it/assert harness for Bagwise tests
+-- mini_test.lua: minimal describe/it/assert harness for MakeSpace tests
 
 local current_describe = ""
 local passed = 0
 local failed = 0
 local errors = {}
 
--- A describe block may set data tables (Bagwise.Data.X = ...) to build its
+-- A describe block may set data tables (MakeSpace.Data.X = ...) to build its
 -- scenario. They are put back when the block ends, so what one block sets up
 -- can never leak into the next one and results do not depend on their order.
 local function snapshotData()
-  local data = Bagwise and Bagwise.Data
+  local data = MakeSpace and MakeSpace.Data
   if type(data) ~= "table" then return nil end
   local copy = {}
   for key, value in pairs(data) do copy[key] = value end
@@ -17,7 +17,7 @@ local function snapshotData()
 end
 
 local function restoreData(data, copy)
-  if not data or Bagwise.Data ~= data then return end
+  if not data or MakeSpace.Data ~= data then return end
   for key in pairs(data) do
     if copy[key] == nil then data[key] = nil end
   end

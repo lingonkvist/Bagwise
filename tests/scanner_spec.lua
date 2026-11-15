@@ -1,8 +1,8 @@
--- Bagwise: scanner smoke tests against a fake client.
+-- MakeSpace: scanner smoke tests against a fake client.
 -- The scanner talks to the game, so these stub the few calls it makes and
 -- check the parts that decide things: free slots, stacking loot, openables.
 
-_G.Bagwise = nil
+_G.MakeSpace = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/progress.lua")
@@ -12,8 +12,8 @@ dofile("src/auction.lua")
 dofile("src/verdict.lua")
 dofile("src/bank.lua")
 dofile("src/makeroom.lua")
-Bagwise.Data = { ReagentProfessions = {}, VendorReagents = {}, ClassReagents = {}, QuestItems = {}, QuestInfo = {} }
-Bagwise.Overrides = { IsKept = function() return false end, IsFlagged = function() return false end }
+MakeSpace.Data = { ReagentProfessions = {}, VendorReagents = {}, ClassReagents = {}, QuestItems = {}, QuestInfo = {} }
+MakeSpace.Overrides = { IsKept = function() return false end, IsFlagged = function() return false end }
 
 -- id -> { name, quality, ilvl, req, maxStack, equipSlot, sell, class, subclass }
 local ITEMS = {
@@ -79,16 +79,16 @@ end
 describe("Scanner: openable items", function()
   it("gives a clam that opens for loot a yellow, never a green", function()
     setUp({ [0] = { { id = 200, opens = true }, { id = 200, opens = false } } }, {})
-    Bagwise.Scanner.ScanAll()
-    local clam = Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ScanAll()
+    local clam = MakeSpace.Scanner.GetResult(0, 1)
     assert.are.equal("yellow", clam.verdict)
     assert.are.equal("Open it, the contents may stack", clam.reason)
-    assert.are.equal("green", Bagwise.Scanner.GetResult(0, 2).verdict) -- no flag, no protection
+    assert.are.equal("green", MakeSpace.Scanner.GetResult(0, 2).verdict) -- no flag, no protection
   end)
 
   it("explains an item from the real bag slot when you carry one", function()
     setUp({ [0] = { { id = 200, opens = true } } }, {})
-    local explained = Bagwise.Scanner.Explain(200)
+    local explained = MakeSpace.Scanner.Explain(200)
     assert.are.equal(true, explained.fromBag)
     assert.are.equal("openable", explained.protections[1])
   end)
@@ -107,35 +107,35 @@ describe("Scanner: make room", function()
       if bag == 1 then return 3, 1 end
       return 0, 0
     end
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(0, Bagwise.Scanner.MakeRoomSummary().freeSlots)
-    assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(0, MakeSpace.Scanner.MakeRoomSummary().freeSlots)
+    assert.are.equal(true, MakeSpace.Scanner.MakeRoomSummary().active)
   end)
 
   it("knows whether a loot window has anything in it", function()
     setUp({ [0] = { { id = 300 } } }, { [0] = 0 }, { { id = 500, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    assert.are.equal(true, Bagwise.Scanner.HasLoot())
-    Bagwise.Scanner.ClearLoot()
-    assert.are.equal(false, Bagwise.Scanner.HasLoot())
+    MakeSpace.Scanner.RefreshLoot()
+    assert.are.equal(true, MakeSpace.Scanner.HasLoot())
+    MakeSpace.Scanner.ClearLoot()
+    assert.are.equal(false, MakeSpace.Scanner.HasLoot())
   end)
 
   it("does not ask for room when the loot joins a stack you carry", function()
     setUp({ [0] = { { id = 100, count = 5 } } }, { [0] = 0 }, { { id = 100, qty = 3 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(false, Bagwise.Scanner.MakeRoomSummary().active)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(false, MakeSpace.Scanner.MakeRoomSummary().active)
   end)
 
   it("asks for room when the stack is full, and marks the cheapest junk", function()
     setUp({ [0] = { { id = 100, count = 20 }, { id = 300 }, { id = 400 } } },
       { [0] = 0 }, { { id = 100, qty = 3 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(true, Bagwise.Scanner.MakeRoomSummary().active)
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow) -- Torn Rag sells for least
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 3).glow)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(true, MakeSpace.Scanner.MakeRoomSummary().active)
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 2).glow) -- Torn Rag sells for least
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 3).glow)
   end)
 end)
 
@@ -150,11 +150,11 @@ describe("Scanner: reagents in the loot window", function()
   local function lootDecisionFor(itemID, rank)
     setUp({ [0] = { { id = 700 } } }, { [0] = 0 }, { { id = itemID, qty = 3 } }) -- one junk: 8s
     giveCooking(rank)
-    Bagwise.Data.ReagentChains = {}
-    Bagwise.Data.ReagentProfessions = { [100] = { { "Cooking", 5, 1, 100 } }, [1001] = { { "Cooking", 5, 1, 100 } } }
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    return Bagwise.Scanner.LootDecision(1)
+    MakeSpace.Data.ReagentChains = {}
+    MakeSpace.Data.ReagentProfessions = { [100] = { { "Cooking", 5, 1, 100 } }, [1001] = { { "Cooking", 5, 1, 100 } } }
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    return MakeSpace.Scanner.LootDecision(1)
   end
 
   it("skips an outleveled reagent that is worth less than your junk", function()
@@ -177,9 +177,9 @@ describe("Scanner: robustness", function()
     _G.C_Container.GetContainerItemQuestInfo = function(bag, slot)
       if slot == 1 then return { questID = 77 } end
     end
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.LastError())
-    assert.is_truthy(Bagwise.Scanner.GetResult(0, 2))
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.LastError())
+    assert.is_truthy(MakeSpace.Scanner.GetResult(0, 2))
   end)
 
   it("one item that raises an error does not take the other dots with it", function()
@@ -189,9 +189,9 @@ describe("Scanner: robustness", function()
       if slot == 1 then error("boom") end
       return real(bag, slot)
     end
-    Bagwise.Scanner.ScanAll()
-    assert.is_truthy(Bagwise.Scanner.LastError():find("boom", 1, true))
-    assert.is_truthy(Bagwise.Scanner.GetResult(0, 2))
+    MakeSpace.Scanner.ScanAll()
+    assert.is_truthy(MakeSpace.Scanner.LastError():find("boom", 1, true))
+    assert.is_truthy(MakeSpace.Scanner.GetResult(0, 2))
   end)
 end)
 
@@ -199,28 +199,28 @@ describe("Scanner: looted slots", function()
   it("leaves a just-looted slot out of the loot list", function()
     setUp({ [0] = { { id = 100, count = 20 }, { id = 300 } } }, { [0] = 0 },
       { { id = 100, qty = 3 }, { id = 500, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot(2)
-    assert.are.equal(1, Bagwise.Scanner.MakeRoomSummary().lootItems)
+    MakeSpace.Scanner.RefreshLoot(2)
+    assert.are.equal(1, MakeSpace.Scanner.MakeRoomSummary().lootItems)
   end)
 
   it("a looted slot is told neither to take nor to leave", function()
     setUp({ [0] = { { id = 300 }, { id = 300 } } }, { [0] = 0 },
       { { id = 500, qty = 1 }, { id = 500, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.is_truthy(Bagwise.Scanner.LootDecision(1))
-    Bagwise.Scanner.RefreshLoot(1)
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.LootDecision(1))
-    assert.is_truthy(Bagwise.Scanner.LootDecision(2))
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.is_truthy(MakeSpace.Scanner.LootDecision(1))
+    MakeSpace.Scanner.RefreshLoot(1)
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.LootDecision(1))
+    assert.is_truthy(MakeSpace.Scanner.LootDecision(2))
   end)
 end)
 
 describe("Scanner: grays worth some silver", function()
   it("warns yellow on the cheapest gray when even it is worth real money", function()
     setUp({ [0] = { { id = 600 }, { id = 700 } } }, { [0] = 0 })
-    Bagwise.Scanner.ScanAll()
-    local cheapest, dearer = Bagwise.Scanner.GetResult(0, 1), Bagwise.Scanner.GetResult(0, 2)
+    MakeSpace.Scanner.ScanAll()
+    local cheapest, dearer = MakeSpace.Scanner.GetResult(0, 1), MakeSpace.Scanner.GetResult(0, 2)
     assert.are.equal("yellow", cheapest.verdict)
     assert.are.equal("Cheapest gray, but worth 5s", cheapest.reason)
     assert.is_nil(dearer.verdict)
@@ -228,9 +228,9 @@ describe("Scanner: grays worth some silver", function()
 
   it("lets a cheap green gray win over a gray worth silver", function()
     setUp({ [0] = { { id = 600 }, { id = 300 } } }, { [0] = 0 })
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
-    assert.are.equal("green", Bagwise.Scanner.GetResult(0, 2).verdict)
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 1).verdict)
+    assert.are.equal("green", MakeSpace.Scanner.GetResult(0, 2).verdict)
   end)
 end)
 
@@ -246,7 +246,7 @@ describe("Scanner: recipes", function()
   local function giveTooltip(text)
     _G.ITEM_MIN_SKILL = "Requires %s (%d)"
     _G.UIParent = {}
-    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.MakeSpaceSkillTipTextLeft2 = { GetText = function() return text end }
     _G.CreateFrame = function()
       return {
         SetOwner = function() end, ClearLines = function() end,
@@ -259,8 +259,8 @@ describe("Scanner: recipes", function()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
     giveSkills({ { "Alchemy", 100 } })
     giveTooltip("Requires Alchemy (225)")
-    Bagwise.Scanner.ScanAll()
-    local result = Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ScanAll()
+    local result = MakeSpace.Scanner.GetResult(0, 1)
     assert.are.equal("yellow", result.verdict)
     assert.are.equal("Bank it, needs Alchemy 225", result.reason)
   end)
@@ -272,8 +272,8 @@ describe("Scanner: recipes", function()
     _G.GetProfessionInfo = function() return "Cooking", 0, 40, 75, 0, 0, 185 end
     giveSkills({ { "Cooking", 40 }, { "First Aid", 120 } })
     giveTooltip("Requires Cooking (200)")
-    Bagwise.Scanner.ScanAll()
-    local summary = Bagwise.Scanner.ProfessionSummary()
+    MakeSpace.Scanner.ScanAll()
+    local summary = MakeSpace.Scanner.ProfessionSummary()
     assert.is_truthy(summary:find("Cooking 40", 1, true))
     assert.is_truthy(summary:find("First Aid 120", 1, true))
     _G.GetProfessions = nil
@@ -283,37 +283,37 @@ describe("Scanner: recipes", function()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
     giveSkills({ { "Alchemy", 125 } })
     giveTooltip("Requires Alchemy (125)")
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 1).verdict)
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 1).verdict)
   end)
 
   it("banks a recipe one point out of reach once the profession has gone idle", function()
-    local saved = _G.BagwiseDB
-    _G.BagwiseDB = { skillProgress = { ["?-?"] = { Alchemy = { rank = 100, quiet = 1, seen = 0, gained = 0 } } } }
-    Bagwise.Progress.ResetSession()
+    local saved = _G.MakeSpaceDB
+    _G.MakeSpaceDB = { skillProgress = { ["?-?"] = { Alchemy = { rank = 100, quiet = 1, seen = 0, gained = 0 } } } }
+    MakeSpace.Progress.ResetSession()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
     giveSkills({ { "Alchemy", 100 } })
     giveTooltip("Requires Alchemy (101)")
-    Bagwise.Scanner.ScanAll()
-    local result = Bagwise.Scanner.GetResult(0, 1)
-    _G.BagwiseDB = saved
+    MakeSpace.Scanner.ScanAll()
+    local result = MakeSpace.Scanner.GetResult(0, 1)
+    _G.MakeSpaceDB = saved
     assert.are.equal("yellow", result.verdict)
     assert.are.equal("Bank it, needs Alchemy 101", result.reason)
   end)
 
   it("forgets the history of a profession you no longer have, and shows idle in the summary", function()
-    local saved = _G.BagwiseDB
-    _G.BagwiseDB = { skillProgress = { ["?-?"] = {
+    local saved = _G.MakeSpaceDB
+    _G.MakeSpaceDB = { skillProgress = { ["?-?"] = {
       Alchemy = { rank = 100, quiet = 1, seen = 0, gained = 0 },
       Tailoring = { rank = 50, quiet = 1, seen = 0, gained = 0 },
     } } }
-    Bagwise.Progress.ResetSession()
+    MakeSpace.Progress.ResetSession()
     setUp({ [0] = {} }, { [0] = 0 })
     giveSkills({ { "Alchemy", 100 } })
-    Bagwise.Scanner.ScanAll()
-    local store = _G.BagwiseDB.skillProgress["?-?"]
-    local summary = Bagwise.Scanner.ProfessionSummary()
-    _G.BagwiseDB = saved
+    MakeSpace.Scanner.ScanAll()
+    local store = _G.MakeSpaceDB.skillProgress["?-?"]
+    local summary = MakeSpace.Scanner.ProfessionSummary()
+    _G.MakeSpaceDB = saved
     assert.is_nil(store.Tailoring)
     assert.is_truthy(summary:find("Alchemy 100 idle", 1, true))
   end)
@@ -322,8 +322,8 @@ describe("Scanner: recipes", function()
     setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
     giveSkills({ { "Mining", 50 } })
     giveTooltip("Requires Alchemy (125)")
-    Bagwise.Scanner.ScanAll()
-    local result = Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ScanAll()
+    local result = MakeSpace.Scanner.GetResult(0, 1)
     assert.are.equal("yellow", result.verdict)
     assert.is_truthy(result.reason:find("You don't have this profession", 1, true))
   end)
@@ -333,8 +333,8 @@ describe("Scanner: professions", function()
   it("holds back profession-based greens when a Skills header is collapsed", function()
     setUp({ [0] = {} }, {})
     _G.GetSkillLineInfo = function() return "Professions", true, false end
-    Bagwise.Scanner.ClearCache()
-    local explained = Bagwise.Scanner.Explain(100)
+    MakeSpace.Scanner.ClearCache()
+    local explained = MakeSpace.Scanner.Explain(100)
     assert.are.equal(false, explained.professionsKnown)
   end)
 end)
@@ -343,25 +343,25 @@ describe("Scanner: repeatable quests", function()
   local function withQuest(repeatable)
     setUp({ [0] = { { id = 500 } } }, {})
     _G.C_QuestLog.IsQuestFlaggedCompleted = function() return true end
-    Bagwise.Data.QuestItems = { [500] = { 55 } }
-    Bagwise.Data.RepeatableQuests = repeatable and { [55] = true } or nil
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
+    MakeSpace.Data.QuestItems = { [500] = { 55 } }
+    MakeSpace.Data.RepeatableQuests = repeatable and { [55] = true } or nil
+    MakeSpace.Scanner.ClearCache()
+    MakeSpace.Scanner.ScanAll()
   end
 
   it("a finished one-time quest still counts as done", function()
     withQuest(false)
-    assert.are.equal(true, Bagwise.Scanner.Explain(500).quests[1].done)
-    Bagwise.Data.QuestItems = {}
+    assert.are.equal(true, MakeSpace.Scanner.Explain(500).quests[1].done)
+    MakeSpace.Data.QuestItems = {}
   end)
 
   it("a finished repeatable quest never counts as done, so its items are kept", function()
     withQuest(true)
-    assert.are.equal(false, Bagwise.Scanner.Explain(500).quests[1].done)
-    local result = Bagwise.Scanner.GetResult(0, 1)
+    assert.are.equal(false, MakeSpace.Scanner.Explain(500).quests[1].done)
+    local result = MakeSpace.Scanner.GetResult(0, 1)
     assert.is_truthy(not result or result.verdict ~= "green")
-    Bagwise.Data.QuestItems = {}
-    Bagwise.Data.RepeatableQuests = nil
+    MakeSpace.Data.QuestItems = {}
+    MakeSpace.Data.RepeatableQuests = nil
   end)
 end)
 
@@ -376,9 +376,9 @@ describe("Scanner: low level gear that could be an upgrade", function()
       if slot == 5 then return wornChest end
       return nil
     end
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
-    return Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ClearCache()
+    MakeSpace.Scanner.ScanAll()
+    return MakeSpace.Scanner.GetResult(0, 1)
   end
 
   it("gives no verdict while the chest slot is empty", function()
@@ -405,29 +405,29 @@ describe("Scanner: the bank", function()
     local layout = { [0] = carried }
     for bag, cells in pairs(bank) do layout[bag] = cells end
     setUp(layout, {})
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
+    MakeSpace.Scanner.ClearCache()
+    MakeSpace.Scanner.ScanAll()
   end
 
   it("paints bank items with the verdict that fits the bank", function()
     scanWithBank({ { id = 300 } }, { [5] = { { id = 300 } } })
     -- A gray is worthless whoever you play, so it keeps its verdict in the bank.
-    assert.are.equal("green", Bagwise.Scanner.GetResult(0, 1).verdict)
-    assert.are.equal("green", Bagwise.Scanner.GetResult(5, 1).verdict)
+    assert.are.equal("green", MakeSpace.Scanner.GetResult(0, 1).verdict)
+    assert.are.equal("green", MakeSpace.Scanner.GetResult(5, 1).verdict)
   end)
 
   it("counts only what you carry in the status numbers", function()
     scanWithBank({ { id = 300 } }, { [5] = { { id = 300 }, { id = 300 } } })
-    assert.are.equal(1, Bagwise.Scanner.Counts().items)
+    assert.are.equal(1, MakeSpace.Scanner.Counts().items)
   end)
 
   it("recognises carried and bank bag IDs, and nothing else", function()
-    assert.is_truthy(Bagwise.Bags.IsScanned(0))
-    assert.is_truthy(Bagwise.Bags.IsScanned(5))
-    assert.is_truthy(not Bagwise.Bags.IsScanned(-1)) -- the keyring on Forever
-    assert.is_truthy(not Bagwise.Bags.IsScanned(-2))
-    assert.is_truthy(not Bagwise.Bags.IsScanned(nil))
-    assert.is_truthy(not Bagwise.Bags.IsScanned(400))
+    assert.is_truthy(MakeSpace.Bags.IsScanned(0))
+    assert.is_truthy(MakeSpace.Bags.IsScanned(5))
+    assert.is_truthy(not MakeSpace.Bags.IsScanned(-1)) -- the keyring on Forever
+    assert.is_truthy(not MakeSpace.Bags.IsScanned(-2))
+    assert.is_truthy(not MakeSpace.Bags.IsScanned(nil))
+    assert.is_truthy(not MakeSpace.Bags.IsScanned(400))
   end)
 end)
 
@@ -437,59 +437,59 @@ describe("Scanner: make room with only a pricey gray in the bags", function()
   -- gray that sells for 5s.
   local function scanFull(lootID)
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = lootID, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
   end
 
   it("glows the gray when the loot is worth more than it", function()
     setUp({ [0] = { { id = 600 }, { id = 100 } } }, { [0] = 0 }, { { id = 700, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    local gray = Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    local gray = MakeSpace.Scanner.GetResult(0, 1)
     assert.are.equal(true, gray.glow)
     assert.is_truthy(not gray.quiet)
-    assert.are.equal("take", Bagwise.Scanner.LootDecision(1))
-    assert.are.equal("Odd Trinket", Bagwise.Scanner.MakeRoomSummary().deleteNames[1])
+    assert.are.equal("take", MakeSpace.Scanner.LootDecision(1))
+    assert.are.equal("Odd Trinket", MakeSpace.Scanner.MakeRoomSummary().deleteNames[1])
   end)
 
   it("glows the gray for loot that must be taken, however little the gray is worth", function()
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1000, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
-    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 1).glow)
+    assert.are.equal("consider", MakeSpace.Scanner.LootDecision(1))
   end)
 
   it("takes loot with no vendor price: it may be worth more elsewhere", function()
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1001, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal("consider", MakeSpace.Scanner.LootDecision(1))
   end)
 
   it("a gray with no vendor price is just junk, not must-take", function()
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 1002, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal("leave", Bagwise.Scanner.LootDecision(1))
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal("leave", MakeSpace.Scanner.LootDecision(1))
   end)
 
   it("must-take loot with nothing to delete is no-room, not not-needed", function()
     setUp({ [0] = { { id = 903 }, { id = 902 } } }, { [0] = 0 }, { { id = 1000, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal("noroom", Bagwise.Scanner.LootDecision(1))
-    assert.are.equal(1, Bagwise.Scanner.MakeRoomSummary().noRoom)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal("noroom", MakeSpace.Scanner.LootDecision(1))
+    assert.are.equal(1, MakeSpace.Scanner.MakeRoomSummary().noRoom)
   end)
 
   local function lootDecisionWith(itemID, questID, finished)
-    Bagwise.Data.QuestItems = { [itemID] = { questID } }
+    MakeSpace.Data.QuestItems = { [itemID] = { questID } }
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = itemID, qty = 1 } })
     _G.C_QuestLog.IsQuestFlaggedCompleted = function() return finished end
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    local decision = Bagwise.Scanner.LootDecision(1)
-    Bagwise.Data.QuestItems = {}
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    local decision = MakeSpace.Scanner.LootDecision(1)
+    MakeSpace.Data.QuestItems = {}
     return decision
   end
 
@@ -507,14 +507,14 @@ describe("Scanner: make room with only a pricey gray in the bags", function()
 
   it("leaves the loot, keeps the dots, and names the junk it lost to", function()
     scanFull(500)
-    local summary = Bagwise.Scanner.MakeRoomSummary()
+    local summary = MakeSpace.Scanner.MakeRoomSummary()
     assert.are.equal(true, summary.active)
     assert.are.equal(0, summary.deletes)
     assert.are.equal(1, summary.leaving)
     assert.are.equal("Odd Bauble", summary.cheapestJunkName)
     assert.are.equal(800, summary.cheapestJunkValue)
-    assert.are.equal("leave", Bagwise.Scanner.LootDecision(1))
-    local gray = Bagwise.Scanner.GetResult(0, 1)
+    assert.are.equal("leave", MakeSpace.Scanner.LootDecision(1))
+    local gray = MakeSpace.Scanner.GetResult(0, 1)
     assert.is_nil(gray.glow)
     assert.is_truthy(not gray.quiet)
     assert.are.equal("yellow", gray.verdict)
@@ -522,17 +522,17 @@ describe("Scanner: make room with only a pricey gray in the bags", function()
 
   it("always takes green gear, even when it sells for less than the junk", function()
     setUp({ [0] = { { id = 700 }, { id = 100 } } }, { [0] = 0 }, { { id = 903, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal("consider", Bagwise.Scanner.LootDecision(1))
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal("consider", MakeSpace.Scanner.LootDecision(1))
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 1).glow)
   end)
 end)
 
 describe("Scanner: potions outleveled", function()
   local function giveTooltipLine(text)
     _G.UIParent = {}
-    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.MakeSpaceSkillTipTextLeft2 = { GetText = function() return text end }
     _G.CreateFrame = function()
       return {
         SetOwner = function() end, ClearLines = function() end,
@@ -545,8 +545,8 @@ describe("Scanner: potions outleveled", function()
     setUp({ [0] = { { id = 1100 } } }, { [0] = 0 })
     _G.UnitLevel = function() return 40 end
     giveTooltipLine(line)
-    Bagwise.Scanner.ScanAll()
-    return Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ScanAll()
+    return MakeSpace.Scanner.GetResult(0, 1)
   end
 
   it("flags a healing potion made for a much lower level", function()
@@ -573,35 +573,35 @@ describe("Scanner: deleting while the loot window is open", function()
   it("moves the mark to the next cheapest junk after the marked one is deleted", function()
     setUp({ [0] = { { id = 300 }, { id = 400 }, { id = 100, count = 20 } } }, { [0] = 0 },
       { { id = 500, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow) -- the cheapest, Torn Rag
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 2).glow)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 1).glow) -- the cheapest, Torn Rag
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 2).glow)
 
     -- The player deletes it, then takes nothing yet: the slot is empty, and
     -- the loot still has no room because the stack there is full.
     bags[0][1] = false
     freeByBag[0] = 1
-    Bagwise.Scanner.ClearCache()
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 1))
-    assert.are.equal(false, Bagwise.Scanner.MakeRoomSummary().active) -- one free slot now fits the loot
+    MakeSpace.Scanner.ClearCache()
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 1))
+    assert.are.equal(false, MakeSpace.Scanner.MakeRoomSummary().active) -- one free slot now fits the loot
   end)
 
   it("marks the next cheapest when two pieces of loot need room and one slot is freed", function()
     setUp({ [0] = { { id = 300 }, { id = 400 }, { id = 100, count = 20 } } }, { [0] = 0 },
       { { id = 500, qty = 1 }, { id = 500, qty = 1 } })
-    Bagwise.Scanner.RefreshLoot()
-    Bagwise.Scanner.ScanAll()
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 1).glow)
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow)
+    MakeSpace.Scanner.RefreshLoot()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 1).glow)
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 2).glow)
 
     bags[0][1] = false
     freeByBag[0] = 1
-    Bagwise.Scanner.ScanAll()
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 1))
-    assert.are.equal(true, Bagwise.Scanner.GetResult(0, 2).glow)
-    assert.is_nil(Bagwise.Scanner.GetResult(0, 3) and Bagwise.Scanner.GetResult(0, 3).glow)
+    MakeSpace.Scanner.ScanAll()
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 1))
+    assert.are.equal(true, MakeSpace.Scanner.GetResult(0, 2).glow)
+    assert.is_nil(MakeSpace.Scanner.GetResult(0, 3) and MakeSpace.Scanner.GetResult(0, 3).glow)
   end)
 end)
 
@@ -609,7 +609,7 @@ end)
 describe("Scanner: bandages by what they heal", function()
   local function giveTooltipLine(text)
     _G.UIParent = {}
-    _G.BagwiseSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.MakeSpaceSkillTipTextLeft2 = { GetText = function() return text end }
     _G.CreateFrame = function()
       return {
         SetOwner = function() end, ClearLines = function() end,
@@ -623,8 +623,8 @@ describe("Scanner: bandages by what they heal", function()
     _G.UnitLevel = function() return 60 end
     _G.UnitHealthMax = function() return health end
     giveTooltipLine(line)
-    Bagwise.Scanner.ScanAll()
-    return Bagwise.Scanner.GetResult(0, 1)
+    MakeSpace.Scanner.ScanAll()
+    return MakeSpace.Scanner.GetResult(0, 1)
   end
 
   it("reads the heal amount and flags a weak bandage", function()
@@ -643,8 +643,8 @@ end)
 describe("Scanner: summary of the dots", function()
   it("counts what the last scan marked, and is empty when nothing is", function()
     setUp({ [0] = { { id = 300 } } }, { [0] = 0 })
-    Bagwise.Scanner.ScanAll()
-    local summary = Bagwise.Scanner.Summary()
+    MakeSpace.Scanner.ScanAll()
+    local summary = MakeSpace.Scanner.Summary()
     assert.are.equal("number", type(summary.green))
     assert.are.equal("number", type(summary.yellow))
     assert.are.equal("number", type(summary.greenValue))

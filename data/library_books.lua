@@ -4,10 +4,10 @@
 -- them in one by one to the librarian in Stormwind or Undercity, and the game
 -- will not give a deleted one back.
 
-Bagwise = Bagwise or {}
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.LibraryBooks = {
+MakeSpace.Data.LibraryBooks = {
   [203754] = true,
   [203755] = true,
   [207972] = true,

@@ -1,16 +1,16 @@
--- Bagwise: the words behind every yellow verdict.
+-- MakeSpace: the words behind every yellow verdict.
 --
--- Every yellow Bagwise can show is defined here once: the full reason (for the
+-- Every yellow MakeSpace can show is defined here once: the full reason (for the
 -- report and /makespace why), a short heading of three or four words, and the
 -- detail line under it. A rule returns the heading with its verdict, so the
 -- tooltip never has to guess it from the reason text.
-Bagwise = Bagwise or {}
-Bagwise.Notes = {
+MakeSpace = MakeSpace or {}
+MakeSpace.Notes = {
   -- Title of the hints that tell you to bank an item. Pointless once the item
   -- is in the bank, so the bank view drops anything with this title.
   BANK_IT_TITLE = "Bank it",
 }
-local BANK_IT = Bagwise.Notes.BANK_IT_TITLE
+local BANK_IT = MakeSpace.Notes.BANK_IT_TITLE
 
 local function capitalize(text)
   return (text:gsub("^%l", string.upper))
@@ -18,13 +18,13 @@ end
 
 local NOTES = {
   very_low_item_level = function(n, you)
-    return "Very low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", low for level " .. you
+    return "Very low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", you are " .. you
   end,
   very_low_level_gear = function(n, you)
     return "Very low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Required level " .. n .. ", you are " .. you
   end,
   low_item_level = function(n, you)
-    return "Low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", low for level " .. you
+    return "Low item level (" .. n .. " for level " .. you .. ")", "Outleveled gear", "Item level " .. n .. ", you are " .. you
   end,
   low_level_gear = function(n, you)
     return "Low level gear (needs " .. n .. ", you are " .. you .. ")", "Outleveled gear", "Required level " .. n .. ", you are " .. you
@@ -45,7 +45,7 @@ local NOTES = {
     return "Not used for any quest or recipe, sells for " .. value, "No known use", nil
   end,
   not_your_profession = function()
-    return "You don't have this profession. May sell at the auction house", "Not your profession", "Try the auction house"
+    return "You don't have this profession. May sell at the auction house", "Not your profession"
   end,
   bank_skill = function(profession, skill)
     return "Bank it, needs " .. profession .. " " .. skill, BANK_IT, "Needs " .. profession .. " " .. skill
@@ -118,7 +118,7 @@ local NOTES = {
 
 --- Look up a note: returns the full reason and a heading { title, detail }.
 -- @param key string  a key of NOTES
-function Bagwise.Notes.Get(key, ...)
+function MakeSpace.Notes.Get(key, ...)
   local reason, title, detail = NOTES[key](...)
   return reason, { title = title, detail = detail }
 end

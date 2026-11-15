@@ -1,4 +1,4 @@
--- Bagwise: inventory dump formatting tests
+-- MakeSpace: inventory dump formatting tests
 
 dofile("src/dump.lua")
 
@@ -21,7 +21,7 @@ end
 
 describe("Dump.Format", function()
   it("starts with player state and a column header", function()
-    local text = Bagwise.Dump.Format(snapshotWith({}), { version = "0.3.0", build = "1.15.6 (1)" })
+    local text = MakeSpace.Dump.Format(snapshotWith({}), { version = "0.3.0", build = "1.15.6 (1)" })
 
     assert.is_truthy(text:find("# bagwise=0.3.0 wow=1.15.6 (1)", 1, true))
     assert.is_truthy(text:find("# class=MAGE race=Human faction=Alliance level=42", 1, true))
@@ -31,7 +31,7 @@ describe("Dump.Format", function()
   end)
 
   it("writes one pipe-separated row per item with the same columns as the header", function()
-    local text = Bagwise.Dump.Format(snapshotWith({
+    local text = MakeSpace.Dump.Format(snapshotWith({
       {
         bag = 0, slot = 3, id = 2589, name = "Linen Cloth", count = 20,
         maxStack = 20, quality = 1, classID = 7, subClassID = 5, bindType = 0,
@@ -59,7 +59,7 @@ describe("Dump.Format", function()
   end)
 
   it("leaves missing values empty and writes booleans as 1 and 0", function()
-    local text = Bagwise.Dump.Format(snapshotWith({
+    local text = MakeSpace.Dump.Format(snapshotWith({
       { bag = 1, slot = 1, id = 9, isBound = true, isKept = false },
     }), {})
     local row = split(text:match("\n(1;1;9[^\n]*)"))
@@ -70,7 +70,7 @@ describe("Dump.Format", function()
   end)
 
   it("keeps a pipe or semicolon in an item name from breaking the columns", function()
-    local text = Bagwise.Dump.Format(snapshotWith({
+    local text = MakeSpace.Dump.Format(snapshotWith({
       { bag = 0, slot = 1, id = 5, name = "Odd|Name;X" },
     }), {})
 
@@ -81,7 +81,7 @@ describe("Dump.Format", function()
     local snapshot = snapshotWith({ { bag = 0, slot = 1, id = 5 } })
     snapshot.uncached = 1
 
-    local text = Bagwise.Dump.Format(snapshot, {})
+    local text = MakeSpace.Dump.Format(snapshot, {})
 
     assert.is_truthy(text:find("1 not cached yet", 1, true))
   end)
@@ -90,7 +90,7 @@ end)
 describe("Dump.Format extra header lines", function()
   it("puts report details after the player lines and before the columns", function()
     local snapshot = { player = { class = "WARRIOR", level = 20, professions = {} }, rows = {} }
-    local text = Bagwise.Dump.Format(snapshot, { version = "1", build = "2",
+    local text = MakeSpace.Dump.Format(snapshot, { version = "1", build = "2",
       extra = { "bagUIs=Baganator", "makeRoom=active false; none" } })
     local lines = {}
     for line in text:gmatch("[^\n]+") do lines[#lines + 1] = line end

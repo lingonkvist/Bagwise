@@ -6,10 +6,10 @@
 -- the note so the dot's silence is explained. Add an entry when the trade
 -- goods audit (tools/audit_trade_goods.py) turns up something that is used.
 
-Bagwise      = Bagwise or {}
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace      = MakeSpace or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.ProtectedItems = {
+MakeSpace.Data.ProtectedItems = {
   -- Herbalism camp items (Forever): the Greenhouse (Herbalism 140) grows herbs
   -- from seeds, the Seed Hybridizer (Herbalism 300) combines seeds into the
   -- next tier. Both are placed beside a campfire.

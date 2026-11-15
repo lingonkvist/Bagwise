@@ -1,10 +1,10 @@
--- Bagwise: sanity checks on the shipped data files.
+-- MakeSpace: sanity checks on the shipped data files.
 --
 -- A bad regeneration (an API that changed shape, a half-written file) should
 -- fail here, not in a player's bags. Counts are floors, far below the real
 -- sizes: they catch "empty" or "tiny", not normal changes between builds.
 
-Bagwise = nil
+MakeSpace = nil
 local DATA_FILES = {
   "reagent_professions", "reagent_chains", "vendor_reagents", "class_reagents",
   "quest_items", "mana_consumables", "protected_items", "auction_prices_us_alliance", "auction_prices_us_horde",
@@ -14,7 +14,7 @@ local DATA_FILES = {
 for _, file in ipairs(DATA_FILES) do
   dofile("data/" .. file .. ".lua")
 end
-local Data = Bagwise.Data
+local Data = MakeSpace.Data
 
 -- Price data is kept per market ("eu.Horde"). A data file made before that has
 -- the three tables at the top, and counts as one market.

@@ -15,7 +15,7 @@ Two tables are written, both only for quests listed in data/quest_items.lua:
   QuestEvents          quest ID -> the event that offers it (Darkmoon Faire and
                        other holidays), from Questie's quest category. Such a
                        quest can only be done while the event runs.
-A quest with no entry is unknown, and Bagwise says nothing about it.
+A quest with no entry is unknown, and MakeSpace says nothing about it.
 
 Use the same Questie export as build_quest_items.py, so the two files describe
 the same quests:
@@ -55,8 +55,8 @@ EVENT_SORTS = {
 
 def quest_ids_in(quest_items_text):
     """The quest IDs that QuestInfo describes in data/quest_items.lua."""
-    start = quest_items_text.index("Bagwise.Data.QuestInfo")
-    end = quest_items_text.index("Bagwise.Data.RepeatableQuests")
+    start = quest_items_text.index("MakeSpace.Data.QuestInfo")
+    end = quest_items_text.index("MakeSpace.Data.RepeatableQuests")
     return {int(n) for n in re.findall(r"^    \[(\d+)\] = \{ ", quest_items_text[start:end], re.M)}
 
 
@@ -93,19 +93,19 @@ def render_lua(levels, events, source_name):
         "--",
         "-- QuestRequiredLevels: quest ID -> the level you must be to accept the quest.",
         "-- Not the quest's own level (QuestInfo): a level 60 quest can be taken at 30.",
-        "-- A quest with no entry is unknown or open from a low level, and Bagwise",
+        "-- A quest with no entry is unknown or open from a low level, and MakeSpace",
         "-- never calls it far above you.",
         "--",
         "-- QuestEvents: quest ID -> the event that offers the quest, which can only be",
         "-- done while that event runs.",
         "",
-        "Bagwise = Bagwise or {}",
-        "Bagwise.Data = Bagwise.Data or {}",
+        "MakeSpace = MakeSpace or {}",
+        "MakeSpace.Data = MakeSpace.Data or {}",
         "",
-        "Bagwise.Data.QuestRequiredLevels = {",
+        "MakeSpace.Data.QuestRequiredLevels = {",
     ]
     lines += ["  [%d] = %d," % (quest_id, levels[quest_id]) for quest_id in sorted(levels)]
-    lines += ["}", "", "Bagwise.Data.QuestEvents = {"]
+    lines += ["}", "", "MakeSpace.Data.QuestEvents = {"]
     lines += ['  [%d] = "%s",' % (quest_id, events[quest_id]) for quest_id in sorted(events)]
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -113,14 +113,14 @@ def render_lua(levels, events, source_name):
 
 def selftest():
     items_text = (
-        "Bagwise.Data.QuestItems = {\n    [1] = { 10 },\n}\n"
-        "Bagwise.Data.QuestInfo = {\n"
+        "MakeSpace.Data.QuestItems = {\n    [1] = { 10 },\n}\n"
+        "MakeSpace.Data.QuestInfo = {\n"
         '    [10] = { 60, nil, "Vibrant Plumes" },\n'
         '    [11] = { 60, nil, "The Alliance Needs Copper Bars!", "A" },\n'
         '    [12] = { 20, "Duskwood", "Deep Trouble" },\n'
         '    [13] = { 55, "Tanaris", "Unlisted In Source" },\n'
         "}\n"
-        "Bagwise.Data.RepeatableQuests = {\n}\n"
+        "MakeSpace.Data.RepeatableQuests = {\n}\n"
     )
     wanted = quest_ids_in(items_text)
     assert wanted == {10, 11, 12, 13}, wanted

@@ -1,4 +1,4 @@
--- Bagwise: real-inventory replay tests.
+-- MakeSpace: real-inventory replay tests.
 -- The fixtures are /makespace dump files from real characters. Replaying them
 -- catches rule changes that would put a dot on something that should stay
 -- quiet, using items nobody invented.

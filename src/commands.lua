@@ -1,8 +1,8 @@
--- Bagwise: slash command handlers
--- Wired up in Bagwise.lua; helpers live here to keep the entry point small.
+-- MakeSpace: slash command handlers
+-- Wired up in MakeSpace.lua; helpers live here to keep the entry point small.
 
-Bagwise = Bagwise or {}
-Bagwise.Commands = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Commands = {}
 
 local PREFIX = "|cff54de7d[Make Space]|r "
 
@@ -16,7 +16,7 @@ end
 -- @param argument   string          Text after the command word
 -- @param lookupLink function|nil    name -> item link, injected for tests
 -- @return number|nil
-function Bagwise.Commands.ParseItemID(argument, lookupLink)
+function MakeSpace.Commands.ParseItemID(argument, lookupLink)
   if not argument or argument == "" then return nil end
 
   local fromLink = argument:match("item:(%d+)")
@@ -37,8 +37,8 @@ end
 local getAddOnMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 
 --- The version from the TOC, so it lives in one place.
-function Bagwise.Commands.Version()
-  local version = getAddOnMetadata and getAddOnMetadata("Bagwise", "Version")
+function MakeSpace.Commands.Version()
+  local version = getAddOnMetadata and getAddOnMetadata("MakeSpace", "Version")
   return version or "unknown"
 end
 
@@ -62,15 +62,15 @@ local function lookupItemLinkByName(name)
 end
 
 local function refreshDots()
-  Bagwise.Scanner.ClearCache()
-  Bagwise.Scanner.ScanAll()
-  Bagwise.Overlay.UpdateAll()
+  MakeSpace.Scanner.ClearCache()
+  MakeSpace.Scanner.ScanAll()
+  MakeSpace.Overlay.UpdateAll()
 end
 
 --- Build a handler that applies an override action to the item in the argument.
 local function overrideCommand(usage, apply, confirmation)
   return function(argument)
-    local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
+    local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
       say("Usage: " .. usage)
       return
@@ -91,26 +91,26 @@ local function reportDetails()
     details[#details + 1] = label .. "=" .. (ok and tostring(value) or ("error: " .. tostring(value)))
   end
   add("bagUIs", function()
-    local found = Bagwise.Overlay.DetectedBagAddons()
+    local found = MakeSpace.Overlay.DetectedBagAddons()
     return #found > 0 and table.concat(found, ",") or "none"
   end)
-  add("bagsScanned", function() return "0-" .. Bagwise.Bags.LastScanned() end)
-  add("safetyChecks", function() return table.concat(Bagwise.Safety.Names(), ",") end)
+  add("bagsScanned", function() return "0-" .. MakeSpace.Bags.LastScanned() end)
+  add("safetyChecks", function() return table.concat(MakeSpace.Safety.Names(), ",") end)
   add("dots", function()
-    local counts = Bagwise.Scanner.Counts()
+    local counts = MakeSpace.Scanner.Counts()
     return counts.green .. " green, " .. counts.yellow .. " yellow, " .. counts.items .. " items"
   end)
-  add("professions", function() return Bagwise.Scanner.ProfessionSummary() end)
-  add("lastScanError", function() return Bagwise.Scanner.LastError() or "none" end)
+  add("professions", function() return MakeSpace.Scanner.ProfessionSummary() end)
+  add("lastScanError", function() return MakeSpace.Scanner.LastError() or "none" end)
   add("makeRoom", function()
-    local plan = Bagwise.Scanner.MakeRoomSummary()
+    local plan = MakeSpace.Scanner.MakeRoomSummary()
     return "lootItems " .. plan.lootItems .. ", freeSlots " .. plan.freeSlots
       .. ", junkCandidates " .. plan.junkCandidates
       .. ", active " .. tostring(plan.active)
   end)
   add("keptAndFlagged", function()
     local function size(tbl) local n = 0 for _ in pairs(tbl or {}) do n = n + 1 end return n end
-    return size(BagwiseDB.keepList) .. " kept, " .. size(BagwiseDB.flagList) .. " flagged"
+    return size(MakeSpaceDB.keepList) .. " kept, " .. size(MakeSpaceDB.flagList) .. " flagged"
   end)
   return details
 end
@@ -118,18 +118,18 @@ end
 --- Open the copyable report window. Each step is guarded so a failure says
 -- where it broke instead of showing nothing.
 local function openReport()
-  local ok, snapshot = pcall(Bagwise.Scanner.CollectInventory)
+  local ok, snapshot = pcall(MakeSpace.Scanner.CollectInventory)
   if not ok then
     say("report failed while reading your bags: " .. tostring(snapshot))
     return
   end
-  local formatted, text = pcall(Bagwise.Dump.Format, snapshot,
-    { version = Bagwise.Commands.Version(), build = gameBuild(), extra = reportDetails() })
+  local formatted, text = pcall(MakeSpace.Dump.Format, snapshot,
+    { version = MakeSpace.Commands.Version(), build = gameBuild(), extra = reportDetails() })
   if not formatted then
     say("report failed while formatting: " .. tostring(text))
     return
   end
-  local shown, err = pcall(Bagwise.Dump.Show, text)
+  local shown, err = pcall(MakeSpace.Dump.Show, text)
   if not shown then
     say("report failed while opening the window: " .. tostring(err))
     return
@@ -148,10 +148,10 @@ end
 --- One line on what the dots in your bags add up to.
 -- @param summary table { green, yellow, greenValue }
 -- @return string|nil nil when there is nothing marked
-function Bagwise.Commands.SummaryLine(summary)
+function MakeSpace.Commands.SummaryLine(summary)
   local parts = {}
   if summary.green > 0 then
-    parts[#parts + 1] = summary.green .. " green (" .. Bagwise.Verdict.FormatMoney(summary.greenValue)
+    parts[#parts + 1] = summary.green .. " green (" .. MakeSpace.Verdict.FormatMoney(summary.greenValue)
       .. " at a vendor)"
   end
   if summary.yellow > 0 then parts[#parts + 1] = summary.yellow .. " yellow" end
@@ -160,8 +160,8 @@ function Bagwise.Commands.SummaryLine(summary)
 end
 
 --- Say the summary. At level up it stays quiet when there is nothing to say.
-function Bagwise.Commands.PrintSummary(quietWhenEmpty)
-  local line = Bagwise.Commands.SummaryLine(Bagwise.Scanner.Summary())
+function MakeSpace.Commands.PrintSummary(quietWhenEmpty)
+  local line = MakeSpace.Commands.SummaryLine(MakeSpace.Scanner.Summary())
   if line then
     say("Your bags: " .. line .. ".")
   elseif not quietWhenEmpty then
@@ -189,22 +189,22 @@ local COMMAND_HANDLERS = {
     print("  /makespace bank           - What Make Space sees of the bank")
   end,
   summary = function()
-    Bagwise.Commands.PrintSummary(false)
+    MakeSpace.Commands.PrintSummary(false)
   end,
   bank = function()
     say("bank:")
-    local ok, lines = pcall(Bagwise.Overlay.BankDiagnostics)
+    local ok, lines = pcall(MakeSpace.Overlay.BankDiagnostics)
     if not ok then lines = { "Diagnostics failed: " .. tostring(lines) } end
     for _, line in ipairs(lines) do print("  " .. line) end
   end,
   status = function()
-    say("v" .. Bagwise.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))
-    local bagUIs = Bagwise.Overlay.DetectedBagAddons()
+    say("v" .. MakeSpace.Commands.Version() .. " on WoW " .. (gameBuild() or "?"))
+    local bagUIs = MakeSpace.Overlay.DetectedBagAddons()
     print("  Bag UIs painted: " .. (#bagUIs > 0 and table.concat(bagUIs, ", ") or "none found"))
-    print("  Bags scanned: 0-" .. Bagwise.Bags.LastScanned())
-    local professions, summary = pcall(Bagwise.Scanner.ProfessionSummary)
+    print("  Bags scanned: 0-" .. MakeSpace.Bags.LastScanned())
+    local professions, summary = pcall(MakeSpace.Scanner.ProfessionSummary)
     print("  Professions: " .. tostring(professions and summary or ("could not be read: " .. tostring(summary))))
-    local counts = Bagwise.Scanner.Counts()
+    local counts = MakeSpace.Scanner.Counts()
     print("  Scanned items: " .. counts.items .. " (" .. counts.green .. " green, "
       .. counts.yellow .. " yellow)")
     local function size(tbl)
@@ -212,36 +212,36 @@ local COMMAND_HANDLERS = {
       for _ in pairs(tbl or {}) do n = n + 1 end
       return n
     end
-    print("  Data: " .. size(Bagwise.Data.QuestItems) .. " quest items, "
-      .. size(Bagwise.Data.ReagentProfessions) .. " recipe reagents")
-    local priceDate = Bagwise.Data.AuctionPricesDate
+    print("  Data: " .. size(MakeSpace.Data.QuestItems) .. " quest items, "
+      .. size(MakeSpace.Data.ReagentProfessions) .. " recipe reagents")
+    local priceDate = MakeSpace.Data.AuctionPricesDate
     if priceDate then
-      local age = Bagwise.Curves.SnapshotAgeDays(priceDate, (_G.time or os.time)())
-      local note = age and age > Bagwise.Curves.REMIND_SNAPSHOT_DAYS and ", update the addon" or ""
+      local age = MakeSpace.Curves.SnapshotAgeDays(priceDate, (_G.time or os.time)())
+      local note = age and age > MakeSpace.Curves.REMIND_SNAPSHOT_DAYS and ", update the addon" or ""
       print("  Auction prices: " .. priceDate .. (age and (", " .. age .. " days old") or "") .. note)
     else
       print("  Auction prices: no date in the data")
     end
-    local market = Bagwise.Data.AuctionMarket
+    local market = MakeSpace.Data.AuctionMarket
     if market then
       print("  Auction market: " .. market)
-    elseif Bagwise.Data.AuctionMarkets then
+    elseif MakeSpace.Data.AuctionMarkets then
       print("  Auction market: none for your region and faction, so tradable items get no green")
     end
-    print("  Live prices: " .. (Bagwise.Live.Api()
-      and ("Auctionator found, prices seen in the last " .. Bagwise.Live.MAX_AGE_DAYS .. " days are used")
+    print("  Live prices: " .. (MakeSpace.Live.Api()
+      and ("Auctionator found, prices seen in the last " .. MakeSpace.Live.MAX_AGE_DAYS .. " days are used")
       or "Auctionator not found, using the price snapshot only"))
-    print("  Safety checks: " .. table.concat(Bagwise.Safety.Names(), ", "))
-    print("  Your lists: " .. size(BagwiseDB.keepList) .. " kept, "
-      .. size(BagwiseDB.flagList) .. " flagged")
+    print("  Safety checks: " .. table.concat(MakeSpace.Safety.Names(), ", "))
+    print("  Your lists: " .. size(MakeSpaceDB.keepList) .. " kept, "
+      .. size(MakeSpaceDB.flagList) .. " flagged")
   end,
   why = function(argument)
-    local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
+    local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
       say("Usage: /makespace why [item]")
       return
     end
-    local explained = Bagwise.Scanner.Explain(itemID)
+    local explained = MakeSpace.Scanner.Explain(itemID)
     if not explained then
       say("item " .. itemID .. " is not loaded by the game yet. Try again in a moment.")
       return
@@ -259,10 +259,10 @@ local COMMAND_HANDLERS = {
           .. entry.blockedBy)
       end
     end
-    for _, line in ipairs(Bagwise.Verdict.SellAtVendorFacts(item, explained.state)) do
+    for _, line in ipairs(MakeSpace.Verdict.SellAtVendorFacts(item, explained.state)) do
       print("  " .. line)
     end
-    print("  " .. Bagwise.Live.Describe(item))
+    print("  " .. MakeSpace.Live.Describe(item))
     if item.link then
       print("  link fields: " .. tostring(item.link:match("item:([^|]*)")))
     end
@@ -288,10 +288,10 @@ local COMMAND_HANDLERS = {
     end
     if item.classID == 9 and explained.fromBag then
       print("  skill needed, read from the tooltip: " .. tostring(item.requiredSkill or "not found"))
-      local ok, summary = pcall(Bagwise.Scanner.ProfessionSummary)
+      local ok, summary = pcall(MakeSpace.Scanner.ProfessionSummary)
       print("  your professions: " .. tostring(ok and summary or "could not be read"))
-      if Bagwise.Scanner.TooltipTextOf then
-        for _, text in ipairs(Bagwise.Scanner.TooltipTextOf(item.id) or {}) do
+      if MakeSpace.Scanner.TooltipTextOf then
+        for _, text in ipairs(MakeSpace.Scanner.TooltipTextOf(item.id) or {}) do
           print("    tooltip: " .. text)
         end
       end
@@ -307,19 +307,19 @@ local COMMAND_HANDLERS = {
     end
   end,
   autoopen = function(argument)
-    BagwiseDB = BagwiseDB or {}
+    MakeSpaceDB = MakeSpaceDB or {}
     local word = (argument or ""):lower():match("^%s*(%a*)")
     if word == "on" then
-      BagwiseDB.autoOpenBags = true
+      MakeSpaceDB.autoOpenBags = true
     elseif word == "off" then
-      BagwiseDB.autoOpenBags = false
+      MakeSpaceDB.autoOpenBags = false
     else
-      BagwiseDB.autoOpenBags = BagwiseDB.autoOpenBags == false
+      MakeSpaceDB.autoOpenBags = MakeSpaceDB.autoOpenBags == false
     end
-    say("Opening your bags when loot needs room: " .. (BagwiseDB.autoOpenBags and "on" or "off"))
+    say("Opening your bags when loot needs room: " .. (MakeSpaceDB.autoOpenBags and "on" or "off"))
   end,
   loot = function()
-    local plan = Bagwise.Scanner.MakeRoomSummary()
+    local plan = MakeSpace.Scanner.MakeRoomSummary()
     say("make-room plan")
     print("  Loot items in the window: " .. plan.lootItems
       .. (plan.lootItems == 0 and " (open a loot window first)" or ""))
@@ -332,12 +332,12 @@ local COMMAND_HANDLERS = {
     end
   end,
   glow = function()
-    local key = Bagwise.Scanner.ForceTestGlow()
+    local key = MakeSpace.Scanner.ForceTestGlow()
     if not key then
       say("Your bags are empty, nothing to glow.")
       return
     end
-    Bagwise.Overlay.UpdateAll()
+    MakeSpace.Overlay.UpdateAll()
     say("Test glow on bag:slot " .. key .. " until your bags next change.")
     print("  Seen it: the glow draws fine, so the make-room plan is not starting. Open a loot window and run /makespace loot.")
     print("  Not seen: the glow itself cannot draw on your bag UI. Tell me which bag addon you use.")
@@ -345,17 +345,17 @@ local COMMAND_HANDLERS = {
   report = function() openReport() end,
   dump = function() openReport() end,
   keep = overrideCommand("/makespace keep [item]",
-    Bagwise.Overrides.AddKeep, "%s will never get a dot."),
+    MakeSpace.Overrides.AddKeep, "%s will never get a dot."),
   flag = overrideCommand("/makespace flag [item]",
-    Bagwise.Overrides.AddFlag, "%s will always get a yellow dot."),
+    MakeSpace.Overrides.AddFlag, "%s will always get a yellow dot."),
   reset = function(argument)
-    local itemID = Bagwise.Commands.ParseItemID(argument, lookupItemLinkByName)
+    local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
       say("Usage: /makespace reset [item]")
       return
     end
     local name = itemNameOf(itemID)
-    if Bagwise.Overrides.Remove(itemID) then
+    if MakeSpace.Overrides.Remove(itemID) then
       say(name .. " is back to the normal rules.")
       refreshDots()
     else
@@ -373,8 +373,8 @@ local COMMAND_HANDLERS = {
       say(title .. " (" .. #lines .. ")")
       for i = 1, #lines do print("  " .. lines[i]) end
     end
-    printList("Kept", BagwiseDB.keepList)
-    printList("Flagged", BagwiseDB.flagList)
+    printList("Kept", MakeSpaceDB.keepList)
+    printList("Flagged", MakeSpaceDB.flagList)
   end,
 }
 
@@ -383,18 +383,17 @@ local COMMAND_HANDLERS = {
 -- after the word ("why|cnIQ1:|Hitem:...") still splits where the link starts.
 -- The argument keeps its original case (item names).
 -- @return string, string  lower-case command ("" if none), argument
-function Bagwise.Commands.SplitInput(msg)
+function MakeSpace.Commands.SplitInput(msg)
   local text = (msg or ""):match("^%s*(.-)%s*$")
   local word, argument = text:match("^(%a*)%s*(.-)$")
   return word:lower(), argument
 end
 
-function Bagwise.Commands.Init()
-  SLASH_BAGWISE1 = "/makespace"
-  SLASH_BAGWISE2 = "/ms"
-  SLASH_BAGWISE3 = "/bagwise"
-  SlashCmdList["BAGWISE"] = function(msg)
-    local cmd, argument = Bagwise.Commands.SplitInput(msg)
+function MakeSpace.Commands.Init()
+  SLASH_MAKESPACE1 = "/makespace"
+  SLASH_MAKESPACE2 = "/bagwise"
+  SlashCmdList["MAKESPACE"] = function(msg)
+    local cmd, argument = MakeSpace.Commands.SplitInput(msg)
     if cmd == "" then cmd = "help" end
     local handler = COMMAND_HANDLERS[cmd]
     if handler then

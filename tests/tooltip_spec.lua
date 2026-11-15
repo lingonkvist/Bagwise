@@ -1,5 +1,5 @@
--- Bagwise: tooltip unit tests
--- Run with: lua5.1 tests/tooltip_spec.lua (from the Bagwise/ root)
+-- MakeSpace: tooltip unit tests
+-- Run with: lua5.1 tests/tooltip_spec.lua (from the MakeSpace/ root)
 
 _G.GameTooltip = {
   HookScript = function() end,
@@ -21,7 +21,7 @@ _G.C_QuestLog = {
   IsQuestFlaggedCompleted = function() return false end,
 }
 
-_G.Bagwise = nil
+_G.MakeSpace = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
@@ -81,9 +81,9 @@ end
 
 describe("tooltip basic output", function()
   it("shows verdict line for a bag item", function()
-    Bagwise.Data = Bagwise.Data or {}
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data = MakeSpace.Data or {}
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Well below your level" }
       end,
@@ -92,7 +92,7 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:123:...|h[Old Sword]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Well below your level", tt.lines[2].text)
@@ -101,8 +101,8 @@ describe("tooltip basic output", function()
   end)
 
   it("yellow level verdict: single line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "yellow", reason = "Below your level" }
       end,
@@ -111,29 +111,30 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:124:...|h[Decent Sword]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
-    assert.are.equal("Below your level", tt.lines[2].text)
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Below your level$"))
     assert.are.equal(0.97, tt.lines[1].r)
     assert.are.equal(0.82, tt.lines[1].g)
   end)
 
   it("header: dot and verdict in words in the verdict color, detail in info blue", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
-        return { verdict = "yellow", reason = "Below your level" }
+        return { verdict = "yellow", reason = "Below your level",
+                 heading = { title = "Outleveled gear", detail = "Below your level" } }
       end,
     }
 
     local tt = makeTooltip(
       "|cff...|Hitem:127:...|h[Old Boots]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
-    assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-pearl_yellow:14:14|t Worth a glance$"))
+    assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-pearl_yellow:14:14|t Outleveled gear$"))
     assert.are.equal(0.97, tt.lines[1].r)
     assert.are.equal(0.82, tt.lines[1].g)
     assert.are.equal("Below your level", tt.lines[2].text)
@@ -142,8 +143,8 @@ describe("tooltip basic output", function()
   end)
 
   it("says Safe to vendor for a green tagged as sellable", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Shamans can't wear mail until 40",
                  sellable = true }
@@ -153,26 +154,26 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:127:...|h[Mail Belt]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.is_truthy(tt.lines[1].text:find("pearl_green:14:14|t Safe to vendor$"))
     assert.are.equal("Shamans can't wear mail until 40", tt.lines[2].text)
   end)
 
   it("shows a price with white numbers and coloured coin letters", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function() return { auctionNote = "Vendor 1g 20s 5c, auction about 8s" } end,
     }
     local tt = makeTooltip("|cff...|Hitem:127:...|h[Junk]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal("Vendor |cffffffff1|r|cffffd700g|r |cffffffff20|r|cffc7c7cfs|r |cffffffff5|r|cffeda55fc|r, auction about |cffffffff8|r|cffc7c7cfs|r",
         tt.lines[1].text)
   end)
 
   it("shows the dot header, reason and delete line for a slot picked to make room", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "yellow", reason = "Cheapest junk, sells for 5c",
                  detail = "Delete to make room for your loot" }
@@ -182,18 +183,17 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:127:...|h[Junk]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(3, #tt.lines)
-    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
-    assert.are.equal("Cheapest junk, sells for 5c", plainCoins(tt.lines[2].text))
-    assert.are.equal("Delete to make room for your loot", tt.lines[3].text)
-    assert.are.equal(0.40, tt.lines[3].r)
+    assert.are.equal(2, #tt.lines)
+    assert.is_truthy(plainCoins(tt.lines[1].text):find("Cheapest junk, sells for 5c$"))
+    assert.are.equal("Delete to make room for your loot", tt.lines[2].text)
+    assert.are.equal(0.40, tt.lines[2].r)
   end)
 
   it("never adds a blank spacer line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Quest completed", detail = "[34] Bad Medicine" }
       end,
@@ -202,7 +202,7 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:125:...|h[Old Note]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(3, #tt.lines)
     for i = 1, #tt.lines do
@@ -211,8 +211,8 @@ describe("tooltip basic output", function()
   end)
 
   it("long verdict text breaks at a comma when one fits on the first line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return {
           verdict = "green",
@@ -224,7 +224,7 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:126:...|h[Many Uses]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(3, #tt.lines)
     assert.are.equal("Vendor reagent (Alchemy, Enchanting,", tt.lines[2].text)
@@ -232,85 +232,85 @@ describe("tooltip basic output", function()
   end)
 
   it("no output for non-bag tooltips (no owner)", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function() return nil end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:999:...|h[Unknown]|h|r")
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(0, #tt.lines)
   end)
 
   it("a clicked chat link shows no verdict, even for an item that would have one", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = nil
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = nil
+    MakeSpace.Scanner = {
       EvaluateItem = function() error("a link gets no verdict") end,
       GetResult = function() error("a link is not in a bag") end,
     }
     local tt = makeTooltip("|cff1eff00|Hitem:14406::::::::31:1491|h[Resilient Cord]|h|r")
     tt.GetName = function() return "ItemRefTooltip" end
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(0, #tt.lines)
   end)
 
   it("a clicked chat link shows what a reagent is for even without a verdict", function()
-    Bagwise.Data.ReagentProfessions = { [765] = { { "Alchemy", 5, 1, 50 } } }
-    Bagwise.Data.VendorReagents = nil
-    Bagwise.Scanner = {}
+    MakeSpace.Data.ReagentProfessions = { [765] = { { "Alchemy", 5, 1, 50 } } }
+    MakeSpace.Data.VendorReagents = nil
+    MakeSpace.Scanner = {}
     local tt = makeTooltip("|cffffffff|Hitem:765:::::::|h[Silverleaf]|h|r")
     tt.GetName = function() return "ItemRefTooltip" end
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Alchemy", 1, true))
   end)
 
   it("shows the verdict on a Forever bank button, which knows its own tab and slot", function()
-    Bagwise.Data.ReagentProfessions = {}
+    MakeSpace.Data.ReagentProfessions = {}
     local asked
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       GetResult = function(bag, slot)
         asked = bag .. ":" .. slot
         return { verdict = "green", reason = "Well below your level" }
       end,
     }
-    local realIsScanned = Bagwise.Bags.IsScanned
-    Bagwise.Bags.IsScanned = function(bag) return bag == 7 end
+    local realIsScanned = MakeSpace.Bags.IsScanned
+    MakeSpace.Bags.IsScanned = function(bag) return bag == 7 end
     local tt = makeTooltip("|cff...|Hitem:123:...|h[Old Sword]|h|r")
     local button = { GetBankTabID = function() return 7 end, GetContainerSlotID = function() return 3 end,
                      GetID = function() return 99 end, GetParent = function() return {} end }
     tt.GetOwner = function() return button end
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
-    Bagwise.Bags.IsScanned = realIsScanned
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Bags.IsScanned = realIsScanned
     assert.are.equal("7:3", asked)
     assert.are.equal(2, #tt.lines)
   end)
 
   it("explains the missing dot when the auction pays more: no verdict, one price row", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function() return { auctionNote = "Vendor 5c, auction about 8s" } end,
     }
     local tt = makeTooltip("|cff...|Hitem:16645:...|h[Page 1]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(1, #tt.lines)
     assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[1].text))
     assert.are.equal(0.40, tt.lines[1].r)
   end)
 
   it("keeps the price row on a yellow hint when Auctionator is installed", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "yellow", reason = "Flagged", auctionNote = "Vendor 5c, auction about 8s" }
       end,
     }
-    local realLive = Bagwise.Live
-    Bagwise.Live = { Api = function() return {} end }
+    local realLive = MakeSpace.Live
+    MakeSpace.Live = { Api = function() return {} end }
     local tt = makeTooltip("|cff...|Hitem:16645:...|h[Page 1]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
-    Bagwise.Live = realLive
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Live = realLive
     local found = false
     for _, line in ipairs(tt.lines) do
       if line.text:find("auction about") then found = true end
@@ -319,50 +319,50 @@ describe("tooltip basic output", function()
   end)
 
   it("a price note goes with a yellow verdict too, after its detail", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "yellow", reason = "Flagged", auctionNote = "Vendor 5c, auction about 8s" }
       end,
     }
     local tt = makeTooltip("|cff...|Hitem:16646:...|h[Page 2]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[#tt.lines].text))
   end)
 
   it("a worth-very-little green shows the price line instead of its own reason", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
-        return { verdict = "green", reason = Bagwise.Verdict.WORTH_LITTLE_REASON,
+        return { verdict = "green", reason = MakeSpace.Verdict.WORTH_LITTLE_REASON,
                  auctionNote = "Vendor 20c, auction about 26c" }
       end,
     }
     local tt = makeTooltip("|cff...|Hitem:6470:...|h[Deviate Scale]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Vendor 20c, auction about 26c", plainCoins(tt.lines[2].text))
   end)
 
   it("a worth-very-little green with no price line keeps its reason", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
-        return { verdict = "green", reason = Bagwise.Verdict.WORTH_LITTLE_REASON }
+        return { verdict = "green", reason = MakeSpace.Verdict.WORTH_LITTLE_REASON }
       end,
     }
     local tt = makeTooltip("|cff...|Hitem:6470:...|h[Deviate Scale]|h|r", "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal("Worth very little", plainCoins(tt.lines[2].text))
   end)
 
   it("shows profession info even when scan result is nil", function()
-    Bagwise.Data = Bagwise.Data or {}
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data = MakeSpace.Data or {}
+    MakeSpace.Data.ReagentProfessions = {
       [765] = { { "Alchemy", 5, 1, 50 } },
     }
-    Bagwise.Data.VendorReagents = nil
-    Bagwise.Scanner = {
+    MakeSpace.Data.VendorReagents = nil
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return nil end,
     }
@@ -370,7 +370,7 @@ describe("tooltip basic output", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "ContainerFrame1", 0, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Alchemy %(1%-50%)"))
@@ -380,9 +380,9 @@ end)
 describe("tooltip bag and slot lookup", function()
   local function recordLookups()
     local lookups = {}
-    Bagwise.Data = Bagwise.Data or {}
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data = MakeSpace.Data or {}
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function(bag, slot)
         lookups[#lookups + 1] = { bag = bag, slot = slot }
         return { verdict = "green", reason = "Test reason" }
@@ -398,7 +398,7 @@ describe("tooltip bag and slot lookup", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "ContainerFrameCombinedBags", 0, 7, 3)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #lookups)
     assert.are.equal(3, lookups[1].bag)
@@ -412,7 +412,7 @@ describe("tooltip bag and slot lookup", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "ContainerFrameCombinedBags", 0, 2, 0)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, lookups[1].bag)
     assert.are.equal(2, lookups[1].slot)
@@ -424,7 +424,7 @@ describe("tooltip bag and slot lookup", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "SomeFrame", 0, 4, 99)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #lookups)
     assert.are.equal(0, #tt.lines)
@@ -436,7 +436,7 @@ describe("tooltip bag and slot lookup", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "ContainerFrame2", 2, 9)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, lookups[1].bag)
     assert.are.equal(9, lookups[1].slot)
@@ -445,34 +445,34 @@ end)
 
 describe("tooltip known-use note", function()
   it("explains a silent item that is on the known-use list", function()
-    Bagwise.Data = Bagwise.Data or {}
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = {}
-    Bagwise.Data.ProtectedItems = { [268415] = "Herb seed, used in the Herbalism Greenhouse" }
-    Bagwise.Scanner = { professionNames = nil, GetResult = function() return {} end }
+    MakeSpace.Data = MakeSpace.Data or {}
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = {}
+    MakeSpace.Data.ProtectedItems = { [268415] = "Herb seed, used in the Herbalism Greenhouse" }
+    MakeSpace.Scanner = { professionNames = nil, GetResult = function() return {} end }
 
     local tt = makeTooltip("|cff...|Hitem:268415:...|h[Commonplace Herb Seeds]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.are.equal("Herb seed, used in the Herbalism Greenhouse", tt.lines[1].text)
-    Bagwise.Data.ProtectedItems = nil
+    MakeSpace.Data.ProtectedItems = nil
   end)
 end)
 
 describe("tooltip profession info (no verdict)", function()
   it("single profession, no extras", function()
-    Bagwise.Data = Bagwise.Data or {}
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data = MakeSpace.Data or {}
+    MakeSpace.Data.ReagentProfessions = {
       [765] = { { "Alchemy", 5, 1, 50 } },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:765:...|h[Silverleaf]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Alchemy %(1%-50%)"))
@@ -480,20 +480,20 @@ describe("tooltip profession info (no verdict)", function()
   end)
 
   it("3 professions, player has none: top 2 by range + extras", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [7067] = {
         { "Alchemy",       2, 215, 290 }, -- range 75
         { "Blacksmithing", 3, 180, 300 }, -- range 120
         { "Tailoring",     3, 170, 195 }, -- range 25
       },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:7067:...|h[Elemental Earth]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Blacksmithing %(180%-300%)"))
@@ -501,7 +501,7 @@ describe("tooltip profession info (no verdict)", function()
   end)
 
   it("5 professions, player has none: top 2 + +3", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [7067] = {
         { "Alchemy",        2, 215, 290 }, -- 75
         { "Blacksmithing",  3, 180, 300 }, -- 120
@@ -510,13 +510,13 @@ describe("tooltip profession info (no verdict)", function()
         { "Leatherworking", 4, 170, 200 }, -- 30
       },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:7067:...|h[Elemental Earth]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Blacksmithing %(180%-300%)"))
@@ -524,40 +524,40 @@ describe("tooltip profession info (no verdict)", function()
   end)
 
   it("player has the profession: shows it, no extras", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [7067] = {
         { "Alchemy",        2, 215, 290 },
         { "Blacksmithing",  3, 180, 300 },
         { "Leatherworking", 4, 170, 200 },
       },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = { Leatherworking = true },
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:7067:...|h[Elemental Earth]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Leatherworking %(170%-200%)"))
   end)
 
   it("player has 2 matching: both shown, main first", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [7067] = {
         { "Alchemy",        2, 215, 290 },
         { "Blacksmithing",  3, 180, 300 },
         { "Leatherworking", 4, 170, 200 },
       },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = { Alchemy = true, Leatherworking = true },
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:7067:...|h[Elemental Earth]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Alchemy %(215%-290%)"))
@@ -565,51 +565,51 @@ describe("tooltip profession info (no verdict)", function()
   end)
 
   it("player has secondary prof: sorted after main", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [159] = {
         { "Cooking",     7, 50,  275 },
         { "Engineering", 3, 100, 275 },
       },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = { Engineering = true, Cooking = true },
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:159:...|h[Refreshing Spring Water]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.is_truthy(tt.lines[1].text:find("Engineering %(100%-275%)"))
     assert.is_truthy(tt.lines[2].text:find("Cooking %(50%-275%)"))
   end)
 
   it("shows single number when min equals max", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [100] = { { "Cooking", 3, 75, 75 } },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:100:...|h[Test]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Cooking %(75%)"))
   end)
 
   it("uses info blue color for default text", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [765] = { { "Alchemy", 5, 1, 50 } },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = nil,
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:765:...|h[Silverleaf]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0.40, tt.lines[1].r)
     assert.are.equal(0.74, tt.lines[1].g)
@@ -617,48 +617,48 @@ describe("tooltip profession info (no verdict)", function()
   end)
 
   it("does nothing when link is nil", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [765] = { { "Alchemy", 5, 1, 50 } },
     }
     local tt = makeTooltip(nil)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(0, #tt.lines)
   end)
 end)
 
 describe("tooltip vendor reagent verdict", function()
   it("single line with professions in parens, no detail rows", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [3371] = { { "Alchemy", 20, 1, 300 } },
     }
-    Bagwise.Data.VendorReagents = {
+    MakeSpace.Data.VendorReagents = {
       [3371] = { 171 },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Vendor reagent (Alchemy)" }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:3371:...|h[Empty Vial]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Vendor reagent (Alchemy)", tt.lines[2].text)
-    Bagwise.Data.VendorReagents = nil
+    MakeSpace.Data.VendorReagents = nil
   end)
 
   it("multi-prof vendor: a reason that fits stays on one line", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [2320] = {
         { "Leatherworking", 10, 1, 300 },
         { "Tailoring",      10, 1, 300 },
       },
     }
-    Bagwise.Data.VendorReagents = {
+    MakeSpace.Data.VendorReagents = {
       [2320] = { 165, 197 },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       GetResult = function()
         return {
           verdict = "green",
@@ -668,44 +668,44 @@ describe("tooltip vendor reagent verdict", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Vendor reagent (Leatherworking, Tailoring)", tt.lines[2].text)
-    Bagwise.Data.VendorReagents = nil
+    MakeSpace.Data.VendorReagents = nil
   end)
 
   it("no profession rows when vendor reagent has no verdict", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [159] = { { "Cooking", 7, 90, 315 }, { "Engineering", 3, 130, 275 } },
     }
-    Bagwise.Data.VendorReagents = {
+    MakeSpace.Data.VendorReagents = {
       [159] = { 185, 202 },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = { Cooking = true },
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:159:...|h[Refreshing Spring Water]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #tt.lines)
-    Bagwise.Data.VendorReagents = nil
+    MakeSpace.Data.VendorReagents = nil
   end)
 end)
 
 describe("tooltip merged verdict lines", function()
   it("green class reagent: single line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Rogue only (vendor)" }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:5140:...|h[Flash Powder]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Rogue only (vendor)", tt.lines[2].text)
@@ -713,23 +713,23 @@ describe("tooltip merged verdict lines", function()
   end)
 
   it("yellow class reagent: single line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "yellow", reason = "Rogue only (world drop)" }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:5530:...|h[Soul Shard]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
-    assert.are.equal(2, #tt.lines)
-    assert.are.equal("Rogue only (world drop)", tt.lines[2].text)
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Rogue only %(world drop%)$"))
   end)
 
   it("quest verdict: single line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return {
           verdict = "green",
@@ -739,7 +739,7 @@ describe("tooltip merged verdict lines", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:200:...|h[Lost Necklace]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Quest already completed", tt.lines[2].text)
@@ -748,10 +748,10 @@ end)
 
 describe("tooltip quest details with level and zone", function()
   it("shows [level] name (zone) when QuestInfo has both", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3456] = { 204 } }
-    Bagwise.Data.QuestInfo = { [204] = { 34, "Stranglethorn Vale" } }
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3456] = { 204 } }
+    MakeSpace.Data.QuestInfo = { [204] = { 34, "Stranglethorn Vale" } }
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = nil, reason = nil }
       end,
@@ -759,7 +759,7 @@ describe("tooltip quest details with level and zone", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:3456:...|h[Sgt's Cloak]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.are.equal("[34] Test Quest 204 (Stranglethorn Vale)", tt.lines[1].text)
@@ -768,20 +768,20 @@ describe("tooltip quest details with level and zone", function()
   it("leaves out quests only the other faction can take", function()
     local savedFaction = _G.UnitFactionGroup
     _G.UnitFactionGroup = function() return "Horde" end
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3460] = { 8520, 8521, 8522 } }
-    Bagwise.Data.QuestInfo = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3460] = { 8520, 8521, 8522 } }
+    MakeSpace.Data.QuestInfo = {
       [8520] = { 60, nil, "Alliance Bandages", "A" },
       [8521] = { 60, nil, "More Alliance Bandages", "A" },
       [8522] = { 60, nil, "Horde Bandages", "H" },
     }
-    Bagwise.Scanner = { GetResult = function() return { verdict = nil, reason = nil } end }
+    MakeSpace.Scanner = { GetResult = function() return { verdict = nil, reason = nil } end }
 
     local tt = makeTooltip("|cff...|Hitem:3460:...|h[Silk Bandage]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
-    Bagwise.Data.QuestItems = { [3460] = { 8520 } }
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Data.QuestItems = { [3460] = { 8520 } }
     local tt2 = makeTooltip("|cff...|Hitem:3460:...|h[Silk Bandage]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt2)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt2)
     _G.UnitFactionGroup = savedFaction
 
     assert.are.equal(1, #tt.lines)
@@ -790,10 +790,10 @@ describe("tooltip quest details with level and zone", function()
   end)
 
   it("shows [level] name when QuestInfo has level but no zone", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3457] = { 100 } }
-    Bagwise.Data.QuestInfo = { [100] = { 22, nil } }
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3457] = { 100 } }
+    MakeSpace.Data.QuestInfo = { [100] = { 22, nil } }
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = nil, reason = nil }
       end,
@@ -801,17 +801,17 @@ describe("tooltip quest details with level and zone", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:3457:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.are.equal("[22] Test Quest 100", tt.lines[1].text)
   end)
 
   it("shows name (zone) when QuestInfo has zone but no level", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3458] = { 300 } }
-    Bagwise.Data.QuestInfo = { [300] = { nil, "Ashenvale" } }
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3458] = { 300 } }
+    MakeSpace.Data.QuestInfo = { [300] = { nil, "Ashenvale" } }
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = nil, reason = nil }
       end,
@@ -819,17 +819,17 @@ describe("tooltip quest details with level and zone", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:3458:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.are.equal("Test Quest 300 (Ashenvale)", tt.lines[1].text)
   end)
 
   it("falls back to plain name when no QuestInfo entry", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3459] = { 999 } }
-    Bagwise.Data.QuestInfo = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3459] = { 999 } }
+    MakeSpace.Data.QuestInfo = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = nil, reason = nil }
       end,
@@ -837,21 +837,21 @@ describe("tooltip quest details with level and zone", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:3459:...|h[Test Item]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(1, #tt.lines)
     assert.are.equal("Test Quest 999", tt.lines[1].text)
   end)
 
   it("respects 2-line limit with overflow count", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Data.QuestItems = { [3460] = { 10, 20, 30 } }
-    Bagwise.Data.QuestInfo = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = { [3460] = { 10, 20, 30 } }
+    MakeSpace.Data.QuestInfo = {
       [10] = { 15, "Westfall" },
       [20] = { 25, "Duskwood" },
       [30] = { 35, "Stranglethorn Vale" },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = nil, reason = nil }
       end,
@@ -859,7 +859,7 @@ describe("tooltip quest details with level and zone", function()
     }
 
     local tt = makeTooltip("|cff...|Hitem:3460:...|h[Multi Quest]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("[15] Test Quest 10 (Westfall)", tt.lines[1].text)
@@ -870,30 +870,30 @@ end)
 
 describe("tooltip verdict edge cases", function()
   it("skips verdict for non-bag tooltips", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "test" }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:789:...|h[AH Item]|h|r", "AuctionFrame", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #tt.lines)
   end)
 
   it("does not show reagent info for non-bag tooltip", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [7067] = {
         { "Alchemy",       2, 215, 290 },
         { "Blacksmithing", 3, 180, 300 },
       },
     }
-    Bagwise.Scanner = { professionNames = nil }
+    MakeSpace.Scanner = { professionNames = nil }
 
     local tt = makeTooltip("|cff...|Hitem:7067:...|h[Elemental Earth]|h|r", "AuctionFrame", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #tt.lines)
   end)
@@ -901,15 +901,15 @@ end)
 
 describe("tooltip quest completed two-line format", function()
   it("renders verdict green and detail info-blue on second line", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Quest completed", detail = "[34] Bad Medicine" }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(3, #tt.lines)
     assert.are.equal("Quest completed", tt.lines[2].text)
@@ -923,15 +923,15 @@ describe("tooltip quest completed two-line format", function()
   end)
 
   it("no detail line when detail is nil", function()
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         return { verdict = "green", reason = "Quest completed", detail = nil }
       end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:2799:...|h[Gorilla Fang]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Quest completed", tt.lines[2].text)
@@ -940,24 +940,24 @@ end)
 
 describe("tooltip vendor reagent quest row suppression", function()
   it("no quest rows when vendor reagent has no verdict", function()
-    Bagwise.Data.ReagentProfessions = {
+    MakeSpace.Data.ReagentProfessions = {
       [159] = { { "Cooking", 7, 50, 275 } },
     }
-    Bagwise.Data.QuestItems = { [159] = { 16 } }
-    Bagwise.Data.QuestInfo = { [16] = { 10, "Elwynn Forest", "Give Gerard a Drink" } }
-    Bagwise.Data.VendorReagents = {
+    MakeSpace.Data.QuestItems = { [159] = { 16 } }
+    MakeSpace.Data.QuestInfo = { [16] = { 10, "Elwynn Forest", "Give Gerard a Drink" } }
+    MakeSpace.Data.VendorReagents = {
       [159] = { 185, 202 },
     }
-    Bagwise.Scanner = {
+    MakeSpace.Scanner = {
       professionNames = { Cooking = true },
       GetResult = function() return {} end,
     }
 
     local tt = makeTooltip("|cff...|Hitem:159:...|h[Refreshing Spring Water]|h|r", "ContainerFrame1", 0, 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.are.equal(0, #tt.lines)
-    Bagwise.Data.VendorReagents = nil
+    MakeSpace.Data.VendorReagents = nil
   end)
 end)
 
@@ -965,8 +965,8 @@ end)
 describe("tooltip reagent bag (Forever)", function()
   it("resolves items in bag 5 when the client has a reagent bag slot", function()
     local lookups = {}
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function(bag, slot)
         lookups[#lookups + 1] = { bag = bag, slot = slot }
         return { verdict = "green", reason = "Test reason" }
@@ -977,7 +977,7 @@ describe("tooltip reagent bag (Forever)", function()
     local tt = makeTooltip(
       "|cff...|Hitem:765:...|h[Silverleaf]|h|r",
       "ContainerFrameCombinedBags", 0, 3, 5)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     _G.NUM_REAGENTBAG_SLOTS = nil
 
     assert.are.equal(1, #lookups)
@@ -1007,8 +1007,8 @@ describe("tooltip in the loot window", function()
 
   local function installScanner(result)
     local calls = { bagLookups = 0, evaluated = {} }
-    Bagwise.Data.ReagentProfessions = {}
-    Bagwise.Scanner = {
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
       GetResult = function()
         calls.bagLookups = calls.bagLookups + 1
         return { verdict = "yellow", reason = "From a bag" }
@@ -1035,7 +1035,7 @@ describe("tooltip in the loot window", function()
     local calls = installScanner({ verdict = "green", reason = "Vendor reagent (Alchemy)" })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(2, #tt.lines)
@@ -1047,11 +1047,11 @@ describe("tooltip in the loot window", function()
   it("does not call a taken item 'not needed': the plan says take it", function()
     setup()
     installScanner({ verdict = "green", reason = "Vendor reagent (Alchemy)" })
-    Bagwise.Scanner.LootDecision = function() return "take" end
+    MakeSpace.Scanner.LootDecision = function() return "take" end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     for _, line in ipairs(tt.lines) do
@@ -1063,12 +1063,12 @@ describe("tooltip in the loot window", function()
   it("a single skipped item with no junk to compare says it is not worth a slot", function()
     setup()
     installScanner(nil)
-    Bagwise.Scanner.LootDecision = function() return "leave" end
-    Bagwise.Scanner.MakeRoomSummary = function() return {} end
+    MakeSpace.Scanner.LootDecision = function() return "leave" end
+    MakeSpace.Scanner.MakeRoomSummary = function() return {} end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Skip it$"))
@@ -1078,41 +1078,41 @@ describe("tooltip in the loot window", function()
   it("explains the X on an item that already has its own verdict", function()
     setup()
     installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
-    Bagwise.Scanner.LootDecision = function() return "leave" end
-    Bagwise.Scanner.MakeRoomSummary = function()
+    MakeSpace.Scanner.LootDecision = function() return "leave" end
+    MakeSpace.Scanner.MakeRoomSummary = function()
       return { cheapestJunkValue = 800, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
     end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
-    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (8s)", plainCoins(tt.lines[3].text))
+    assert.is_truthy(tt.lines[1].text:find("Some unlisted hint$"))
+    assert.are.equal("Worth less than |cff9d9d9dOdd Bauble|r (8s)", plainCoins(tt.lines[2].text))
   end)
 
   it("says a must-take item has no room even when it has its own verdict", function()
     setup()
     installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
-    Bagwise.Scanner.LootDecision = function() return "noroom" end
+    MakeSpace.Scanner.LootDecision = function() return "noroom" end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.are.equal("Nothing safe to delete", tt.lines[3].text)
+    assert.are.equal("Nothing safe to delete", tt.lines[2].text)
   end)
 
   it("says to consider an item taken for a reason a price cannot judge", function()
     setup()
     installScanner(nil)
-    Bagwise.Scanner.LootDecision = function() return "consider" end
+    MakeSpace.Scanner.LootDecision = function() return "consider" end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal("May be needed", tt.lines[#tt.lines].text)
@@ -1123,14 +1123,14 @@ describe("tooltip in the loot window", function()
   it("names the cheapest gray on one line, item and coins coloured", function()
     setup()
     installScanner(nil)
-    Bagwise.Scanner.LootDecision = function() return "leave" end
-    Bagwise.Scanner.MakeRoomSummary = function()
+    MakeSpace.Scanner.LootDecision = function() return "leave" end
+    MakeSpace.Scanner.MakeRoomSummary = function()
       return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
     end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(2, #tt.lines)
@@ -1140,15 +1140,15 @@ describe("tooltip in the loot window", function()
   it("a skipped gray does not repeat its own price", function()
     setup()
     installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
-                     tag = Bagwise.Verdict.POOR_QUALITY_TAG })
-    Bagwise.Scanner.LootDecision = function() return "leave" end
-    Bagwise.Scanner.MakeRoomSummary = function()
+                     tag = MakeSpace.Verdict.POOR_QUALITY_TAG })
+    MakeSpace.Scanner.LootDecision = function() return "leave" end
+    MakeSpace.Scanner.MakeRoomSummary = function()
       return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
     end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(2, #tt.lines)
@@ -1159,15 +1159,15 @@ describe("tooltip in the loot window", function()
   it("does not repeat a gray's own sell price next to the comparison", function()
     setup()
     installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
-      tag = Bagwise.Verdict.POOR_QUALITY_TAG })
-    Bagwise.Scanner.LootDecision = function() return "leave" end
-    Bagwise.Scanner.MakeRoomSummary = function()
+      tag = MakeSpace.Verdict.POOR_QUALITY_TAG })
+    MakeSpace.Scanner.LootDecision = function() return "leave" end
+    MakeSpace.Scanner.MakeRoomSummary = function()
       return { cheapestJunkValue = 117, cheapestJunkName = "Odd Bauble", cheapestJunkQuality = 0 }
     end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     tt:GetOwner().slot = 1
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(2, #tt.lines)
@@ -1180,7 +1180,7 @@ describe("tooltip in the loot window", function()
       heading = { title = "Outleveled reagent", detail = "Mining recipes use it up to 125" } })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Outleveled reagent$"))
@@ -1189,11 +1189,11 @@ describe("tooltip in the loot window", function()
 
   it("tells a yellow gray to be saved for the vendor, with the value on one line", function()
     setup()
-    local reason, heading = Bagwise.Verdict.PoorQualityReason(500, true, true)
+    local reason, heading = MakeSpace.Verdict.PoorQualityReason(500, true, true)
     installScanner({ verdict = "yellow", reason = reason, heading = heading })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Save for vendor$"))
@@ -1206,22 +1206,23 @@ describe("tooltip in the loot window", function()
     installScanner({ verdict = "yellow", reason = "Flagged by you", heading = { title = "Flagged by you" } })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.is_truthy(tt.lines[1].text:find("Flagged by you$"))
     assert.are.equal(1, #tt.lines)
   end)
 
-  it("keeps the generic yellow heading for an unlisted reason", function()
+  it("names a yellow with no heading of its own by its reason", function()
     setup()
     installScanner({ verdict = "yellow", reason = "Some unlisted hint" })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.is_truthy(tt.lines[1].text:find("Worth a glance$"))
+    assert.is_truthy(tt.lines[1].text:find("Some unlisted hint$"))
+    assert.are.equal(1, #tt.lines)
   end)
 
   it("finds the loot frame several levels up", function()
@@ -1229,7 +1230,7 @@ describe("tooltip in the loot window", function()
     local calls = installScanner({ verdict = "green", reason = "Quest completed" })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 3)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(1, #calls.evaluated)
@@ -1241,7 +1242,7 @@ describe("tooltip in the loot window", function()
     _G.C_Container.GetContainerItemInfo = function() return { itemID = 2320 } end
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(0, calls.bagLookups)
@@ -1250,10 +1251,10 @@ describe("tooltip in the loot window", function()
   it("shows profession info for loot with no verdict", function()
     setup()
     installScanner({})
-    Bagwise.Data.ReagentProfessions = { [765] = { { "Alchemy", 9, 1, 50 } } }
+    MakeSpace.Data.ReagentProfessions = { [765] = { { "Alchemy", 9, 1, 50 } } }
 
     local tt = makeLootTooltip("|cff...|Hitem:765:...|h[Silverleaf]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(1, #tt.lines)
@@ -1265,7 +1266,7 @@ describe("tooltip in the loot window", function()
     installScanner(nil)
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(0, #tt.lines)
@@ -1275,7 +1276,7 @@ describe("tooltip in the loot window", function()
     setup()
     local calls = installScanner({ verdict = "green", reason = "x" })
     local tt = makeTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", nil)
-    Bagwise.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
     assert.are.equal(0, #calls.evaluated)

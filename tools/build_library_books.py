@@ -4,7 +4,7 @@ Build data/library_books.lua: the item IDs of the WoW Forever library books.
 
 Players loot these books around the world and hand them in one by one to the
 librarian in Stormwind or Undercity for rewards. The game will not give a
-deleted book back, so Bagwise gives them a yellow hint. The books are items
+deleted book back, so MakeSpace gives them a yellow hint. The books are items
 that start a quest named after the book, so the item IDs come from the quest
 data already in data/quest_items.lua (itself built from Questie): find the quest
 with each book's name, then every item tied to that quest.
@@ -80,12 +80,12 @@ def section(source, start, end):
 
 def parse_quest_data(source):
     """Return (items, quests): item id -> [quest ids], quest id -> (name, hasZone)."""
-    item_text = section(source, "Bagwise.Data.QuestItems", "Bagwise.Data.QuestInfo")
+    item_text = section(source, "MakeSpace.Data.QuestItems", "MakeSpace.Data.QuestInfo")
     items = {}
     for key, body in re.findall(r"\[(\d+)\] = \{([^}]*)\}", item_text):
         items[int(key)] = [int(n) for n in body.split(",") if n.strip()]
 
-    info_text = section(source, "Bagwise.Data.QuestInfo", "Bagwise.Data.RepeatableQuests")
+    info_text = section(source, "MakeSpace.Data.QuestInfo", "MakeSpace.Data.RepeatableQuests")
     quests = {}
     for key, body in re.findall(r"\[(\d+)\] = \{ ([^\n]*?) \},?\n", info_text):
         names = re.findall(r'"([^"]*)"', body)
@@ -126,10 +126,10 @@ def render_lua(item_ids):
         "-- them in one by one to the librarian in Stormwind or Undercity, and the game",
         "-- will not give a deleted one back.",
         "",
-        "Bagwise = Bagwise or {}",
-        "Bagwise.Data = Bagwise.Data or {}",
+        "MakeSpace = MakeSpace or {}",
+        "MakeSpace.Data = MakeSpace.Data or {}",
         "",
-        "Bagwise.Data.LibraryBooks = {",
+        "MakeSpace.Data.LibraryBooks = {",
     ]
     lines += ["  [%d] = true," % item_id for item_id in item_ids]
     lines.append("}")
@@ -138,18 +138,18 @@ def render_lua(item_ids):
 
 def selftest():
     sample = (
-        "Bagwise.Data.QuestItems = {\n"
+        "MakeSpace.Data.QuestItems = {\n"
         "    [100] = { 1 },\n"
         "    [101] = { 2, 3 },\n"
         "    [102] = { 4 },\n"
         "}\n"
-        "Bagwise.Data.QuestInfo = {\n"
+        "MakeSpace.Data.QuestInfo = {\n"
         '    [1] = { 20, nil, "Goaz Scrolls" },\n'
         '    [2] = { 20, nil, "Archmage Theocritus\' Research Journal" },\n'
         '    [3] = { 5, "Elwynn Forest", "Goaz Scrolls" },\n'
         '    [4] = { 5, "Elwynn Forest", "Some Other Quest" },\n'
         "}\n"
-        "Bagwise.Data.RepeatableQuests = {\n}\n"
+        "MakeSpace.Data.RepeatableQuests = {\n}\n"
     )
     items, quests = parse_quest_data(sample)
     assert items == {100: [1], 101: [2, 3], 102: [4]}, items

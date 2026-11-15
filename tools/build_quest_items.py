@@ -13,7 +13,7 @@ in the raw per-expansion files, so use the merged export):
     cd QuestieDB
     ./tools/lua-binary/linux-x64/lua tools/export-forever.lua --include-authored
         (Windows: .\\tools\\lua-binary\\lua.exe tools/export-forever.lua --include-authored)
-    cd ../Bagwise
+    cd ../MakeSpace
     python3 tools/build_quest_items.py \\
         --source ../QuestieDB/src/corrections/Forever/combined/foreverQuestDB.lua
 
@@ -462,10 +462,10 @@ def format_lua(item_quests: dict[int, set[int]],
         --
         -- {len(item_quests)} items across {quest_count} quests.
 
-        Bagwise = Bagwise or {{}}
-        Bagwise.Data = Bagwise.Data or {{}}
+        MakeSpace = MakeSpace or {{}}
+        MakeSpace.Data = MakeSpace.Data or {{}}
 
-        Bagwise.Data.QuestItems = {{
+        MakeSpace.Data.QuestItems = {{
     """)]
 
     for item_id in sorted(item_quests):
@@ -488,7 +488,7 @@ def format_lua(item_quests: dict[int, set[int]],
     referenced_quests = sorted({qid for qids in item_quests.values() for qid in qids})
     info_count = 0
 
-    lines.append("Bagwise.Data.QuestInfo = {")
+    lines.append("MakeSpace.Data.QuestInfo = {")
     for qid in referenced_quests:
         meta = quest_meta.get(qid)
         if not meta:
@@ -506,7 +506,7 @@ def format_lua(item_quests: dict[int, set[int]],
 
     lines.append(FOOTER)
 
-    lines.append("Bagwise.Data.RepeatableQuests = {")
+    lines.append("MakeSpace.Data.RepeatableQuests = {")
     repeatable = [qid for qid in referenced_quests
                   if quest_meta.get(qid) and quest_meta[qid].repeatable]
     for qid in repeatable:

@@ -1,4 +1,4 @@
-# Bagwise inventory dump
+# MakeSpace inventory dump
 # NOTE: the lootable column was added by hand; the first dump predates it. Clams open when right-clicked.
 # bagwise=0.4.1 wow=1.60.1 (70862)
 # class=WARRIOR race=Tauren faction=Horde level=18

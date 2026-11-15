@@ -1,4 +1,4 @@
--- Bagwise: invariants over the real data.
+-- MakeSpace: invariants over the real data.
 --
 -- Not "does this example work" but "can any item, in any realistic situation,
 -- break a rule we never want broken". The data is finite, so the check is
@@ -7,7 +7,7 @@
 -- A bug like "a finished quest marks Earthroot safe to delete" fails here
 -- before anyone sees it in game.
 
-Bagwise = nil
+MakeSpace = nil
 dofile("src/bags.lua")
 dofile("src/safety.lua")
 dofile("src/notes.lua")
@@ -61,9 +61,9 @@ local function forEverySituation(ids, check)
                   level = level, playerClass = class, class = class,
                   professionNames = {}, professionSkillLines = {},
                 }
-                local verdict = Bagwise.Verdict.Evaluate(item, state)
+                local verdict = MakeSpace.Verdict.Evaluate(item, state)
                 local winner
-                for _, entry in ipairs(Bagwise.Verdict.Trace(item, state)) do
+                for _, entry in ipairs(MakeSpace.Verdict.Trace(item, state)) do
                   if not entry.blockedBy and entry.verdict == verdict then
                     winner = entry.rule; break
                   end
@@ -81,7 +81,7 @@ local function forEverySituation(ids, check)
 end
 
 describe("Safety invariants over the real data", function()
-  local D = Bagwise.Data
+  local D = MakeSpace.Data
   local reagentIds = idsOf(D.ReagentProfessions, D.VendorReagents, D.ClassReagents)
 
   it("no reagent is ever green unless a reagent rule decided it", function()
@@ -125,7 +125,7 @@ describe("Safety invariants over the real data", function()
       for _, quality in ipairs({ 0, 1 }) do
         local item = { id = id, classID = 15, quality = quality, sellPrice = 5, count = 1 }
         checked = checked + 1
-        if Bagwise.MakeRoom.IsJunkCandidate(item) then offered = offered + 1 end
+        if MakeSpace.MakeRoom.IsJunkCandidate(item) then offered = offered + 1 end
       end
     end
     assert.are.equal(true, checked > 1000)

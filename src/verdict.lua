@@ -1,8 +1,8 @@
--- Bagwise: verdict engine
+-- MakeSpace: verdict engine
 -- Pure functions only: no WoW API calls, testable outside the game client.
 
-Bagwise = Bagwise or {}
-Bagwise.Verdict = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Verdict = {}
 
 local LEVEL_GAP_YELLOW = 10
 local LEVEL_GAP_GREEN = 20
@@ -13,7 +13,7 @@ local UNCOMMON_QUALITY = 2
 --- Can the player sell this instead of destroying it? Any green on something a
 -- vendor will buy. The tooltip then says "Safe to vendor" rather than "Safe to
 -- delete", so the two always read the same way whichever rule made the green.
-function Bagwise.Verdict.Sellable(item, verdict)
+function MakeSpace.Verdict.Sellable(item, verdict)
   return verdict == "green" and (item.sellPrice or 0) > 0
 end
 
@@ -53,8 +53,8 @@ local function couldBeUpgrade(item)
   return false
 end
 
-local note = Bagwise.Notes.Get
-Bagwise.Verdict.Note = note
+local note = MakeSpace.Notes.Get
+MakeSpace.Verdict.Note = note
 
 --- A yellow verdict for a rule to return: verdict, reason, detail, tag, heading.
 local function yellow(key, ...)
@@ -125,11 +125,11 @@ local FACTION_CODES = { Alliance = "A", Horde = "H" }
 -- @param questIDs table        quest IDs from QuestItems
 -- @param faction  string|nil   "Alliance" or "Horde"; anything else keeps all
 -- @return table  the quests that can matter to this player (may be empty)
-function Bagwise.Verdict.QuestsForFaction(questIDs, faction)
+function MakeSpace.Verdict.QuestsForFaction(questIDs, faction)
   local code = FACTION_CODES[faction]
   if not code then return questIDs end
 
-  local info = Bagwise.Data.QuestInfo
+  local info = MakeSpace.Data.QuestInfo
   local kept = {}
   for i = 1, #questIDs do
     local questInfo = info and info[questIDs[i]]
@@ -145,7 +145,7 @@ end
 -- The WoW API only returns quest names for quests still in the active log,
 -- so completed quests need the static name from QuestInfo.
 local function questLabel(questID, runtimeName)
-  local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
   local name = runtimeName
   if not name and info then
     name = info[QUEST_INFO_NAME]
@@ -172,8 +172,8 @@ local function evaluateCompletedQuestStarter(item)
 end
 
 local function evaluateVendorReagent(item, state)
-  local vendorData = Bagwise.Data.VendorReagents
-      and Bagwise.Data.VendorReagents[item.id]
+  local vendorData = MakeSpace.Data.VendorReagents
+      and MakeSpace.Data.VendorReagents[item.id]
   if not vendorData then return nil end
 
   -- "You have no use for this" needs the full list of your professions. When
@@ -186,8 +186,8 @@ local function evaluateVendorReagent(item, state)
     return nil
   end
 
-  local profEntries = Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[item.id]
+  local profEntries = MakeSpace.Data.ReagentProfessions
+      and MakeSpace.Data.ReagentProfessions[item.id]
 
   if profEntries and state.professionNames then
     local names = professionNamesOf(profEntries)
@@ -204,8 +204,8 @@ local function evaluateVendorReagent(item, state)
 end
 
 local function evaluateClassReagent(item, state)
-  local classReagent = Bagwise.Data.ClassReagents
-      and Bagwise.Data.ClassReagents[item.id]
+  local classReagent = MakeSpace.Data.ClassReagents
+      and MakeSpace.Data.ClassReagents[item.id]
   if not classReagent or not state.playerClass then return nil end
   if classReagent.classes[state.playerClass] then return nil end
 
@@ -231,9 +231,9 @@ local QUEST_TRIVIAL_GAP = 10
 -- Is this open quest far below the player? A repeatable quest keeps wanting its
 -- item at any level (Blood Shards), and a quest with no level data is unknown.
 local function isTrivialQuest(questID, state)
-  local repeatable = Bagwise.Data.RepeatableQuests
+  local repeatable = MakeSpace.Data.RepeatableQuests
   if repeatable and repeatable[questID] then return false end
-  local info = Bagwise.Data.QuestInfo
+  local info = MakeSpace.Data.QuestInfo
   local entry = info and info[questID]
   local level = entry and entry[QUEST_INFO_LEVEL]
   return level ~= nil and level > 0 and level + QUEST_TRIVIAL_GAP <= (state.level or 1)
@@ -273,7 +273,7 @@ end
 --     you must be to ACCEPT the quest (data/quest_availability.lua), never the
 --     quest's own level: a level 60 war effort quest opens at level 1.
 --   event: a Darkmoon Faire or holiday quest can only be done while the event
---     runs, whatever your level. Bagwise cannot tell if the event is on, so it
+--     runs, whatever your level. MakeSpace cannot tell if the event is on, so it
 --     only names the event.
 -- Every open quest must be one of the two; a quest in your log, one within
 -- reach or one with no data keeps the item in your bags. A plain material is
@@ -282,8 +282,8 @@ local QUEST_DISTANT_GAP = 10
 
 local function evaluateDistantQuestItem(item, state)
   if item.onOpenQuest then return nil end
-  local required = Bagwise.Data.QuestRequiredLevels
-  local events = Bagwise.Data.QuestEvents
+  local required = MakeSpace.Data.QuestRequiredLevels
+  local events = MakeSpace.Data.QuestEvents
   if not (required or events) then return nil end
   local quests = item.openQuestIDs
   if not (quests and #quests > 0) then
@@ -292,7 +292,7 @@ local function evaluateDistantQuestItem(item, state)
   end
   if isOrdinaryItem(item) then
     if item.isEquippable then return nil end
-    local data = Bagwise.Data
+    local data = MakeSpace.Data
     if data.ReagentProfessions and data.ReagentProfessions[item.id] then return nil end
     if data.VendorReagents and data.VendorReagents[item.id] then return nil end
   end
@@ -321,7 +321,7 @@ end
 local BLOOD_SHARD_ID = 5075
 
 local function evaluateItemHint(item, state)
-  local books = Bagwise.Data.LibraryBooks
+  local books = MakeSpace.Data.LibraryBooks
   if books and books[item.id] then
     -- A book whose quest is done can no longer be handed in.
     if item.startsQuestCompleted or item.allQuestObjectivesCompleted then return nil end
@@ -367,8 +367,8 @@ local function grayThreshold(state)
 end
 
 -- Marks a verdict as "gray item" so the scanner can thin them out.
-Bagwise.Verdict.POOR_QUALITY_TAG = "poorQuality"
-local POOR_QUALITY_TAG = Bagwise.Verdict.POOR_QUALITY_TAG
+MakeSpace.Verdict.POOR_QUALITY_TAG = "poorQuality"
+local POOR_QUALITY_TAG = MakeSpace.Verdict.POOR_QUALITY_TAG
 
 local function valueThreshold(state)
   return WORTH_KEEPING_BASE_COPPER + WORTH_KEEPING_PER_LEVEL * (state.level or 1)
@@ -383,7 +383,7 @@ local COPPER_PER_SILVER = 100
 local COPPER_PER_GOLD = 10000
 
 --- "1g 20s 5c" for an amount in copper (zero parts left out).
-function Bagwise.Verdict.FormatMoney(copper)
+function MakeSpace.Verdict.FormatMoney(copper)
   copper = math.floor(copper or 0)
   local gold = math.floor(copper / COPPER_PER_GOLD)
   local silver = math.floor((copper % COPPER_PER_GOLD) / COPPER_PER_SILVER)
@@ -402,7 +402,7 @@ local QUALITY_HEX = {
 }
 
 --- Item name in its rarity colour.
-function Bagwise.Verdict.ColoredName(name, quality)
+function MakeSpace.Verdict.ColoredName(name, quality)
   local colors = _G and _G.ITEM_QUALITY_COLORS
   local hex = colors and colors[quality or 1] and colors[quality or 1].hex or QUALITY_HEX[quality or 1] or QUALITY_HEX[1]
   return hex .. name .. "|r"
@@ -414,13 +414,13 @@ end
 -- @param isCheapestOfSeveral boolean
 -- @param isWorthSilver boolean  true for a gray above the safe-to-delete value:
 --        the dot is yellow and the reason warns that it is worth something
-function Bagwise.Verdict.PoorQualityReason(value, isCheapestOfSeveral, isWorthSilver)
+function MakeSpace.Verdict.PoorQualityReason(value, isCheapestOfSeveral, isWorthSilver)
   if isWorthSilver then
-    return note("gray_worth", Bagwise.Verdict.FormatMoney(value), isCheapestOfSeveral)
+    return note("gray_worth", MakeSpace.Verdict.FormatMoney(value), isCheapestOfSeveral)
   end
   local label = isCheapestOfSeveral and "Cheapest gray" or "Poor quality"
   if value == 0 then return label .. ", no vendor value" end
-  return label .. ", sells for " .. Bagwise.Verdict.FormatMoney(value)
+  return label .. ", sells for " .. MakeSpace.Verdict.FormatMoney(value)
 end
 
 -- Gray items. Cheap ones are safe to delete. One that sells for real money gets
@@ -430,17 +430,17 @@ end
 local function evaluatePoorQuality(item, state)
   if item.quality ~= POOR_QUALITY then return nil end
   if item.questItemQuestIDs then return nil end
-  if Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[item.id] then
+  if MakeSpace.Data.ReagentProfessions
+      and MakeSpace.Data.ReagentProfessions[item.id] then
     return nil
   end
 
   local value = stackValue(item)
   if value >= grayThreshold(state) then
-    local reason, heading = Bagwise.Verdict.PoorQualityReason(value, false, true)
+    local reason, heading = MakeSpace.Verdict.PoorQualityReason(value, false, true)
     return "yellow", reason, nil, POOR_QUALITY_TAG, heading
   end
-  return "green", Bagwise.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
+  return "green", MakeSpace.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
 end
 
 --- Keep only the cheapest few poor-quality greens, so a bag full of grays
@@ -448,7 +448,7 @@ end
 -- @param entries table  list of { key, bag, slot, value } for every gray with a dot
 -- @param maxDots number how many may stay green
 -- @return table  set of keys that should go silent
-function Bagwise.Verdict.SilenceAllButCheapest(entries, maxDots)
+function MakeSpace.Verdict.SilenceAllButCheapest(entries, maxDots)
   local sorted = {}
   for i = 1, #entries do sorted[i] = entries[i] end
   table.sort(sorted, function(a, b)
@@ -486,26 +486,26 @@ local function evaluateNoRecipeUse(item, state)
   if (item.sellPrice or 0) <= 0 then return nil end
 
   -- Already used in at least one recipe -- nothing to flag
-  if Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[item.id] then
+  if MakeSpace.Data.ReagentProfessions
+      and MakeSpace.Data.ReagentProfessions[item.id] then
     return nil
   end
 
   -- Quest objective or starter -- leave for quest rules / tooltip context
-  if Bagwise.Data.QuestItems
-      and Bagwise.Data.QuestItems[item.id] then
+  if MakeSpace.Data.QuestItems
+      and MakeSpace.Data.QuestItems[item.id] then
     return nil
   end
 
   -- Vendor reagent -- already handled by evaluateVendorReagent
-  if Bagwise.Data.VendorReagents
-      and Bagwise.Data.VendorReagents[item.id] then
+  if MakeSpace.Data.VendorReagents
+      and MakeSpace.Data.VendorReagents[item.id] then
     return nil
   end
 
   -- Class reagent -- already handled by evaluateClassReagent
-  if Bagwise.Data.ClassReagents
-      and Bagwise.Data.ClassReagents[item.id] then
+  if MakeSpace.Data.ClassReagents
+      and MakeSpace.Data.ClassReagents[item.id] then
     return nil
   end
 
@@ -513,7 +513,7 @@ local function evaluateNoRecipeUse(item, state)
   -- worth the vendor trip, so it only gets a yellow.
   local value = stackValue(item)
   if value >= valueThreshold(state) then
-    return yellow("no_known_use", Bagwise.Verdict.FormatMoney(value))
+    return yellow("no_known_use", MakeSpace.Verdict.FormatMoney(value))
   end
 
   return "green", "Not used for any quest or recipe"
@@ -539,7 +539,7 @@ local RECIPE_PROFESSIONS = {
 local OUTLEVELED_FALLBACK_GAP = 0
 -- A recipe you cannot learn yet gets the bank hint once it is this far out of
 -- reach. A profession you have stopped leveling has nothing "close", so for
--- it any shortfall counts (see Bagwise.Progress).
+-- it any shortfall counts (see MakeSpace.Progress).
 local RECIPE_SKILL_GAP = 25
 local RECIPE_IDLE_SKILL_GAP = 0
 local RECIPE_LEVEL_GAP = 3
@@ -584,9 +584,9 @@ end
 local reagentUseMemo = setmetatable({}, { __mode = "k" })
 
 local function reagentUses(itemID)
-  local direct = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[itemID]
+  local direct = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[itemID]
   if not direct then return nil end
-  local chains = Bagwise.Data.ReagentChains and Bagwise.Data.ReagentChains[itemID]
+  local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID]
   local memo = reagentUseMemo[direct]
   if memo and memo.chains == chains then return memo.order end
   local merged, order = {}, {}
@@ -617,9 +617,9 @@ end
 -- tells a spent stack from one to bank.
 local reagentSegmentMemo = setmetatable({}, { __mode = "k" })
 local function reagentSegments(itemID)
-  local direct = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[itemID]
+  local direct = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[itemID]
   if not direct then return nil end
-  local chains = Bagwise.Data.ReagentChains and Bagwise.Data.ReagentChains[itemID]
+  local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID]
   local memo = reagentSegmentMemo[direct]
   if memo and memo.chains == chains then return memo.segments end
   local segments = {}
@@ -635,7 +635,7 @@ local function reagentSegments(itemID)
   return segments
 end
 
-local Auction = Bagwise.Auction
+local Auction = MakeSpace.Auction
 -- Below this a slot is not worth a bank slot, or a hint to bank it: rebuying it
 -- later costs next to nothing. It grows with the level, since so does money.
 local WORTH_LITTLE_FLOOR_PER_SLOT = 50
@@ -686,7 +686,7 @@ end
 local function evaluateOutleveledReagent(item, state)
   -- Without the downstream uses we cannot tell a finished material from an
   -- ingredient of something still in demand, so the rule stays silent.
-  if not Bagwise.Data.ReagentChains then return nil end
+  if not MakeSpace.Data.ReagentChains then return nil end
   -- A quest that still wants it (a profession quest, say) is a use the recipe
   -- data knows nothing about, whatever your skill is.
   if heldByOpenQuest(item, state) then return nil end
@@ -749,7 +749,7 @@ local function evaluateOtherProfessionReagent(item, state)
   if not entries or state.professionsKnown == false or not state.professionNames then return nil end
   if not Auction.IsTradeable(item) then return nil end
   if heldByOpenQuest(item, state) then return nil end
-  local data = Bagwise.Data
+  local data = MakeSpace.Data
   if data.VendorReagents and data.VendorReagents[item.id] then return nil end
   if data.ClassReagents and data.ClassReagents[item.id] then return nil end
   local total, crafting = primaryProfessions(state)
@@ -813,7 +813,7 @@ local CLASSES_WITHOUT_MANA = { WARRIOR = true, ROGUE = true }
 -- data/mana_consumables.lua is generated from game data and covers every
 -- mana-only consumable. The short list above is the fallback when it is empty.
 local function isManaOnly(itemID)
-  local generated = Bagwise.Data and Bagwise.Data.ManaOnlyConsumables
+  local generated = MakeSpace.Data and MakeSpace.Data.ManaOnlyConsumables
   return MANA_POTIONS[itemID] or (generated and generated[itemID]) or false
 end
 
@@ -844,7 +844,7 @@ local function evaluateOutleveledConsumable(item, state)
   if item.subClassID == SCROLL_SUBCLASS then
     if not STAT_SCROLLS[item.id] then return nil end
     -- An Enchanter may still want it: some scrolls are reagents for Enchanting.
-    local uses = Bagwise.Data.ReagentProfessions and Bagwise.Data.ReagentProfessions[item.id]
+    local uses = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[item.id]
     if uses and hasEnchanting(state) then return nil end
   end
   -- A bandage is judged by what it heals against your health, when both are known.
@@ -961,7 +961,7 @@ end
 local function evaluateUnusableWeapon(item, state)
   if item.quality ~= COMMON_QUALITY or item.classID ~= WEAPON_CLASS_ID or item.hasEffect then return nil end
   local wording = WEAPON_WORDING[item.subClassID]
-  local classes = Bagwise.Data.WeaponClasses and Bagwise.Data.WeaponClasses[item.subClassID]
+  local classes = MakeSpace.Data.WeaponClasses and MakeSpace.Data.WeaponClasses[item.subClassID]
   local plural = wording and classCannotUse(classes, state)
   if not plural then return nil end
   return "green", plural .. " can't use " .. wording
@@ -970,7 +970,7 @@ end
 local function evaluateUnusableAmmo(item, state)
   if item.quality ~= COMMON_QUALITY or item.classID ~= AMMO_CLASS_ID then return nil end
   local wording = AMMO_WORDING[item.subClassID]
-  local classes = Bagwise.Data.AmmoClasses and Bagwise.Data.AmmoClasses[item.subClassID]
+  local classes = MakeSpace.Data.AmmoClasses and MakeSpace.Data.AmmoClasses[item.subClassID]
   local plural = wording and classCannotUse(classes, state)
   if not plural then return nil end
   return "green", plural .. " can't use " .. wording
@@ -1023,7 +1023,7 @@ local function checkSellAtVendor(item, state)
   if not EQUIPMENT_CLASSES[item.classID] then return nil end
   -- A gadget or proc is worth keeping for what it does, not its stats.
   if item.hasEffect then return nil end
-  local money = Bagwise.Verdict.FormatMoney
+  local money = MakeSpace.Verdict.FormatMoney
   local check = { passes = false, notes = {} }
   local function note_(text) check.notes[#check.notes + 1] = "sell check: " .. text end
 
@@ -1031,7 +1031,7 @@ local function checkSellAtVendor(item, state)
   local _, ignored = Auction.LiveCeiling(item)
   if ignored then note_(ignored) end
   if source ~= "live" and Auction.SnapshotTooOld(state) then
-    note_("the price data is over " .. Bagwise.Curves.STALE_SNAPSHOT_DAYS .. " days old, so no verdict")
+    note_("the price data is over " .. MakeSpace.Curves.STALE_SNAPSHOT_DAYS .. " days old, so no verdict")
     return check
   end
   if source == "live" and item.liveSteady then
@@ -1110,14 +1110,14 @@ end
 local function evaluateSellAtVendor(item, state)
   local check = checkSellAtVendor(item, state)
   if not (check and check.passes) then return nil end
-  local money = Bagwise.Verdict.FormatMoney
+  local money = MakeSpace.Verdict.FormatMoney
   return "green", "Vendor " .. money(item.sellPrice) .. ", auction "
       .. (check.source == "live" and "about " or "up to ") .. money(check.ceiling)
 end
 
 --- The facts behind the sell-at-vendor rule for one item, as short lines for
 -- /makespace why. Empty for non-gear.
-function Bagwise.Verdict.SellAtVendorFacts(item, state)
+function MakeSpace.Verdict.SellAtVendorFacts(item, state)
   local check = checkSellAtVendor(item, state)
   return check and check.notes or {}
 end
@@ -1144,7 +1144,7 @@ local RULES = {
     overrides = { spell_reagent = true, recipe_reagent = true } },
   { name = "openable",           evaluate = evaluateOpenable },
   { name = "recipe",             evaluate = evaluateRecipe, showsAuctionPrice = true,
-    worthlessIsGreen = true, worthlessNeedsHint = true, dropsAuctionDetail = true,
+    worthlessIsGreen = true, worthlessNeedsHint = true,
     worthlessOverridesRecipes = true },
   { name = "distant_reagent",    evaluate = evaluateDistantReagent },
   { name = "outleveled_reagent", evaluate = evaluateOutleveledReagent, showsAuctionPrice = true,
@@ -1176,21 +1176,19 @@ local function runRule(rule, item, state)
       if rule.worthlessIsGreen and (hinted or not rule.worthlessNeedsHint) then
         local value = Auction.SlotValueIfKnown(item, state)
         if value and value <= worthLittleCopper(state)
-            and not Bagwise.Safety.Blocker(item,
+            and not MakeSpace.Safety.Blocker(item,
                 rule.worthlessOverridesRecipes and WORTHLESS_RECIPE_OVERRIDES or WORTHLESS_OVERRIDES) then
           local ceiling, source = Auction.CeilingFor(item)
-          return "green", Bagwise.Verdict.WORTH_LITTLE_REASON, nil, nil, nil, nil,
+          return "green", MakeSpace.Verdict.WORTH_LITTLE_REASON, nil, nil, nil, nil,
               note or (ceiling and Auction.PriceNote(item, ceiling, source)) or nil
         end
       end
       reason = reason:gsub("%. May sell at the auction house$", "")
-      -- "Try the auction house" is not advice once the price says otherwise.
-      if rule.dropsAuctionDetail and heading then heading = { title = heading.title } end
     end
     return verdict, reason, detail, tag, nil, heading, note
   end
   if verdict == "green" then
-    local blocker = Bagwise.Safety.Blocker(item, rule.overrides)
+    local blocker = MakeSpace.Safety.Blocker(item, rule.overrides)
     if blocker then return verdict, reason, detail, tag, blocker, heading end
     if rule.checksAuction then
       local pricey, note = Auction.Blocker(item, state)
@@ -1212,7 +1210,7 @@ local CONSUMABLE_CLASS_ID = 0
 -- The seventh value is a "Vendor 5c, auction about 8s" note, set when a green was
 -- dropped because the auction pays clearly more: the player sees no green dot,
 -- and the tooltip uses the note to say why there is none.
-function Bagwise.Verdict.Evaluate(item, state)
+function MakeSpace.Verdict.Evaluate(item, state)
   if item.isKept then return nil, nil, nil end
   if item.isFlagged then
     local verdict, reason, _, _, heading = yellow("flagged")
@@ -1224,7 +1222,13 @@ function Bagwise.Verdict.Evaluate(item, state)
     verdict, reason, _, _, heading = evaluateOpenable(item, state)
     if verdict then return verdict, reason, nil, nil, "openable", heading end
     verdict, reason, _, _, heading = evaluateManaConsumable(item, state)
-    if verdict then return verdict, reason, nil, nil, "mana_consumable", heading end
+    if verdict then
+      -- Mana potions sell well: show the price line when the auction pays more,
+      -- and drop "May sell at the auction house" from the reason when it does not.
+      local note, notWorth = Auction.PriceLine(item, state)
+      if notWorth then reason = reason:gsub("%. May sell at the auction house$", "") end
+      return verdict, reason, nil, nil, "mana_consumable", heading, note
+    end
     verdict, reason, _, _, heading = evaluateOutleveledConsumable(item, state)
     if not verdict then return nil end
     -- Consumables often sell well: say so when the auction house pays clearly
@@ -1253,23 +1257,23 @@ end
 
 -- The reason of a green that says only "the stack is worth next to nothing". The
 -- tooltip leaves it out when a price line under the heading already shows it.
-Bagwise.Verdict.WORTH_LITTLE_REASON = "Worth very little"
+MakeSpace.Verdict.WORTH_LITTLE_REASON = "Worth very little"
 
 --- Evaluate an item and return the answer by name, which is what callers other
 -- than the tests should use: Evaluate's positional values are easy to misorder.
 -- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, sellable }
 --   verdict is "green", "yellow" or nil; rule names the rule that decided
-function Bagwise.Verdict.Judge(item, state)
-  local verdict, reason, detail, tag, rule, heading, auctionNote = Bagwise.Verdict.Evaluate(item, state)
+function MakeSpace.Verdict.Judge(item, state)
+  local verdict, reason, detail, tag, rule, heading, auctionNote = MakeSpace.Verdict.Evaluate(item, state)
   return { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
            heading = heading, auctionNote = auctionNote,
-           sellable = Bagwise.Verdict.Sellable(item, verdict) }
+           sellable = MakeSpace.Verdict.Sellable(item, verdict) }
 end
 
 --- Every rule that had something to say about an item, including greens that
 -- Safety dropped. For /makespace why and for tests.
 -- @return table list of { rule, verdict, reason, blockedBy }
-function Bagwise.Verdict.Trace(item, state)
+function MakeSpace.Verdict.Trace(item, state)
   local trace = {}
   for i = 1, #RULES do
     local verdict, reason, _, _, blockedBy = runRule(RULES[i], item, state)

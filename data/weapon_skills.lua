@@ -1,13 +1,13 @@
--- Bagwise: which classes can ever use each weapon type, and ammo.
+-- MakeSpace: which classes can ever use each weapon type, and ammo.
 -- A class missing from a list can never learn that skill, so gear of that
 -- type is of no use to it. Read from SkillRaceClassInfo, not typed in.
 -- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
 
-Bagwise                      = Bagwise or {}
-Bagwise.Data                 = Bagwise.Data or {}
+MakeSpace                      = MakeSpace or {}
+MakeSpace.Data                 = MakeSpace.Data or {}
 
 -- Format: [item subclass of a weapon] = { CLASS = true, ... }
-Bagwise.Data.WeaponClasses = {
+MakeSpace.Data.WeaponClasses = {
   [0] = { WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true, SHAMAN = true },
   [1] = { WARRIOR = true, PALADIN = true, HUNTER = true, SHAMAN = true },
   [2] = { WARRIOR = true, HUNTER = true, ROGUE = true },
@@ -26,7 +26,7 @@ Bagwise.Data.WeaponClasses = {
 }
 
 -- Format: [item subclass of ammo, 2 arrows 3 bullets] = { CLASS = true, ... }
-Bagwise.Data.AmmoClasses = {
+MakeSpace.Data.AmmoClasses = {
   [2] = { WARRIOR = true, HUNTER = true, ROGUE = true },
   [3] = { WARRIOR = true, HUNTER = true, ROGUE = true },
 }

@@ -1,4 +1,4 @@
--- Bagwise: what the auction house pays for an item, as the verdict reads it.
+-- MakeSpace: what the auction house pays for an item, as the verdict reads it.
 -- Pure, like the verdict. The limit curves and per-kind settings live in
 -- src/curves.lua, the live prices in src/live.lua, the shipped snapshot in
 -- data/auction_prices_*.lua (one file per market). This module joins them into one answer per item:
@@ -8,8 +8,8 @@
 --   PriceLine     the tooltip line for a hint that suggests the auction house
 --   SlotValueIfKnown, SaleValue   what a stack or one item fetches
 
-Bagwise = Bagwise or {}
-Bagwise.Auction = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Auction = {}
 
 -- bindType values from GetItemInfo.
 local BIND_ON_PICKUP = 1
@@ -25,7 +25,7 @@ end
 -- src/curves.lua holds the configuration of each kind and the limit curves.
 --- The most the auction may pay for this item and still read as "just vendor it".
 local function sellLimit(item, source, state)
-  return Bagwise.Curves.Limit(item.sellPrice or 0, source, Bagwise.Curves.TypeOf(item),
+  return MakeSpace.Curves.Limit(item.sellPrice or 0, source, MakeSpace.Curves.TypeOf(item),
       state and state.priceAgeDays)
 end
 
@@ -63,7 +63,7 @@ end
 -- gives nothing (it may be the rare, expensive one), never the item's price.
 -- @return number|nil ceiling, string source ("version", "item" or "unknown")
 local function snapshotCeilingFor(item)
-  local data = Bagwise.Data or {}
+  local data = MakeSpace.Data or {}
   local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
   if versions then
     local own = item.bonusKey and versions[item.bonusKey]
@@ -93,15 +93,15 @@ local function liveCeiling(item)
   -- Without a snapshot price to compare against, only a very fresh price counts.
   if not backed and (type(item.liveAge) ~= "number"
       or item.liveAge > LIVE_UNBACKED_MAX_AGE_DAYS) then
-    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
+    return nil, "live price " .. MakeSpace.Verdict.FormatMoney(live)
         .. " is not confirmed by the snapshot and is over a day old, so it is ignored"
   end
   -- (a versioned item is not ignored here: its live price is floored in ceilingFor)
   -- A price that several recent days agree on (item.liveSteady) is the market's
   -- own, not a one-off lowball, even when it differs from the snapshot.
   if backed and not item.bonusKey and not item.liveSteady and live < snapshot * LIVE_LOWBALL_FRACTION then
-    return nil, "live price " .. Bagwise.Verdict.FormatMoney(live)
-        .. " is far below the snapshot (" .. Bagwise.Verdict.FormatMoney(snapshot)
+    return nil, "live price " .. MakeSpace.Verdict.FormatMoney(live)
+        .. " is far below the snapshot (" .. MakeSpace.Verdict.FormatMoney(snapshot)
         .. "), so it may be a lowball and is ignored"
   end
   return live
@@ -125,7 +125,7 @@ local MIN_LISTED_VERSIONS = 3
 -- a green away, never give one that the dearest version would not.
 -- @return number|nil
 local function dearestVersionCeiling(item)
-  local data = Bagwise.Data or {}
+  local data = MakeSpace.Data or {}
   local versions = data.AuctionVariantCeiling and data.AuctionVariantCeiling[item.id]
   if not versions then return nil end
   local count, dearest = 0, 0
@@ -140,7 +140,7 @@ end
 --- The shipped prices are too old to base a green on.
 local function snapshotTooOld(state)
   local age = state and state.priceAgeDays
-  return type(age) == "number" and age > Bagwise.Curves.STALE_SNAPSHOT_DAYS
+  return type(age) == "number" and age > MakeSpace.Curves.STALE_SNAPSHOT_DAYS
 end
 
 -- @return number|nil ceiling, string source ("live", "version", "versions", "item" or "unknown")
@@ -174,12 +174,12 @@ local function saleValue(item)
   if not isTradeable(item) then return vendor end
   local ceiling, source = ceilingFor(item)
   if not ceiling or source == "unknown" then return vendor end
-  return math.max(vendor, math.floor(Bagwise.Curves.SaleValue(ceiling, source, Bagwise.Curves.TypeOf(item))))
+  return math.max(vendor, math.floor(MakeSpace.Curves.SaleValue(ceiling, source, MakeSpace.Curves.TypeOf(item))))
 end
 
 --- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
 local function priceNote(item, ceiling, source)
-  local money = Bagwise.Verdict.FormatMoney
+  local money = MakeSpace.Verdict.FormatMoney
   -- A live price is the real price now ("about"); the snapshot is a cheap-end
   -- ceiling ("up to").
   local approx = source == "live" and "about " or "up to "
@@ -200,9 +200,9 @@ local function blocker(item, state)
   if not isTradeable(item) then return nil end
   local ceiling, source = ceilingFor(item)
   if source ~= "live" and snapshotTooOld(state) then
-    return "the price data is over " .. Bagwise.Curves.STALE_SNAPSHOT_DAYS .. " days old"
+    return "the price data is over " .. MakeSpace.Curves.STALE_SNAPSHOT_DAYS .. " days old"
   end
-  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then
+  if source ~= "live" and MakeSpace.Data and MakeSpace.Data.AuctionMarketMissing then
     return "no auction prices for your region and faction"
   end
   if source == "unknown" then
@@ -225,8 +225,8 @@ local MIN_LISTING_PER_ITEM = 50
 local function staleSaysCheap(item, state)
   local price = item.stalePrice
   if type(price) ~= "number" or price <= 0 then return false end
-  local kind = Bagwise.Curves.TypeOf(item)
-  local raised = price * Bagwise.Curves.Uncertainty("item", kind, item.staleAge)
+  local kind = MakeSpace.Curves.TypeOf(item)
+  local raised = price * MakeSpace.Curves.Uncertainty("item", kind, item.staleAge)
   return raised <= sellLimit(item, "live", state)
 end
 
@@ -245,7 +245,7 @@ local function priceLine(item, state)
   if source ~= "live" and staleSaysCheap(item, state) then
     return priceNote(item, item.stalePrice, "live"), true
   end
-  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then return nil end
+  if source ~= "live" and MakeSpace.Data and MakeSpace.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end
   if ceiling >= MIN_LISTING_PER_ITEM
       and ceiling > sellLimit(item, source, state) then
@@ -269,29 +269,29 @@ local function slotValueIfKnown(item, state)
   -- the snapshot, raised for its age. What is at stake is bounded by the
   -- worth-little bar the caller compares this with.
   if source ~= "live" and staleSaysCheap(item, state) then
-    local raised = item.stalePrice * Bagwise.Curves.Uncertainty("item", Bagwise.Curves.TypeOf(item), item.staleAge)
+    local raised = item.stalePrice * MakeSpace.Curves.Uncertainty("item", MakeSpace.Curves.TypeOf(item), item.staleAge)
     return math.max(vendor, raised) * count
   end
   if source ~= "live" and snapshotTooOld(state) then return nil end
-  if source ~= "live" and Bagwise.Data and Bagwise.Data.AuctionMarketMissing then return nil end
+  if source ~= "live" and MakeSpace.Data and MakeSpace.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end
-  local padded = ceiling * Bagwise.Curves.Uncertainty(source, Bagwise.Curves.TypeOf(item),
+  local padded = ceiling * MakeSpace.Curves.Uncertainty(source, MakeSpace.Curves.TypeOf(item),
       state and state.priceAgeDays)
   return math.max(vendor, padded) * count
 end
 
-Bagwise.Auction.IsTradeable = isTradeable
-Bagwise.Auction.SellLimit = sellLimit
-Bagwise.Auction.BonusKey = bonusKey
-Bagwise.Auction.SnapshotCeilingFor = snapshotCeilingFor
-Bagwise.Auction.LiveCeiling = liveCeiling
-Bagwise.Auction.CeilingFor = ceilingFor
-Bagwise.Auction.SaleValue = saleValue
-Bagwise.Auction.PriceNote = priceNote
-Bagwise.Auction.Blocker = blocker
-Bagwise.Auction.PriceLine = priceLine
-Bagwise.Auction.SlotValueIfKnown = slotValueIfKnown
-Bagwise.Auction.SnapshotTooOld = snapshotTooOld
+MakeSpace.Auction.IsTradeable = isTradeable
+MakeSpace.Auction.SellLimit = sellLimit
+MakeSpace.Auction.BonusKey = bonusKey
+MakeSpace.Auction.SnapshotCeilingFor = snapshotCeilingFor
+MakeSpace.Auction.LiveCeiling = liveCeiling
+MakeSpace.Auction.CeilingFor = ceilingFor
+MakeSpace.Auction.SaleValue = saleValue
+MakeSpace.Auction.PriceNote = priceNote
+MakeSpace.Auction.Blocker = blocker
+MakeSpace.Auction.PriceLine = priceLine
+MakeSpace.Auction.SlotValueIfKnown = slotValueIfKnown
+MakeSpace.Auction.SnapshotTooOld = snapshotTooOld
 
-Bagwise.Auction.LIVE_LOWBALL_FRACTION = LIVE_LOWBALL_FRACTION
-Bagwise.Auction.VERSION_FLOOR_FRACTION = VERSION_FLOOR_FRACTION
+MakeSpace.Auction.LIVE_LOWBALL_FRACTION = LIVE_LOWBALL_FRACTION
+MakeSpace.Auction.VERSION_FLOOR_FRACTION = VERSION_FLOOR_FRACTION

@@ -1,4 +1,4 @@
--- Bagwise: make room for loot
+-- MakeSpace: make room for loot
 -- When the bags are full and the loot window is open, work out which loot is
 -- worth a slot and which junk to delete to make room. Pure: the scanner reads
 -- the game and hands plain tables in.
@@ -6,8 +6,8 @@
 -- Loot and junk are ranked by vendor price times stack size. Loot that beats
 -- the cheapest junk is worth taking; loot that does not is better left.
 
-Bagwise = Bagwise or {}
-Bagwise.MakeRoom = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.MakeRoom = {}
 
 local JUNK_CLASS_ID = 15    -- Miscellaneous
 local JUNK_SUBCLASS_ID = 0  -- Junk
@@ -25,16 +25,16 @@ local NEVER_JUNK_CLASSES = {
 
 --- Could this bag item be suggested for deletion?
 -- Grays and whites that sell for something, and are not on the never list.
--- White gear only counts once Bagwise already calls it safe (a class that
+-- White gear only counts once MakeSpace already calls it safe (a class that
 -- can't wear it, or worse than what is equipped), so a possible upgrade is
 -- never offered.
 -- @param item table    the scanner's item fields
 -- @param existing table|nil the slot's verdict result
-function Bagwise.MakeRoom.IsJunkCandidate(item, existing)
+function MakeSpace.MakeRoom.IsJunkCandidate(item, existing)
   if item.isKept or item.isFlagged then return false end
   if (item.sellPrice or 0) <= 0 then return false end
   if NEVER_JUNK_CLASSES[item.classID] then return false end
-  if Bagwise.Safety.IsProtected(item) then return false end
+  if MakeSpace.Safety.IsProtected(item) then return false end
 
   if item.quality == POOR_QUALITY then return true end
   if item.quality ~= COMMON_QUALITY then return false end
@@ -47,7 +47,7 @@ function Bagwise.MakeRoom.IsJunkCandidate(item, existing)
 end
 
 --- What the stack sells for, in copper.
-function Bagwise.MakeRoom.ValueOf(sellPrice, count)
+function MakeSpace.MakeRoom.ValueOf(sellPrice, count)
   return (sellPrice or 0) * (count or 1)
 end
 
@@ -59,7 +59,7 @@ end
 -- @param freeSlots number free regular bag slots
 -- @return table { take = {[lootSlot]=true}, deletes = {junk entries in order},
 --                 active = boolean }
-function Bagwise.MakeRoom.Plan(loot, junk, freeSlots)
+function MakeSpace.MakeRoom.Plan(loot, junk, freeSlots)
   local plan = { take = {}, deletes = {}, active = false }
 
   -- Loot that joins an existing stack never needs a free slot.
@@ -115,14 +115,14 @@ end
 -- gets a yellow dot: it was picked by price, which is a hint, not a certainty.
 -- @param existing table|nil
 -- @param value number copper
-function Bagwise.MakeRoom.MarkedResult(existing, value)
+function MakeSpace.MakeRoom.MarkedResult(existing, value)
   local result = {}
   if existing then
     for k, v in pairs(existing) do result[k] = v end
   end
   if not result.verdict then
     result.verdict = "yellow"
-    result.reason = "Cheapest junk, sells for " .. Bagwise.Verdict.FormatMoney(value)
+    result.reason = "Cheapest junk, sells for " .. MakeSpace.Verdict.FormatMoney(value)
   end
   result.detail = "Delete to make room for your loot"
   result.glow = true -- the overlay draws a green border glow
@@ -131,7 +131,7 @@ end
 
 --- Everything else goes quiet while a plan is showing: the hover text stays,
 -- the dot is held back, so the only dots left are the ones to act on.
-function Bagwise.MakeRoom.QuietResult(existing)
+function MakeSpace.MakeRoom.QuietResult(existing)
   if not (existing and existing.verdict) then return existing end
   local result = {}
   for k, v in pairs(existing) do result[k] = v end
@@ -140,7 +140,7 @@ function Bagwise.MakeRoom.QuietResult(existing)
 end
 
 --- Undo QuietResult for a slot that is about to be marked.
-function Bagwise.MakeRoom.RestoreResult(result)
+function MakeSpace.MakeRoom.RestoreResult(result)
   if not (result and result.quiet) then return result end
   local restored = {}
   for k, v in pairs(result) do restored[k] = v end
@@ -151,7 +151,7 @@ end
 --- The one-line explanation shown while a make-room plan is active.
 -- @param summary table  Scanner.MakeRoomSummary()
 -- @return string|nil  nil when the bags have room and there is nothing to say
-function Bagwise.MakeRoom.BannerText(summary)
+function MakeSpace.MakeRoom.BannerText(summary)
   if not (summary and summary.active) then return nil end
   if summary.deletes > 0 then
     local names = summary.deleteNames or {}

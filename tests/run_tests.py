@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Bagwise Lua tests via lupa (Lua 5.1 from Python)."""
+"""Run MakeSpace Lua tests via lupa (Lua 5.1 from Python)."""
 
 import sys
 import os

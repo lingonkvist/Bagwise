@@ -1,8 +1,8 @@
--- Bagwise: skill progress bookkeeping (is a profession being leveled?).
-_G.Bagwise = nil
+-- MakeSpace: skill progress bookkeeping (is a profession being leveled?).
+_G.MakeSpace = nil
 dofile("src/progress.lua")
 
-local P = Bagwise.Progress
+local P = MakeSpace.Progress
 local DAY = 86400
 local HOUR = 3600
 

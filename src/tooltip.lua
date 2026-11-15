@@ -1,8 +1,8 @@
--- Bagwise: tooltip enrichment
+-- MakeSpace: tooltip enrichment
 -- Adds a single verdict line or clean profession icon rows.
 
-Bagwise                     = Bagwise or {}
-Bagwise.Tooltip             = {}
+MakeSpace                     = MakeSpace or {}
+MakeSpace.Tooltip             = {}
 
 local INFO_COLOR            = { r = 0.40, g = 0.74, b = 1.0 }  -- the blue of "Crafting Reagent" in the item tooltip
 
@@ -19,14 +19,14 @@ local VERDICT_COLORS        = {
 }
 
 -- Detail text under a verdict header uses the same blue as every other
--- Bagwise detail row, so all of it reads as one family.
+-- MakeSpace detail row, so all of it reads as one family.
 local DETAIL_COLOR          = INFO_COLOR
 
 -- The tooltip header carries the same shape as the bag slot (round for green, a diamond for yellow), without the
 -- shadow and centred in its frame (colour is baked into each texture).
 local DOT_TEXTURES          = {
-  green  = "Interface\\AddOns\\Bagwise\\textures\\pearl_green",
-  yellow = "Interface\\AddOns\\Bagwise\\textures\\pearl_yellow",
+  green  = "Interface\\AddOns\\MakeSpace\\textures\\pearl_green",
+  yellow = "Interface\\AddOns\\MakeSpace\\textures\\pearl_yellow",
 }
 local DOT_ESCAPE_SIZE       = 14
 
@@ -124,11 +124,11 @@ local LOOT_NOROOM_HEADING = { title = "Make room first", detail = "Nothing safe 
 -- Name the junk the loot lost to, so the comparison is visible:
 -- "Worth less than Odd Bauble (8s)", item and coins coloured.
 local function lootLeaveReason()
-  local summary = Bagwise.Scanner.MakeRoomSummary and Bagwise.Scanner.MakeRoomSummary()
+  local summary = MakeSpace.Scanner.MakeRoomSummary and MakeSpace.Scanner.MakeRoomSummary()
   if not (summary and summary.cheapestJunkValue and summary.cheapestJunkName) then return LOOT_LEAVE_REASON end
   return "Worth less than "
-      .. Bagwise.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality)
-      .. " (" .. Bagwise.Verdict.FormatMoney(summary.cheapestJunkValue) .. ")"
+      .. MakeSpace.Verdict.ColoredName(summary.cheapestJunkName, summary.cheapestJunkQuality)
+      .. " (" .. MakeSpace.Verdict.FormatMoney(summary.cheapestJunkValue) .. ")"
 end
 
 -- The loot window gives no "opens for loot" flag, but the item's own tooltip
@@ -150,7 +150,7 @@ local function bagSlotOf(tooltip)
   -- Forever's tabbed bank: each button knows its own tab (a bag ID) and slot.
   if owner and owner.GetBankTabID and owner.GetContainerSlotID then
     local tabID, slotID = owner:GetBankTabID(), owner:GetContainerSlotID()
-    if tabID and slotID and Bagwise.Bags.IsScanned(tabID) then return tabID, slotID end
+    if tabID and slotID and MakeSpace.Bags.IsScanned(tabID) then return tabID, slotID end
     return nil
   end
   if not (owner and owner.GetParent and owner.GetID) then return nil end
@@ -163,7 +163,7 @@ local function bagSlotOf(tooltip)
   -- says nothing about which bag an item is in.
   if owner.GetBagID then
     local bagID = owner:GetBagID()
-    if Bagwise.Bags.IsScanned(bagID) then
+    if MakeSpace.Bags.IsScanned(bagID) then
       return bagID, slotID
     end
     return nil
@@ -218,7 +218,7 @@ local function addLine(tooltip, text, r, g, b)
   tooltip:AddLine(colorCoins(text), r, g, b)
 end
 
--- The price line stays even with Auctionator installed: Bagwise's number is
+-- The price line stays even with Auctionator installed: MakeSpace's number is
 -- its own judgement (an average, or the snapshot) and it is what makes the
 -- "may sell at the auction house" hint, or a missing dot, make sense.
 local function addPriceNote(tooltip, result)
@@ -227,7 +227,7 @@ local function addPriceNote(tooltip, result)
 end
 
 local function renderProfessionDetails(tooltip, profEntries)
-  local myProfs = Bagwise.Scanner and Bagwise.Scanner.professionNames
+  local myProfs = MakeSpace.Scanner and MakeSpace.Scanner.professionNames
   local playerEntries = myProfs
       and playerProfessionsFrom(profEntries, myProfs) or {}
 
@@ -273,7 +273,7 @@ local QUEST_INFO_ZONE  = 2
 local QUEST_INFO_NAME  = 3
 
 local function formatQuestLine(questID)
-  local info = Bagwise.Data.QuestInfo and Bagwise.Data.QuestInfo[questID]
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
 
   -- Try runtime API first, fall back to static data (API returns nil
   -- for completed quests no longer in the active quest log).
@@ -329,17 +329,14 @@ local VERDICT_LINE_WRAP = 45
 -- yours yet, so green says you don't need it.
 local BAG_HEADINGS = {
   green  = "Safe to delete",
-  yellow = "Worth a glance",
 }
 -- A green on something a vendor will buy says so, since selling beats
 -- destroying when there is a vendor around.
 local BAG_HEADINGS_VENDOR = {
   green  = "Safe to vendor",
-  yellow = "Worth a glance",
 }
 local LOOT_HEADINGS = {
   green  = "Not needed",
-  yellow = "Worth a glance",
 }
 
 -- The pop-out you get from clicking an item link in chat. The item is not in
@@ -352,7 +349,6 @@ end
 -- With full bags and loot that loses to your junk, the header says it outright.
 local LOOT_LEAVE_HEADINGS = {
   green  = "Skip it",
-  yellow = "Worth a glance",
 }
 
 local function dotEscape(verdict)
@@ -364,17 +360,21 @@ local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, spec
   if not reason then return end
 
   -- A yellow that comes with its own heading (the rule's words, 3-4 of them) is
-  -- named by what was found with the detail underneath; anything else keeps the
-  -- generic heading and its reason.
+  -- named by what was found with the detail underneath. A yellow without one
+  -- (the slot picked to make room) is named by its own reason.
   local heading = headings[verdict]
-  if verdict == "yellow" and specific then
-    heading, reason = specific.title, specific.detail
+  if verdict == "yellow" then
+    if specific then
+      heading, reason = specific.title, specific.detail
+    else
+      heading, reason = reason, nil
+    end
   end
 
   addLine(tooltip, dotEscape(verdict) .. " " .. heading, color.r, color.g, color.b)
   if not reason then return end
   -- "Worth very little" repeats what the price line right under the heading shows.
-  if hasPriceLine and verdict == "green" and reason == Bagwise.Verdict.WORTH_LITTLE_REASON then return end
+  if hasPriceLine and verdict == "green" and reason == MakeSpace.Verdict.WORTH_LITTLE_REASON then return end
 
   -- Break long reasons at the last comma before the wrap threshold so
   -- multi-profession lists don't make the tooltip wider than the item's own.
@@ -391,7 +391,7 @@ local function renderVerdict(tooltip, verdict, reason, headings, keepWhole, spec
   addLine(tooltip, reason, DETAIL_COLOR.r, DETAIL_COLOR.g, DETAIL_COLOR.b)
 end
 
-function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
   -- The TooltipDataProcessor fires for every tooltip that shows an item,
   -- including ShoppingTooltip1/2 (the Shift-hover comparison tooltips).
   -- Those don't have GetItem() and have no bag-slot owner, so skip them.
@@ -407,7 +407,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   if isLootOwner(tooltip:GetOwner()) then
     -- Checked before the bag lookup: a loot row's ID could otherwise match a
     -- backpack slot holding the same item.
-    result = Bagwise.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip), link)
+    result = MakeSpace.Scanner.EvaluateItem(itemID, tooltipSaysOpenable(tooltip), link)
     headings = LOOT_HEADINGS
   elseif isLinkTooltip(tooltip) then
     -- An item link in chat gets the general blue info only (what it is used
@@ -420,7 +420,7 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
       tooltip:Show()
       return
     end
-    result = Bagwise.Scanner.GetResult(bag, slot)
+    result = MakeSpace.Scanner.GetResult(bag, slot)
     headings = BAG_HEADINGS
     if result and result.sellable then
       headings = BAG_HEADINGS_VENDOR
@@ -430,8 +430,8 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local reason = result and result.reason
   local specificHeading = result and result.heading
   local lootSlot = isLootOwner(tooltip:GetOwner()) and lootSlotOf(tooltip:GetOwner())
-  local lootDecision = lootSlot and Bagwise.Scanner.LootDecision
-      and Bagwise.Scanner.LootDecision(lootSlot)
+  local lootDecision = lootSlot and MakeSpace.Scanner.LootDecision
+      and MakeSpace.Scanner.LootDecision(lootSlot)
   -- Full bags: loot worth less than the junk you would delete is a skip.
   -- An item that already has its own verdict keeps it and gets the loot
   -- decision as an extra line, so the X (or the missing X) is always explained.
@@ -439,13 +439,13 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   local keepWhole = false
   -- A gray's own "Poor quality, sells for ..." only repeats the comparison
   -- the skip reason makes, so the skip reason replaces it.
-  if lootDecision == "leave" and verdict and result.tag == Bagwise.Verdict.POOR_QUALITY_TAG then
+  if lootDecision == "leave" and verdict and result.tag == MakeSpace.Verdict.POOR_QUALITY_TAG then
     verdict, reason = nil, nil
   end
   if lootDecision == "leave" then
     headings = LOOT_LEAVE_HEADINGS
     -- A gray's own "sells for ..." line would only repeat the comparison.
-    local isGray = result and result.tag == Bagwise.Verdict.POOR_QUALITY_TAG
+    local isGray = result and result.tag == MakeSpace.Verdict.POOR_QUALITY_TAG
     if verdict and not isGray then lootNote = lootLeaveReason() else
       verdict, reason = "green", lootLeaveReason()
       keepWhole = true -- the comma sits inside the parentheses
@@ -461,21 +461,21 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     verdict, reason, specificHeading = nil, nil, nil
   end
 
-  local profEntries = Bagwise.Data.ReagentProfessions
-      and Bagwise.Data.ReagentProfessions[itemID]
+  local profEntries = MakeSpace.Data.ReagentProfessions
+      and MakeSpace.Data.ReagentProfessions[itemID]
 
   -- Only quests this player's faction can take: an Alliance quest on a Horde
   -- tooltip is noise, and the verdict already ignores it.
-  local questIDs = Bagwise.Data.QuestItems
-      and Bagwise.Data.QuestItems[itemID]
+  local questIDs = MakeSpace.Data.QuestItems
+      and MakeSpace.Data.QuestItems[itemID]
   if questIDs then
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
-    questIDs = Bagwise.Verdict.QuestsForFaction(questIDs, faction)
+    questIDs = MakeSpace.Verdict.QuestsForFaction(questIDs, faction)
     if #questIDs == 0 then questIDs = nil end
   end
 
-  local protectedNote = Bagwise.Data.ProtectedItems
-      and Bagwise.Data.ProtectedItems[itemID]
+  local protectedNote = MakeSpace.Data.ProtectedItems
+      and MakeSpace.Data.ProtectedItems[itemID]
 
   if verdict then
     renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading,
@@ -492,8 +492,8 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
     -- No verdict: show context rows (profession and/or quest).
     -- Design doc 4.3: never more than 2 detail rows total.
     -- Skip all detail rows for vendor reagents (cheap, repurchasable).
-    local isVendorReagent = Bagwise.Data.VendorReagents
-        and Bagwise.Data.VendorReagents[itemID]
+    local isVendorReagent = MakeSpace.Data.VendorReagents
+        and MakeSpace.Data.VendorReagents[itemID]
     if profEntries and not isVendorReagent then
       renderProfessionDetails(tooltip, profEntries)
     elseif questIDs and not isVendorReagent then
@@ -518,16 +518,16 @@ function Bagwise.Tooltip.OnTooltipSetItem(tooltip)
   tooltip:Show()
 end
 
-function Bagwise.Tooltip.Init()
+function MakeSpace.Tooltip.Init()
   -- Forever uses the modern TooltipDataProcessor API.
   -- Classic Era still uses the old GameTooltip:HookScript.
   if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
-      Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+      MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     end)
   elseif GameTooltip and GameTooltip.HookScript then
     GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
-      Bagwise.Tooltip.OnTooltipSetItem(tooltip)
+      MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     end)
   end
 end

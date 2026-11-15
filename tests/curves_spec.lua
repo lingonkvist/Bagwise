@@ -1,10 +1,10 @@
--- Bagwise: the limit curves for live and snapshot auction prices.
+-- MakeSpace: the limit curves for live and snapshot auction prices.
 
-Bagwise = nil
+MakeSpace = nil
 dofile("src/curves.lua")
 dofile("src/auction.lua")
 
-local Curves = Bagwise.Curves
+local Curves = MakeSpace.Curves
 
 describe("Curves: the live curve", function()
   it("asks for a bigger margin over a cheap vendor price, in share terms", function()
@@ -118,32 +118,32 @@ describe("Curves.SnapshotAgeDays", function()
   local noon = os.time({ year = 2026, month = 11, day = 20, hour = 12 })
 
   it("counts whole days from the date in the price data", function()
-    assert.are.equal(10, Bagwise.Curves.SnapshotAgeDays("2026-11-10", noon))
-    assert.are.equal(0, Bagwise.Curves.SnapshotAgeDays("2026-11-20", noon))
+    assert.are.equal(10, MakeSpace.Curves.SnapshotAgeDays("2026-11-10", noon))
+    assert.are.equal(0, MakeSpace.Curves.SnapshotAgeDays("2026-11-20", noon))
   end)
 
   it("gives nothing for a missing or odd date", function()
-    assert.is_nil(Bagwise.Curves.SnapshotAgeDays(nil, noon))
-    assert.is_nil(Bagwise.Curves.SnapshotAgeDays("last week", noon))
+    assert.is_nil(MakeSpace.Curves.SnapshotAgeDays(nil, noon))
+    assert.is_nil(MakeSpace.Curves.SnapshotAgeDays("last week", noon))
   end)
 end)
 
 describe("Curves.SnapshotNotice", function()
   it("says nothing for fresh data or an unknown age", function()
-    assert.is_nil(Bagwise.Curves.SnapshotNotice(nil))
-    assert.is_nil(Bagwise.Curves.SnapshotNotice(0))
-    assert.is_nil(Bagwise.Curves.SnapshotNotice(7))
+    assert.is_nil(MakeSpace.Curves.SnapshotNotice(nil))
+    assert.is_nil(MakeSpace.Curves.SnapshotNotice(0))
+    assert.is_nil(MakeSpace.Curves.SnapshotNotice(7))
   end)
 
   it("reminds after a week and says how long is left", function()
-    local text = Bagwise.Curves.SnapshotNotice(9)
+    local text = MakeSpace.Curves.SnapshotNotice(9)
     assert.is_truthy(text:find("9 days old", 1, true))
     assert.is_truthy(text:find("within 5 days", 1, true))
-    assert.is_truthy(Bagwise.Curves.SnapshotNotice(13):find("within 1 day ", 1, true))
+    assert.is_truthy(MakeSpace.Curves.SnapshotNotice(13):find("within 1 day ", 1, true))
   end)
 
   it("says plainly that the data is no longer used after two weeks", function()
-    local text = Bagwise.Curves.SnapshotNotice(15)
+    local text = MakeSpace.Curves.SnapshotNotice(15)
     assert.is_truthy(text:find("no longer used", 1, true))
   end)
 end)

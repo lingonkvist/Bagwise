@@ -1,11 +1,11 @@
--- Bagwise: what a verdict means once the item is in the bank.
+-- MakeSpace: what a verdict means once the item is in the bank.
 --
 -- People bank things on purpose, often for another character, so a verdict
 -- only stays as it is when it holds for any character; one that depends on this
 -- character's professions, class or quests is capped at a yellow reminder; and
 -- one that only says what to do with an item that is not banked yet is dropped.
 -- An unknown rule gets the cautious treatment.
-Bagwise = Bagwise or {}
+MakeSpace = MakeSpace or {}
 
 local BANK_KEEPS = {
   level_gap = true,     -- soulbound, so it cannot go to an alt
@@ -34,20 +34,22 @@ local BANK_DROPS_GREEN = {
 -- @param isWarband boolean|nil  the slot is in the warband bank
 -- @return table|nil  a fresh table (results are shared between slots), or
 --   the same nil/empty result when there is nothing to show
-function Bagwise.Verdict.ForBank(result, isWarband)
+function MakeSpace.Verdict.ForBank(result, isWarband)
   if not result or not result.verdict then return result end
-  if result.heading and result.heading.title == Bagwise.Notes.BANK_IT_TITLE then return {} end
+  if result.heading and result.heading.title == MakeSpace.Notes.BANK_IT_TITLE then return {} end
   if BANK_DROPS[result.rule] then return {} end
   if result.verdict == "green" and BANK_DROPS_GREEN[result.rule] then return {} end
   -- Nobody needs a vendor suggestion for something already banked.
   if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
     return { verdict = result.verdict, reason = result.reason, detail = result.detail,
-             tag = result.tag, rule = result.rule, heading = result.heading, sellable = false }
+             tag = result.tag, rule = result.rule, heading = result.heading, sellable = false,
+             auctionNote = result.auctionNote }
   end
   -- A green has no heading of its own, so the yellow is named by the same
   -- words the bag shows under "Safe to delete": "Quest completed", and so on.
   return { verdict = "yellow", reason = result.reason, detail = result.detail,
            tag = result.tag, rule = result.rule,
-           heading = result.heading or { title = result.reason } }
+           heading = result.heading or { title = result.reason },
+           auctionNote = result.auctionNote }
 end
 

@@ -1,12 +1,12 @@
--- Bagwise: consumables that restore mana and nothing else
+-- MakeSpace: consumables that restore mana and nothing else
 -- Rejuvenation-style items that also heal are left out on purpose.
 -- Generated from wago.tools DB2 build 1.60.1.70862. Do not edit by hand.
 -- 21 items.
 
-Bagwise      = Bagwise or {}
-Bagwise.Data = Bagwise.Data or {}
+MakeSpace      = MakeSpace or {}
+MakeSpace.Data = MakeSpace.Data or {}
 
-Bagwise.Data.ManaOnlyConsumables = {
+MakeSpace.Data.ManaOnlyConsumables = {
   [1072] = true, -- Full Moonshine
   [2455] = true, -- Minor Mana Potion
   [3087] = true, -- Mug of Shimmer Stout

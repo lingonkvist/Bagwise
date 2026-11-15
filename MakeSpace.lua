@@ -1,4 +1,4 @@
--- Bagwise: entry point
+-- MakeSpace: entry point
 -- Registers events, initialises saved variables, hooks bag frames.
 
 local frame = CreateFrame("Frame")
@@ -6,12 +6,12 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 
 local function rescanAll()
-  Bagwise.Scanner.ScanAll()
-  Bagwise.Overlay.UpdateAll()
+  MakeSpace.Scanner.ScanAll()
+  MakeSpace.Overlay.UpdateAll()
   -- Looting changes your bags a moment after the loot event, so the plan (and
   -- with it the marks, banner and tooltips) only becomes right on this scan.
-  if Bagwise.Scanner.HasLoot and Bagwise.Scanner.HasLoot() then
-    Bagwise.Overlay.UpdateLoot()
+  if MakeSpace.Scanner.HasLoot and MakeSpace.Scanner.HasLoot() then
+    MakeSpace.Overlay.UpdateLoot()
   end
 end
 
@@ -33,11 +33,11 @@ local function rescanSoon()
   end)
 end
 
--- A bank tab the client draws that Bagwise did not know about: scan it.
-Bagwise.Bags.onNewBankBag = function() rescanSoon() end
+-- A bank tab the client draws that MakeSpace did not know about: scan it.
+MakeSpace.Bags.onNewBankBag = function() rescanSoon() end
 
 -- Auctionator keeps its prices in a database it fills while the auction house is
--- open (a scan, a search, listing something). Nothing tells Bagwise, so the dots
+-- open (a scan, a search, listing something). Nothing tells MakeSpace, so the dots
 -- would keep the old verdicts until the bags next changed. Hook the point where a
 -- price is stored and rescan a moment after, once per burst.
 local AUCTION_PRICES_RESCAN_DELAY_SECONDS = 2
@@ -49,7 +49,7 @@ local function auctionPricesChanged()
   auctionPricesPending = true
   C_Timer.After(AUCTION_PRICES_RESCAN_DELAY_SECONDS, function()
     auctionPricesPending = false
-    Bagwise.Live.ClearCache()
+    MakeSpace.Live.ClearCache()
     rescanAll()
   end)
 end
@@ -64,7 +64,7 @@ local function hookAuctionatorPrices()
 end
 
 local function invalidateAndRescan()
-  Bagwise.Scanner.ClearCache()
+  MakeSpace.Scanner.ClearCache()
   rescanAll()
 end
 
@@ -77,7 +77,7 @@ local function onPlayerLevelUp()
   if not (C_Timer and C_Timer.After) then return end
   C_Timer.After(LEVEL_UP_SUMMARY_DELAY_SECONDS, function()
     invalidateAndRescan()
-    Bagwise.Commands.PrintSummary(true)
+    MakeSpace.Commands.PrintSummary(true)
   end)
 end
 
@@ -86,11 +86,11 @@ end
 -- report the item for that slot, and Blizzard re-lays the rows after the event,
 -- so the loot dots are repainted once now and once on the next frame.
 local function onLootChanged(self, clearedSlot)
-  Bagwise.Scanner.RefreshLoot(clearedSlot)
+  MakeSpace.Scanner.RefreshLoot(clearedSlot)
   rescanAll()
-  Bagwise.Overlay.UpdateLoot()
+  MakeSpace.Overlay.UpdateLoot()
   if C_Timer and C_Timer.After then
-    C_Timer.After(0, function() Bagwise.Overlay.UpdateLoot() end)
+    C_Timer.After(0, function() MakeSpace.Overlay.UpdateLoot() end)
   end
 end
 
@@ -110,8 +110,8 @@ local function anyBagOpen()
 end
 
 local function openBagsForLoot()
-  if BagwiseDB and BagwiseDB.autoOpenBags == false then return end
-  if not Bagwise.Scanner.MakeRoomSummary().active then return end
+  if MakeSpaceDB and MakeSpaceDB.autoOpenBags == false then return end
+  if not MakeSpace.Scanner.MakeRoomSummary().active then return end
   if anyBagOpen() or not OpenAllBags then return end
   if pcall(OpenAllBags) then openedBagsForLoot = true end
 end
@@ -123,15 +123,15 @@ local function onLootOpened(self, ...)
   -- item info), so look once more on the next frame.
   if C_Timer and C_Timer.After then
     C_Timer.After(0.1, function()
-      if Bagwise.Scanner.HasLoot() then openBagsForLoot() end
+      if MakeSpace.Scanner.HasLoot() then openBagsForLoot() end
     end)
   end
 end
 
 local function onLootClosed()
-  Bagwise.Scanner.ClearLoot()
+  MakeSpace.Scanner.ClearLoot()
   rescanAll()
-  Bagwise.Overlay.UpdateLoot()
+  MakeSpace.Overlay.UpdateLoot()
   if openedBagsForLoot then
     openedBagsForLoot = false
     if CloseAllBags then pcall(CloseAllBags) end
@@ -139,15 +139,19 @@ local function onLootClosed()
 end
 
 local function onAddonLoaded(self, addonName)
-  if addonName ~= "Bagwise" then return end
+  if addonName ~= "MakeSpace" then return end
 
   -- Fill in anything missing, so a saved file from an older version (or one
   -- edited by hand) never leaves a nil list for the rest of the addon to trip on.
-  BagwiseDB = BagwiseDB or {}
-  BagwiseDB.keepList = BagwiseDB.keepList or {}
-  BagwiseDB.flagList = BagwiseDB.flagList or {}
-  if BagwiseDB.autoOpenBags == nil then BagwiseDB.autoOpenBags = true end
-  BagwiseDB.version = BagwiseDB.version or 1
+  -- A first run on this character: bring over the old addon's lists when it is
+  -- still loaded (OptionalDeps makes it load first and fill BagwiseDB).
+  local firstRun = MakeSpaceDB == nil
+  MakeSpaceDB = MakeSpaceDB or {}
+  if firstRun then MakeSpace.Overrides.ImportOld(BagwiseDB, MakeSpaceDB) end
+  MakeSpaceDB.keepList = MakeSpaceDB.keepList or {}
+  MakeSpaceDB.flagList = MakeSpaceDB.flagList or {}
+  if MakeSpaceDB.autoOpenBags == nil then MakeSpaceDB.autoOpenBags = true end
+  MakeSpaceDB.version = MakeSpaceDB.version or 1
 
   self:UnregisterEvent("ADDON_LOADED")
 end
@@ -178,7 +182,7 @@ local function onPlayerLogin(self)
   -- Frame pool is shared (NUM_CONTAINER_FRAMES = 13), and any
   -- frame can hold any bag, so hook them all.
   -- Includes the combined-bags frame on Forever and EllesmereUI Bags.
-  for _, bagFrame in ipairs(Bagwise.Overlay.BagWindows()) do
+  for _, bagFrame in ipairs(MakeSpace.Overlay.BagWindows()) do
     bagFrame:HookScript("OnShow", rescanAll)
   end
 
@@ -188,29 +192,36 @@ local function onPlayerLogin(self)
     local ok, value = pcall(call, ...)
     return ok and value or nil
   end
-  Bagwise.Market.Select(
-    Bagwise.Market.RegionOf(GetNormalizedRealmName and read(GetNormalizedRealmName),
+  MakeSpace.Market.Select(
+    MakeSpace.Market.RegionOf(GetNormalizedRealmName and read(GetNormalizedRealmName),
       GetCurrentRegion and read(GetCurrentRegion)),
     UnitFactionGroup and read(UnitFactionGroup, "player"))
 
   hookAuctionatorPrices()
-  -- Auctionator may load after Bagwise, and its database is made at the first
+  -- Auctionator may load after MakeSpace, and its database is made at the first
   -- auction house visit on some builds: try again whenever the house opens.
   -- Closing it also settles prices a scan was still storing.
   pcall(self.RegisterEvent, self, "AUCTION_HOUSE_SHOW")
   pcall(self.RegisterEvent, self, "AUCTION_HOUSE_CLOSED")
 
-  Bagwise.Tooltip.Init()
-  Bagwise.Commands.Init()
-  Bagwise.Overlay.Init() -- <-- Registers the Baganator corner widget
+  MakeSpace.Tooltip.Init()
+  MakeSpace.Commands.Init()
+  MakeSpace.Overlay.Init() -- <-- Registers the Baganator corner widget
 
-  print("|cff54de7d[Make Space]|r v" .. Bagwise.Commands.Version()
+  print("|cff54de7d[Make Space]|r v" .. MakeSpace.Commands.Version()
     .. " loaded. Type /makespace help for commands.")
 
   local okNow, now = pcall(time)
-  local notice = okNow and Bagwise.Curves.SnapshotNotice(
-    Bagwise.Curves.SnapshotAgeDays(Bagwise.Data and Bagwise.Data.AuctionPricesDate, now))
+  local notice = okNow and MakeSpace.Curves.SnapshotNotice(
+    MakeSpace.Curves.SnapshotAgeDays(MakeSpace.Data and MakeSpace.Data.AuctionPricesDate, now))
   if notice then print("|cff54de7d[Make Space]|r " .. notice) end
+
+  -- The addon used to be called Bagwise. Both folders side by side would paint
+  -- every slot twice, so say so once and leave it to the player to delete the old one.
+  local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+  if isAddOnLoaded and isAddOnLoaded("Bagwise") then
+    print("|cff54de7d[Make Space]|r The old Bagwise folder is still installed. Delete Interface\\AddOns\\Bagwise, this addon replaces it.")
+  end
 end
 
 local EVENT_HANDLERS = {
@@ -231,7 +242,7 @@ local EVENT_HANDLERS = {
     rescanSoon()
     -- Blizzard fills the bank panel after the event; paint once it has.
     if C_Timer and C_Timer.After then
-      C_Timer.After(0.5, function() Bagwise.Overlay.UpdateAll() end)
+      C_Timer.After(0.5, function() MakeSpace.Overlay.UpdateAll() end)
     end
   end,
   AUCTION_HOUSE_SHOW     = hookAuctionatorPrices,

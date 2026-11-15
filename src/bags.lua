@@ -1,15 +1,15 @@
--- Bagwise: which bags count
+-- MakeSpace: which bags count
 -- One place that knows how far the bag numbering goes, so the scanner, the
 -- overlay and the tooltip never disagree.
 
-Bagwise = Bagwise or {}
-Bagwise.Bags = {}
+MakeSpace = MakeSpace or {}
+MakeSpace.Bags = {}
 
---- The highest bag ID Bagwise scans.
+--- The highest bag ID MakeSpace scans.
 -- Backpack is 0 and the equipped bags are 1 to NUM_BAG_SLOTS. Clients that
 -- have a reagent bag (Forever, like Mainline) put it right after them.
 -- Classic Era has no reagent bag slot, so this stays 4 there.
-function Bagwise.Bags.LastScanned()
+function MakeSpace.Bags.LastScanned()
   local last = NUM_BAG_SLOTS or 4
   local reagentSlots = NUM_REAGENTBAG_SLOTS or 0
   if reagentSlots > 0 then last = last + reagentSlots end
@@ -25,7 +25,7 @@ end
 local BANK_WINDOW = 20
 
 local function firstBankBag()
-  return Bagwise.Bags.LastScanned() + 1
+  return MakeSpace.Bags.LastScanned() + 1
 end
 
 local function lastBankBag()
@@ -45,12 +45,12 @@ local bankSet = nil
 
 --- Remember a bank bag ID seen on the client (a bank tab button, say).
 -- @return boolean  true when the ID was new, so the bank needs a fresh scan
-function Bagwise.Bags.NoteBankBag(bag)
-  if type(bag) ~= "number" or Bagwise.Bags.IsCarried(bag) or bag < 0 then return false end
+function MakeSpace.Bags.NoteBankBag(bag)
+  if type(bag) ~= "number" or MakeSpace.Bags.IsCarried(bag) or bag < 0 then return false end
   if learnedBankBags[bag] then return false end
   learnedBankBags[bag] = true
   bankSet = nil
-  if Bagwise.Bags.onNewBankBag then Bagwise.Bags.onNewBankBag(bag) end
+  if MakeSpace.Bags.onNewBankBag then MakeSpace.Bags.onNewBankBag(bag) end
   return true
 end
 
@@ -81,18 +81,18 @@ local function enumBankTabIDs()
   return ids
 end
 
---- Bag IDs Bagwise treats as bank, whether or not they hold items right now.
+--- Bag IDs MakeSpace treats as bank, whether or not they hold items right now.
 -- @return table  set of bag ID -> true
-function Bagwise.Bags.BankIDSet()
+function MakeSpace.Bags.BankIDSet()
   if bankSet then return bankSet end
-  return Bagwise.Bags.RefreshBankIDs()
+  return MakeSpace.Bags.RefreshBankIDs()
 end
 
 --- Build the set of bank bag IDs again from what the client says now.
-function Bagwise.Bags.RefreshBankIDs()
+function MakeSpace.Bags.RefreshBankIDs()
   local set = {}
   local function add(id)
-    if type(id) == "number" and id >= 0 and not Bagwise.Bags.IsCarried(id) then set[id] = true end
+    if type(id) == "number" and id >= 0 and not MakeSpace.Bags.IsCarried(id) then set[id] = true end
   end
   for bag = firstBankBag(), lastBankBag() do add(bag) end
   for id in pairs(learnedBankBags) do add(id) end
@@ -104,10 +104,10 @@ end
 
 --- Bag IDs that currently hold bank slots.
 -- @return table  list of bag IDs, in scan order
-function Bagwise.Bags.BankBags()
+function MakeSpace.Bags.BankBags()
   local ids = {}
   if not (C_Container and C_Container.GetContainerNumSlots) then return ids end
-  for bag in pairs(Bagwise.Bags.RefreshBankIDs()) do
+  for bag in pairs(MakeSpace.Bags.RefreshBankIDs()) do
     if (C_Container.GetContainerNumSlots(bag) or 0) > 0 then ids[#ids + 1] = bag end
   end
   table.sort(ids)
@@ -115,23 +115,23 @@ function Bagwise.Bags.BankBags()
 end
 
 --- Is this one of the bags you carry (backpack, bags, reagent bag)?
-function Bagwise.Bags.IsCarried(bag)
-  return bag ~= nil and bag >= 0 and bag <= Bagwise.Bags.LastScanned()
+function MakeSpace.Bags.IsCarried(bag)
+  return bag ~= nil and bag >= 0 and bag <= MakeSpace.Bags.LastScanned()
 end
 
 --- Is this a bank bag (a character bank tab or a warband bank tab)?
-function Bagwise.Bags.IsBank(bag)
-  return bag ~= nil and Bagwise.Bags.BankIDSet()[bag] == true
+function MakeSpace.Bags.IsBank(bag)
+  return bag ~= nil and MakeSpace.Bags.BankIDSet()[bag] == true
 end
 
 --- Is this a warband bank tab, shared by all your characters?
-function Bagwise.Bags.IsWarbandBank(bag)
+function MakeSpace.Bags.IsWarbandBank(bag)
   local index = Enum and Enum.BagIndex
   local firstTab = index and index.AccountBankTab_1
-  return firstTab ~= nil and bag ~= nil and bag >= firstTab and Bagwise.Bags.IsBank(bag)
+  return firstTab ~= nil and bag ~= nil and bag >= firstTab and MakeSpace.Bags.IsBank(bag)
 end
 
---- Is this a bag Bagwise paints: carried, or a bank bag?
-function Bagwise.Bags.IsScanned(bag)
-  return Bagwise.Bags.IsCarried(bag) or Bagwise.Bags.IsBank(bag)
+--- Is this a bag MakeSpace paints: carried, or a bank bag?
+function MakeSpace.Bags.IsScanned(bag)
+  return MakeSpace.Bags.IsCarried(bag) or MakeSpace.Bags.IsBank(bag)
 end

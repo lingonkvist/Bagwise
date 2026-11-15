@@ -100,7 +100,7 @@ def csv_get(row, *candidates, default=""):
 def fetch_url(url):
     """GET *url* and return the body as a string."""
     req = urllib.request.Request(url)
-    req.add_header("User-Agent", "bagwise-data-generator/1.0")
+    req.add_header("User-Agent", "makespace-data-generator/1.0")
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.read().decode("utf-8-sig")
@@ -434,18 +434,18 @@ def build_chains(spell_reagents, abilities, prof_names, products):
 
 def generate_chains_lua(chains, build_version):
     out = [
-        "-- Bagwise: reagent uses through what a reagent is made into.",
+        "-- MakeSpace: reagent uses through what a reagent is made into.",
         "-- Copper Bar is smelted into Bronze Bar, which smithing uses far above",
         "-- what copper recipes do. Used so a material is never called outleveled",
         "-- while something made from it is still in demand. green_level is the",
         "-- skill where the last of those recipes turns green.",
         f"-- Generated from wago.tools DB2 build {build_version}. Do not edit by hand.",
         "",
-        "Bagwise                      = Bagwise or {}",
-        "Bagwise.Data                 = Bagwise.Data or {}",
+        "MakeSpace                      = MakeSpace or {}",
+        "MakeSpace.Data                 = MakeSpace.Data or {}",
         "",
         "-- Format: [itemID] = { { profession, min_level, max_level, green_level }, ... }",
-        "Bagwise.Data.ReagentChains = {",
+        "MakeSpace.Data.ReagentChains = {",
     ]
     for item_id in sorted(chains):
         parts = ", ".join('{ "%s", %d, %d, %d }' % (p, span[0], span[1], span[2])
@@ -560,12 +560,12 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
 
 
 def generate_lua(reagent_data, item_names, build_version):
-    """Produce the Lua source string in Bagwise's format."""
+    """Produce the Lua source string in MakeSpace's format."""
     out = []
     total = len(reagent_data)
     all_profs = sorted({p for profs in reagent_data.values() for p in profs})
 
-    out.append("-- Bagwise: reagent-to-profession mapping with recipe stats")
+    out.append("-- MakeSpace: reagent-to-profession mapping with recipe stats")
     out.append("-- For each reagent item: which professions use it, how many")
     out.append("-- recipes, the skill range they are learnable at, and the skill")
     out.append("-- where the last of them turns green (0 when unknown).")
@@ -574,12 +574,12 @@ def generate_lua(reagent_data, item_names, build_version):
     out.append("--")
     out.append(f"-- {total} reagent items across {len(all_profs)} professions.")
     out.append("")
-    out.append("Bagwise                         = Bagwise or {}")
-    out.append("Bagwise.Data                    = Bagwise.Data or {}")
+    out.append("MakeSpace                         = MakeSpace or {}")
+    out.append("MakeSpace.Data                    = MakeSpace.Data or {}")
     out.append("")
     out.append("-- Format: [itemID] = { { profession, recipe_count, "
                "min_level, max_level, green_level }, ... }")
-    out.append("Bagwise.Data.ReagentProfessions = {")
+    out.append("MakeSpace.Data.ReagentProfessions = {")
 
     # Group items by their sorted profession combo for readable sections.
     grouped = {}
@@ -658,7 +658,7 @@ def verify_known_reagents(reagent_data):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Generate Bagwise reagent_professions.lua from wago.tools"
+        description="Generate MakeSpace reagent_professions.lua from wago.tools"
     )
     ap.add_argument(
         "--build",

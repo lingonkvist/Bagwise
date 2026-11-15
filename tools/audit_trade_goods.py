@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Audit Trade Goods that Bagwise would call "Not used for any quest or recipe".
+Audit Trade Goods that MakeSpace would call "Not used for any quest or recipe".
 
 That is the green candidate list for the no_recipe_use rule: Trade Goods (item
-class 7) that appear in none of Bagwise's data tables (recipe reagents, quest
+class 7) that appear in none of MakeSpace's data tables (recipe reagents, quest
 items, vendor reagents, class reagents). If a real reagent or quest item is
 missing from the data, it lands here and gets a wrong green. Read the report
 and look for names that should not be on it. New Forever items are the likely
@@ -15,7 +15,7 @@ Usage (from the repo root):
     python3 tools/audit_trade_goods.py --find "Herb Seeds"
     python3 tools/audit_trade_goods.py --selftest        (no network)
 
-The full report is written to trade_goods_audit.txt. --find prints how Bagwise
+The full report is written to trade_goods_audit.txt. --find prints how MakeSpace
 treats every item whose name contains the text, whatever its item class, so you
 can see why a given item gets the dot it does.
 
@@ -36,7 +36,7 @@ QUEST_CLASS = 12
 
 TABLES = ["Item", "ItemSparse"]
 
-# Bagwise data tables that make an item "used": file, table name.
+# MakeSpace data tables that make an item "used": file, table name.
 DATA_TABLES = [
     ("data/reagent_professions.lua", "ReagentProfessions", "recipe reagent"),
     ("data/quest_items.lua", "QuestItems", "quest item"),
@@ -56,17 +56,17 @@ SUBCLASS_NAMES = {
 
 
 # ---------------------------------------------------------------------------
-# Reading Bagwise's data tables
+# Reading MakeSpace's data tables
 # ---------------------------------------------------------------------------
 
 
 def read_lua_table_keys(path, table_name):
-    """Item IDs used as [N] keys inside `Bagwise.Data.<table_name> = { ... }`."""
+    """Item IDs used as [N] keys inside `MakeSpace.Data.<table_name> = { ... }`."""
     with open(path, "r", encoding="utf-8") as fh:
         lines = fh.read().splitlines()
     start = None
     for i, line in enumerate(lines):
-        if re.match(r"\s*Bagwise\.Data\.%s\s*=\s*\{" % re.escape(table_name), line):
+        if re.match(r"\s*MakeSpace\.Data\.%s\s*=\s*\{" % re.escape(table_name), line):
             start = i + 1
             break
     if start is None:
@@ -82,7 +82,7 @@ def read_lua_table_keys(path, table_name):
 
 
 def load_data_sources(repo_root):
-    """{label: set(itemIDs)} for every Bagwise table that marks an item as used."""
+    """{label: set(itemIDs)} for every MakeSpace table that marks an item as used."""
     sources = {}
     for rel_path, table, label in DATA_TABLES:
         path = os.path.join(repo_root, rel_path)
@@ -151,7 +151,7 @@ def used_by(item_id, sources):
 
 
 def audit(items, sources):
-    """Trade Goods in none of Bagwise's tables, grouped by subclass."""
+    """Trade Goods in none of MakeSpace's tables, grouped by subclass."""
     grouped = {}
     for item_id, info in items.items():
         if info["class"] != TRADE_GOODS_CLASS or is_placeholder(info["name"]):
@@ -170,7 +170,7 @@ def class_label(class_id):
 
 
 def describe_item(item_id, info, sources):
-    """One --find line: what the item is and how Bagwise treats it."""
+    """One --find line: what the item is and how MakeSpace treats it."""
     found = used_by(item_id, sources)
     if info["class"] == REAGENT_CLASS:
         verdict = "protected (Reagent class)"
@@ -188,7 +188,7 @@ def describe_item(item_id, info, sources):
 
 def render_report(grouped):
     total = sum(len(rows) for rows in grouped.values())
-    out = [f"Trade Goods in none of Bagwise's data tables: {total}",
+    out = [f"Trade Goods in none of MakeSpace's data tables: {total}",
            "These can read as green 'Not used for any quest or recipe'.",
            "Look for anything that a recipe or quest actually uses.", ""]
     for subclass in sorted(grouped):
@@ -221,7 +221,7 @@ def selftest():
                                 ("data/protected_items.lua", "ProtectedItems", [])]:
             body = "\n".join(f"  [{i}] = {{ 1 }}, -- x" for i in ids)
             with open(os.path.join(tmp, rel), "w") as fh:
-                fh.write(f"Bagwise.Data = Bagwise.Data or {{}}\nBagwise.Data.{table} = {{\n{body}\n}}\n")
+                fh.write(f"MakeSpace.Data = MakeSpace.Data or {{}}\nMakeSpace.Data.{table} = {{\n{body}\n}}\n")
         sources = load_data_sources(tmp)
     grouped = audit(items, sources)
     listed = [item_id for rows in grouped.values() for item_id, _ in rows]
@@ -235,7 +235,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--build", help="exact build (default: latest)")
     ap.add_argument("--cache-dir", help="cache downloaded tables here")
-    ap.add_argument("--find", help="show how Bagwise treats items whose name contains this text")
+    ap.add_argument("--find", help="show how MakeSpace treats items whose name contains this text")
     ap.add_argument("--out", default="trade_goods_audit.txt", help="report file")
     ap.add_argument("--selftest", action="store_true", help="check the logic offline")
     args = ap.parse_args()
