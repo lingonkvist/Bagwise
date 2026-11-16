@@ -162,8 +162,34 @@ local function getButtonDot(button)
   return dot
 end
 
+-- The item menu: alt-right-click on an item button. (Shift is taken: shift-click
+-- splits a stack.) The slot a button shows changes as buttons are recycled, so
+-- it is remembered per paint, off the button itself, and read when the click
+-- comes. The mouse-up script is hooked, not the click script: it fires for any
+-- button whatever the bag addon registers for clicks, and a bag addon that sets
+-- its own click script later cannot drop the hook.
+local slotByButton = setmetatable({}, { __mode = "k" })
+local menuHooked = setmetatable({}, { __mode = "k" })
+
+local function isMenuClick(mouseButton)
+  return mouseButton == "RightButton" and IsAltKeyDown()
+end
+
+local function rememberSlot(button, bagID, slotID)
+  if not button or not button.HookScript then return end
+  slotByButton[button] = (bagID and slotID) and { bagID, slotID } or nil
+  if menuHooked[button] then return end
+  menuHooked[button] = true
+  pcall(button.HookScript, button, "OnMouseUp", function(self, mouseButton)
+    if not isMenuClick(mouseButton) then return end
+    local slot = slotByButton[self]
+    if slot then MakeSpace.Menu.Open(slot[1], slot[2]) end
+  end)
+end
+
 -- Item buttons are recycled, so every paint decides the dot from scratch.
 local function paintButton(button, bagID, slotID)
+  rememberSlot(button, bagID, slotID)
   local result = nil
   if MakeSpace.Bags.IsScanned(bagID) then
     result = MakeSpace.Scanner.GetResult(bagID, slotID)
@@ -195,21 +221,52 @@ local MAX_FRAMES = NUM_CONTAINER_FRAMES or 13
 
 local bankPanelFrames = setmetatable({}, { __mode = "k" })
 
--- The item buttons of a bank panel, as an iterator of buttons. Normally the panel
--- lists them itself; if it cannot, its child frames that know their own tab and
--- slot are the buttons.
-local function bankButtons(panel)
+-- The client's own EnumerateValidItems is avoided where the frame offers another
+-- way: it asks the frame for its size, and the client writes that size onto the
+-- frame when it is unset. A write made from here is marked as the addon's, and the
+-- next secure action that reads it (right-clicking an item to use it) can be
+-- blocked. So the buttons are read off the frame's own fields, which only reads.
+local function shownChildren(parent, wanted)
   local buttons = {}
-  if panel.EnumerateValidItems then
-    -- Bag frames yield (index, button); the bank panel yields its button pool,
-    -- which is (button, true). Take whichever of the two is the frame.
-    for first, second in panel:EnumerateValidItems() do
-      local button = type(first) == "table" and first or second
-      if type(button) == "table" then buttons[#buttons + 1] = button end
+  if parent.GetChildren then
+    for _, child in ipairs({ parent:GetChildren() }) do
+      if wanted(child) and (not child.IsShown or child:IsShown()) then buttons[#buttons + 1] = child end
     end
-  elseif panel.GetChildren then
-    for _, child in ipairs({ panel:GetChildren() }) do
-      if child.GetBankTabID and child.GetContainerSlotID then buttons[#buttons + 1] = child end
+  end
+  return buttons
+end
+
+local function enumerated(panel)
+  local buttons = {}
+  -- Bag frames yield (index, button); the bank panel yields its button pool,
+  -- which is (button, true). Take whichever of the two is the frame.
+  for first, second in panel:EnumerateValidItems() do
+    local button = type(first) == "table" and first or second
+    if type(button) == "table" then buttons[#buttons + 1] = button end
+  end
+  return buttons
+end
+
+-- The item buttons of a bank panel: its child frames that know their own tab and slot.
+local function bankButtons(panel)
+  local buttons = shownChildren(panel, function(child)
+    return child.GetBankTabID and child.GetContainerSlotID
+  end)
+  if #buttons == 0 and panel.EnumerateValidItems then return enumerated(panel) end
+  return buttons
+end
+
+-- The item buttons of a modern bag frame: its Items array, the shown ones (a
+-- pooled button past the bag's size is hidden).
+local function bagButtons(frame)
+  local items = rawget(frame, "Items")
+  if type(items) ~= "table" then
+    return frame.EnumerateValidItems and enumerated(frame) or {}
+  end
+  local buttons = {}
+  for _, button in ipairs(items) do
+    if type(button) == "table" and (not button.IsShown or button:IsShown()) then
+      buttons[#buttons + 1] = button
     end
   end
   return buttons
@@ -218,7 +275,8 @@ end
 -- Forever's bank is Mainline's BankPanel: one tab at a time, drawn from a pool of
 -- buttons that each know their own tab (bag ID) and slot.
 local function paintEnumerated(frame)
-  for _, button in ipairs(bankButtons(frame)) do
+  local buttons = bankPanelFrames[frame] and bankButtons(frame) or bagButtons(frame)
+  for _, button in ipairs(buttons) do
     local bagID = button.GetBankTabID and button:GetBankTabID() or bagIDOf(button)
     local slotID = button.GetContainerSlotID and button:GetContainerSlotID() or button:GetID()
     -- A tab the client draws is a bank bag, whatever number it has.
@@ -357,6 +415,10 @@ local function showsLiveItem(details, bagID, slotID)
   return shownID == nil or shownID == liveID
 end
 
+-- The item button each Baganator widget was made for. The widget's own parent
+-- may be a holder frame, and the menu has to hook the button itself.
+local buttonByDot = setmetatable({}, { __mode = "k" })
+
 local function initBaganator()
   if not Baganator or not Baganator.API or not Baganator.API.RegisterCornerWidget then
     return false
@@ -367,8 +429,9 @@ local function initBaganator()
   local function onUpdate(dot, details)
     -- A button that shows something we do not judge (another character's item,
     -- an empty slot) must not keep a delete glow from what it showed before.
-    local button = dot.GetParent and dot:GetParent()
+    local button = buttonByDot[dot] or (dot.GetParent and dot:GetParent())
     local function noGlow()
+      rememberSlot(button, nil, nil)
       if button and button.CreateTexture then applyGlow(button, false) end
       return false
     end
@@ -381,6 +444,7 @@ local function initBaganator()
     if not showsLiveItem(details, bagID, slotID) then return noGlow() end
 
     local result = MakeSpace.Scanner.GetResult(bagID, slotID)
+    rememberSlot(button, bagID, slotID)
     if button and button.CreateTexture then
       applyGlow(button, result and result.glow and not result.quiet, bagID, slotID)
     end
@@ -391,6 +455,7 @@ local function initBaganator()
   -- Baganator will parent and position the returned frame.
   local function onInit(itemButton)
     local dot = makeDot(itemButton)
+    buttonByDot[dot] = itemButton
     -- Baganator handles the anchoring, so no SetPoint is needed here.
     return dot
   end

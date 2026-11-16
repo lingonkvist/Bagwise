@@ -11,7 +11,7 @@ local COLUMNS = {
   "class", "subclass", "equipSlot", "bind", "bound", "sellCopper",
   "verdict", "reason", "kept", "flagged",
   "recipeProfs", "quests", "startsQuest", "vendorReagent", "classReagent",
-  "wornQualityIlvl", "lootable",
+  "wornQualityIlvl", "lootable", "markedGreen",
 }
 
 -- The column separator. Not a pipe: the game treats "|" as the start of an
@@ -60,7 +60,7 @@ local function rowCells(row)
     cell(table.concat(row.recipeProfessions or {}, ",")),
     questCell(row.quests), startsQuestCell(row),
     cell(row.isVendorReagent), cell(row.isClassReagent),
-    wornCell(row.equippedInSlots), cell(row.lootable),
+    wornCell(row.equippedInSlots), cell(row.lootable), cell(row.isMarkedGreen),
   }
 end
 
@@ -75,7 +75,7 @@ function MakeSpace.Dump.Format(snapshot, context)
   local player = snapshot.player or {}
   local lines = {
     "# Make Space inventory dump",
-    "# bagwise=" .. cell(context.version) .. " wow=" .. cell(context.build),
+    "# makespace=" .. cell(context.version) .. " wow=" .. cell(context.build),
     "# class=" .. cell(player.class) .. " race=" .. cell(player.race)
         .. " faction=" .. cell(player.faction) .. " level=" .. cell(player.level),
     "# professions=" .. table.concat(player.professions or {}, ","),

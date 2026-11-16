@@ -775,7 +775,23 @@ describe("Epic 6: player overrides", function()
     local verdict, reason = MakeSpace.Verdict.Evaluate(item, state)
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Flagged by you", reason)
+    assert.are.equal("Marked by you", reason)
+  end)
+
+  it("a green you set is green whatever the rules say, and says whose call it is", function()
+    local item = { id = 33012, isBound = false, isEquippable = false, isMarkedGreen = true,
+                   sellPrice = 500, quality = 3 }
+
+    local result = MakeSpace.Verdict.Judge(item, state)
+
+    assert.are.equal("green", result.verdict)
+    assert.are.equal("Marked by you", result.reason)
+    assert.are.equal("marked", result.rule)
+    assert.are.equal(false, result.sellable) -- "Safe to delete", never "Safe to vendor"
+  end)
+
+  it("a kept item beats a green mark, so there is never a dot", function()
+    assert.is_nil((MakeSpace.Verdict.Evaluate({ id = 1, isKept = true, isMarkedGreen = true }, state)))
   end)
 
   it("flagged item stays yellow even when a rule would make it green", function()
@@ -827,7 +843,7 @@ describe("Consumables never get a verdict", function()
     local verdict, reason = MakeSpace.Verdict.Evaluate(item, mage)
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Flagged by you", reason)
+    assert.are.equal("Marked by you", reason)
   end)
 
   it("real vendor reagents that are not consumables keep their green dot", function()
@@ -841,7 +857,95 @@ describe("Consumables never get a verdict", function()
 end)
 
 
-describe("Verdict.QuestsForFaction", function()
+describe("Quest-provided notes and crates", function()
+  local state = { level = 40, class = "Warrior", playerClass = "WARRIOR", faction = "Alliance",
+                  professionsKnown = true, professionNames = {}, professionRanks = {} }
+  local function parchment(done)
+    return { id = 6929, classID = 0, subClassID = 8, quality = 1, count = 1, sellPrice = 0,
+             isBound = true, questProvided = true, questItemQuestIDs = { 1712 },
+             allQuestObjectivesCompleted = done, openQuestIDs = done and {} or { 1712 } }
+  end
+
+  it("is green once its quest is done, though the game calls it a consumable", function()
+    local verdict, reason = MakeSpace.Verdict.Evaluate(parchment(true), state)
+    assert.are.equal("green", verdict)
+    assert.are.equal("Quest completed", reason)
+  end)
+
+  it("stays quiet while the quest is open", function()
+    assert.is_nil((MakeSpace.Verdict.Evaluate(parchment(false), state)))
+  end)
+
+  it("is not trusted for an item the quest data does not mark as quest-provided", function()
+    local item = parchment(true)
+    item.questProvided = false
+    assert.is_nil((MakeSpace.Verdict.Evaluate(item, state)))
+  end)
+
+  it("only counts notes and crates: gear and potions never", function()
+    local saved = MakeSpace.Data.QuestProvided
+    MakeSpace.Data.QuestProvided = { [1] = true }
+    local note = MakeSpace.Verdict.IsQuestProvided(1, 0, 8, false)
+    local misc = MakeSpace.Verdict.IsQuestProvided(1, 15, 0, false)
+    local potion = MakeSpace.Verdict.IsQuestProvided(1, 0, 1, false)
+    local gear = MakeSpace.Verdict.IsQuestProvided(1, 4, 1, true)
+    local unlisted = MakeSpace.Verdict.IsQuestProvided(2, 0, 8, false)
+    MakeSpace.Data.QuestProvided = saved
+    assert.are.equal(true, note)
+    assert.are.equal(true, misc)
+    assert.are.equal(false, potion)
+    assert.are.equal(false, gear)
+    assert.are.equal(false, unlisted)
+  end)
+end)
+
+describe("Verdict.QuestsThatMatter, class and race", function()
+  local saved
+  local function withInfo(fn)
+    saved = MakeSpace.Data.QuestInfo
+    MakeSpace.Data.QuestInfo = {
+      [1] = { 40, nil, "Warrior only", nil, 1 },          -- class mask: warrior
+      [2] = { 40, nil, "Orc only", "H", nil, 2 },         -- race mask: orc
+      [3] = { 40, nil, "Anyone", nil },
+      [4] = { 40, nil, "Mage or warlock", nil, 128 + 256 },
+    }
+    fn()
+    MakeSpace.Data.QuestInfo = saved
+  end
+
+  it("leaves out quests only another class can take", function()
+    withInfo(function()
+      local mage = MakeSpace.Verdict.QuestsThatMatter({ 1, 3, 4 }, { faction = "Horde", class = "MAGE", race = "Orc" })
+      local warrior = MakeSpace.Verdict.QuestsThatMatter({ 1, 3, 4 }, { faction = "Horde", class = "WARRIOR", race = "Orc" })
+      assert.are.equal(2, #mage)
+      assert.are.equal(3, mage[1])
+      assert.are.equal(4, mage[2])
+      assert.are.equal(2, #warrior)
+      assert.are.equal(1, warrior[1])
+    end)
+  end)
+
+  it("leaves out quests only other races can take", function()
+    withInfo(function()
+      local orc = MakeSpace.Verdict.QuestsThatMatter({ 2, 3 }, { faction = "Horde", class = "MAGE", race = "Orc" })
+      local troll = MakeSpace.Verdict.QuestsThatMatter({ 2, 3 }, { faction = "Horde", class = "MAGE", race = "Troll" })
+      assert.are.equal(2, #orc)
+      assert.are.equal(1, #troll)
+      assert.are.equal(3, troll[1])
+    end)
+  end)
+
+  it("keeps every quest when the class or race is not known", function()
+    withInfo(function()
+      assert.are.equal(4, #MakeSpace.Verdict.QuestsThatMatter({ 1, 2, 3, 4 }, { faction = "Horde" }))
+      -- a race the table does not know (a newer one) is never filtered on
+      assert.are.equal(4, #MakeSpace.Verdict.QuestsThatMatter({ 1, 2, 3, 4 },
+        { faction = "Horde", race = "SomeNewRace" }))
+    end)
+  end)
+end)
+
+describe("Verdict.QuestsThatMatter", function()
   local savedInfo
 
   local function withQuestInfo(info)
@@ -859,8 +963,8 @@ describe("Verdict.QuestsForFaction", function()
       [2] = { 10, "Durotar", "Horde version", "H" },
     })
 
-    local alliance = MakeSpace.Verdict.QuestsForFaction({ 1, 2 }, "Alliance")
-    local horde = MakeSpace.Verdict.QuestsForFaction({ 1, 2 }, "Horde")
+    local alliance = MakeSpace.Verdict.QuestsThatMatter({ 1, 2 }, "Alliance")
+    local horde = MakeSpace.Verdict.QuestsThatMatter({ 1, 2 }, "Horde")
     restore()
 
     assert.are.equal(1, #alliance)
@@ -872,7 +976,7 @@ describe("Verdict.QuestsForFaction", function()
   it("keeps quests open to both factions", function()
     withQuestInfo({ [3] = { 40, "Tanaris", "Neutral quest" } })
 
-    local kept = MakeSpace.Verdict.QuestsForFaction({ 3 }, "Horde")
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 3 }, "Horde")
     restore()
 
     assert.are.equal(1, #kept)
@@ -881,16 +985,39 @@ describe("Verdict.QuestsForFaction", function()
   it("keeps quests it has no data for, so the item stays needed", function()
     withQuestInfo({})
 
-    local kept = MakeSpace.Verdict.QuestsForFaction({ 99 }, "Alliance")
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 99 }, "Alliance")
     restore()
 
     assert.are.equal(1, #kept)
   end)
 
+  it("leaves out the cloth donation quests, whatever the faction", function()
+    withQuestInfo({
+      [7813] = { 60, "Undercity", "A Donation of Wool", "H" },
+      [5] = { 20, "Barrens", "Wool for the Wolves", nil },
+      [8607] = { 60, "Orgrimmar", "The Horde Needs Mageweave Bandages!", "H" },
+      [8517] = { 60, "Ironforge", "The Alliance Needs Linen Bandages!", "A" },
+      [6] = { 30, "Barrens", "The Orgrimmar Legion Needs Mojo!", nil },
+    })
+
+    assert.are.equal(true, MakeSpace.Verdict.IsIgnoredQuest(8607))
+    assert.are.equal(true, MakeSpace.Verdict.IsIgnoredQuest(8517))
+    assert.are.equal(false, MakeSpace.Verdict.IsIgnoredQuest(6))
+    local horde = MakeSpace.Verdict.QuestsThatMatter({ 7813, 5 }, "Horde")
+    local unknown = MakeSpace.Verdict.QuestsThatMatter({ 7813, 5 }, nil)
+    local ignored = MakeSpace.Verdict.IsIgnoredQuest(7813)
+    restore()
+
+    assert.are.equal(1, #horde)
+    assert.are.equal(5, horde[1])
+    assert.are.equal(1, #unknown)
+    assert.are.equal(true, ignored)
+  end)
+
   it("keeps everything when the faction is unknown", function()
     withQuestInfo({ [2] = { 10, "Durotar", "Horde version", "H" } })
 
-    local kept = MakeSpace.Verdict.QuestsForFaction({ 2 }, nil)
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 2 }, nil)
     restore()
 
     assert.are.equal(1, #kept)
@@ -899,7 +1026,7 @@ describe("Verdict.QuestsForFaction", function()
   it("returns an empty list when every quest belongs to the other faction", function()
     withQuestInfo({ [2] = { 10, "Durotar", "Horde version", "H" } })
 
-    local kept = MakeSpace.Verdict.QuestsForFaction({ 2 }, "Alliance")
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 2 }, "Alliance")
     restore()
 
     assert.are.equal(0, #kept)
@@ -1618,14 +1745,13 @@ describe("Outleveled reagents", function()
     assert.are.equal("Vendor 13c, auction up to 31s", note)
   end)
 
-  it("stays silent while an unfinished quest still wants it", function()
-    local wanted = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
-                     questItemQuestIDs = { 4001 }, openQuestIDs = { 4001 } }
-    assert.is_nil((MakeSpace.Verdict.Evaluate(wanted, state({ Tailoring = 250 }))))
-    -- once every quest that wants it is done, the hint is back
-    local done = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
-                   questItemQuestIDs = { 4001 }, openQuestIDs = {}, allQuestObjectivesCompleted = true }
-    assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(done, state({ Tailoring = 250 }))))
+  it("an open quest does not silence the hint: the tooltip names the quest instead", function()
+    local function wanted(onQuest)
+      return { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
+               questItemQuestIDs = { 4001 }, openQuestIDs = { 4001 }, onOpenQuest = onQuest }
+    end
+    assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(wanted(false), state({ Tailoring = 250 }))))
+    assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(wanted(true), state({ Tailoring = 250 }))))
   end)
 
   it("waits for the green point when the data has one, and says where the recipes turn green", function()
@@ -1649,20 +1775,6 @@ describe("Outleveled reagents", function()
     MakeSpace.Data.ReagentProfessions = saved
     assert.is_nil(silent)
     assert.are.equal("Outleveled, recipes turn green at Tailoring 275", reason)
-  end)
-
-  it("ignores an open quest far below you, but not one near your level", function()
-    local savedInfo = MakeSpace.Data.QuestInfo
-    MakeSpace.Data.QuestInfo = { [4001] = { 6, nil, "Restocking the Larders" }, [4002] = { 55, nil, "A Late Quest" } }
-    local function withQuest(id)
-      return { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 13, count = 5,
-               questItemQuestIDs = { id }, openQuestIDs = { id }, allQuestObjectivesCompleted = false }
-    end
-    local trivial = MakeSpace.Verdict.Evaluate(withQuest(4001), state({ Tailoring = 250 }))
-    local near = MakeSpace.Verdict.Evaluate(withQuest(4002), state({ Tailoring = 250 }))
-    MakeSpace.Data.QuestInfo = savedInfo
-    assert.are.equal("yellow", trivial)
-    assert.is_nil(near)
   end)
 
   it("stays silent while something made from it is still in demand", function()
@@ -1854,6 +1966,14 @@ describe("Verdicts in the bank", function()
     return MakeSpace.Verdict.ForBank({ verdict = verdict or "green", reason = reason or "Because",
                                      rule = rule, heading = heading })
   end
+
+  it("keeps your own marks as they are, green or yellow", function()
+    local green = forBank("marked", "green", "Marked by you")
+    assert.are.equal("green", green.verdict)
+    local yellow = forBank("marked", "yellow", "Marked by you", { title = "Worth a glance", detail = "Marked by you" })
+    assert.are.equal("yellow", yellow.verdict)
+    assert.are.equal("Worth a glance", yellow.heading.title)
+  end)
 
   it("keeps the price line, so the bank tooltip shows it too", function()
     local note = "Vendor 5c, auction about 8s"
@@ -2096,7 +2216,7 @@ describe("Yellow headings", function()
       { { "bank_level", 30 },               "Bank it, needs level 30",                   "Bank it",             "Needs level 30" },
       { { "bank_used_from", "Mining", 175 }, "Bank it, used from Mining 175",            "Bank it",             "Used from Mining 175" },
       { { "outleveled_reagent", "Mining", 125 }, "Outleveled, Mining recipes use it up to 125", "Outleveled reagent", "Mining recipes use it up to 125" },
-      { { "low_level_consumable", "food", 5, 30 }, "Low-level food (level 5, you are 30)", "Low-level food",    "Level 5, you are 30" },
+      { { "low_level_consumable", "food", 5, 30 }, "Low-level food (level 5, you are 30)", "Low-level food",    nil },
       { { "weak_bandage", 400, 9, 4500 },    "Weak bandage", "Weak bandage", "Heals 9% of your health (400 of 4500)" },
       { { "open_it" },                      "Open it, the contents may stack",           "Open it",             "Contents may stack" },
       { { "no_mana", "Warriors" },          "Warriors have no mana. May sell at the auction house", "Not for your class", "No mana for Warriors" },
@@ -2107,7 +2227,7 @@ describe("Yellow headings", function()
       { { "library_book", "Horde" },        "Library book, hand it in to Owen Thadd in Undercity", "Library book", "Hand in to Owen Thadd, Undercity" },
       { { "library_book", nil },            "Library book, hand it in to the librarian in Stormwind or Undercity", "Library book", "Hand in to Stormwind or Undercity" },
       { { "shard_buff" },                   "Trade 4 of these to Mangletooth for a buff in the Barrens", "Trade for a buff", "Mangletooth, Camp Taurajo" },
-      { { "flagged" },                      "Flagged by you",                            "Flagged by you",      nil },
+      { { "flagged" },                      "Marked by you",                             "Worth a glance",      "Marked by you" },
     }
     for _, case in ipairs(cases) do
       local reason, heading = note(unpack(case[1]))
@@ -2129,7 +2249,8 @@ describe("Yellow headings", function()
     assert.are.equal("Outleveled gear", heading.title)
     assert.are.equal("Required level 30, you are 42", heading.detail)
     local _, _, _, _, _, flagged = MakeSpace.Verdict.Evaluate({ id = 1, isFlagged = true }, state)
-    assert.are.equal("Flagged by you", flagged.title)
+    assert.are.equal("Worth a glance", flagged.title)
+    assert.are.equal("Marked by you", flagged.detail)
   end)
 
   it("every yellow a rule can give carries a heading", function()
@@ -2848,11 +2969,9 @@ describe("Reagents only used by professions you lack", function()
     end)
   end)
 
-  it("stays silent for soulbound items, class reagents and items an open quest wants", function()
+  it("stays silent for soulbound items and class reagents", function()
     withData(nil, function()
       assert.is_nil((MakeSpace.Verdict.Evaluate(item({ isBound = true }), player(TWO))))
-      assert.is_nil((MakeSpace.Verdict.Evaluate(item({ questItemQuestIDs = { 1 },
-        allQuestObjectivesCompleted = false, openQuestIDs = { 1 } }), player(TWO))))
     end)
     withData({ ClassReagents = { [8001] = { classes = { MAGE = true }, name = "X", verdict = "yellow" } } }, function()
       local _, _, _, _, rule = MakeSpace.Verdict.Evaluate(item(), player(TWO))
@@ -3445,12 +3564,14 @@ describe("Banking a reagent when the next use is far ahead", function()
   local function linenCloth()
     return { id = 2589, classID = 7, subClassID = 5, quality = 1 }
   end
+  -- Smithing reaches linen through Tailoring's bolts and Engineering's parts, so a
+  -- smith needs both of those professions for that use to count.
   local function crafter(firstAid, blacksmithing)
     return {
       level = 40, professionsKnown = true,
-      professionNames = { ["First Aid"] = true, Blacksmithing = true },
-      professionRanks = { ["First Aid"] = firstAid, Blacksmithing = blacksmithing },
-      professionIdle = { ["First Aid"] = true, Blacksmithing = true },
+      professionNames = { ["First Aid"] = true, Blacksmithing = true, Tailoring = true, Engineering = true },
+      professionRanks = { ["First Aid"] = firstAid, Blacksmithing = blacksmithing, Tailoring = 150, Engineering = 250 },
+      professionIdle = { ["First Aid"] = true, Blacksmithing = true, Tailoring = true, Engineering = true },
     }
   end
 
@@ -3631,5 +3752,74 @@ describe("Verdict.Judge", function()
     assert.are.equal(verdict, judged.verdict)
     assert.are.equal(reason, judged.reason)
     assert.are.equal(MakeSpace.Verdict.Sellable(item, verdict), judged.sellable)
+  end)
+end)
+
+
+describe("A use through a conversion only counts for the profession that makes it", function()
+  local function withChains(fn)
+    local saved = MakeSpace.Data.ReagentChains
+    dofile("data/reagent_chains.lua")
+    local ok, err = pcall(fn)
+    MakeSpace.Data.ReagentChains = saved
+    if not ok then error(err, 0) end
+  end
+  local function lightLeather()
+    return { id = 2318, classID = 7, subClassID = 6, quality = 1 }
+  end
+  local function smith(professions)
+    local names, ranks = {}, {}
+    for _, name in ipairs(professions) do names[name], ranks[name] = true, 200 end
+    return { level = 41, professionsKnown = true, professionNames = names, professionRanks = ranks }
+  end
+
+  it("is outleveled for a smith without Leatherworking, who cannot make Medium Leather", function()
+    withChains(function()
+      local verdict, reason = MakeSpace.Verdict.Evaluate(lightLeather(), smith({ "Blacksmithing", "Mining" }))
+      assert.are.equal("yellow", verdict)
+      assert.is_truthy(reason:find("Outleveled", 1, true))
+      assert.is_truthy(reason:find("Blacksmithing", 1, true))
+    end)
+  end)
+
+  it("stays quiet once the smith also has Leatherworking, which makes the leather smithing uses", function()
+    withChains(function()
+      local verdict = MakeSpace.Verdict.Evaluate(lightLeather(),
+          smith({ "Blacksmithing", "Leatherworking" }))
+      assert.is_nil(verdict)
+    end)
+  end)
+
+  it("keeps counting every use when the professions are not known", function()
+    withChains(function()
+      local state = { level = 41, professionsKnown = false }
+      assert.is_nil((MakeSpace.Verdict.Evaluate(lightLeather(), state)))
+    end)
+  end)
+end)
+
+describe("ReagentUseFacts, for /makespace why", function()
+  local function withChains(fn)
+    local saved = MakeSpace.Data.ReagentChains
+    dofile("data/reagent_chains.lua")
+    local ok, err = pcall(fn)
+    MakeSpace.Data.ReagentChains = saved
+    if not ok then error(err, 0) end
+  end
+
+  it("says which uses count, which are behind you and which need a profession you lack", function()
+    withChains(function()
+      local state = { professionNames = { Blacksmithing = true, Mining = true },
+                      professionRanks = { Blacksmithing = 200, Mining = 200 } }
+      local lines = MakeSpace.Verdict.ReagentUseFacts(2318, state)
+      local text = table.concat(lines, "\n")
+      assert.is_truthy(text:find("Blacksmithing 200: recipes 40 to 85, green at 105, behind you", 1, true))
+      assert.is_truthy(text:find("not counted, you have no Leatherworking", 1, true))
+    end)
+  end)
+
+  it("is empty for an item that is no reagent, or when the professions are not known", function()
+    assert.are.equal(0, #MakeSpace.Verdict.ReagentUseFacts(1, { professionNames = {}, professionRanks = {} }))
+    assert.are.equal(0, #MakeSpace.Verdict.ReagentUseFacts(2318, {}))
   end)
 end)

@@ -94,6 +94,16 @@ describe("MakeRoom.IsJunkCandidate", function()
     return base
   end
 
+  it("offers a green you set yourself, whatever the item is, if it sells", function()
+    assert.are.equal(true, MakeSpace.MakeRoom.IsJunkCandidate(item({ quality = 3, classID = 0, isMarkedGreen = true })))
+    assert.are.equal(false, MakeSpace.MakeRoom.IsJunkCandidate(item({ quality = 3, isMarkedGreen = true, sellPrice = 0 })))
+  end)
+
+  it("never offers an item you kept or flagged, even with a green mark in the data", function()
+    assert.are.equal(false, MakeSpace.MakeRoom.IsJunkCandidate(item({ isKept = true, isMarkedGreen = true })))
+    assert.are.equal(false, MakeSpace.MakeRoom.IsJunkCandidate(item({ isFlagged = true })))
+  end)
+
   it("accepts grays and plain whites that sell", function()
     assert.are.equal(true, MakeSpace.MakeRoom.IsJunkCandidate(item()))
     assert.are.equal(true, MakeSpace.MakeRoom.IsJunkCandidate(item({ quality = 1 })))

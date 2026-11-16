@@ -12,6 +12,7 @@ local BANK_KEEPS = {
   poor_quality = true,
   no_recipe_use = true, -- nothing uses it, whoever you play
   openable = true,
+  marked = true, -- your own mark holds wherever the item is
 }
 local BANK_DROPS = {
   sell_at_vendor = true,     -- a vendor suggestion is not needed in the bank

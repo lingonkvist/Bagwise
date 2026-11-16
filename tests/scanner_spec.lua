@@ -13,7 +13,7 @@ dofile("src/verdict.lua")
 dofile("src/bank.lua")
 dofile("src/makeroom.lua")
 MakeSpace.Data = { ReagentProfessions = {}, VendorReagents = {}, ClassReagents = {}, QuestItems = {}, QuestInfo = {} }
-MakeSpace.Overrides = { IsKept = function() return false end, IsFlagged = function() return false end }
+MakeSpace.Overrides = { IsKept = function() return false end, IsFlagged = function() return false end, IsMarkedGreen = function() return false end }
 
 -- id -> { name, quality, ilvl, req, maxStack, equipSlot, sell, class, subclass }
 local ITEMS = {

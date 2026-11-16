@@ -2,10 +2,11 @@
 ## Title: Make Space
 ## Notes: Colored dots on bag items that mark what to delete, vendor, bank or keep
 ## Author: lingonkvist
-## Version: 0.6.6
+## Version: 0.6.7
 ## IconTexture: Interface\AddOns\MakeSpace\textures\icon
+## SavedVariables: MakeSpaceAccountDB
 ## SavedVariablesPerCharacter: MakeSpaceDB
-## OptionalDeps: Baganator, Bagnon, Auctionator, Bagwise
+## OptionalDeps: Baganator, Bagnon, Auctionator
 ## X-Curse-Project-ID: 1784913
 
 src\bags.lua
@@ -20,6 +21,7 @@ src\verdict.lua
 src\bank.lua
 src\makeroom.lua
 src\scanner.lua
+src\menu.lua
 src\overlay.lua
 src\tooltip.lua
 src\overrides.lua

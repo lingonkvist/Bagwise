@@ -42,6 +42,7 @@ STARTED_BY = 2        # table: {creatureStart, objectStart, itemStart}
 ITEM_START = 3        # sub-index within startedBy
 QUEST_LEVEL = 5       # int: quest level (not reqLevel)
 REQUIRED_RACES = 6    # int: race bitmask, 0 or nil = any race
+REQUIRED_CLASSES = 7  # int: class bitmask, 0 or nil = any class
 
 OBJECTIVES = 10       # table: {creature, object, item, reputation, ...}
 ITEM_OBJECTIVE = 3    # sub-index within objectives
@@ -161,6 +162,19 @@ AREA_ID_TO_ZONE: dict[int, str] = {
     3428: "Ahn'Qiraj",
     3429: "Ruins of Ahn'Qiraj",
     3456: "Naxxramas",
+    # Forever areas (names from the AreaTable symbols in Questie's zones enum).
+    146: "Stonewrought Dam",
+    131: "Kharanos",
+    616: "Mount Hyjal",
+    721: "Gnomeregan",
+    1176: "Zul'Farrak",
+    16544: "City of Dalaran",
+    16560: "City of Dalaran",
+    16591: "Riverglades",
+    16593: "Zephras Isle",
+    16606: "Darkspear Islands",
+    16611: "Ruins of Lordaeron",
+    16919: "The Hall of Thanes",
 }
 
 
@@ -302,6 +316,23 @@ ALLIANCE_RACES = 0x1 | 0x4 | 0x8 | 0x40 | (1 << 32)
 HORDE_RACES = 0x2 | 0x10 | 0x20 | 0x80 | (1 << 33)
 
 
+# Race masks that name a whole faction (Classic's two, the Burning Crusade's two,
+# and Forever's), which the faction code already says.
+WHOLE_FACTION_MASKS = {77, 178, 1101, 690, ALLIANCE_RACES, HORDE_RACES}
+
+
+def races_of(required_races: int | None) -> int | None:
+    """The race mask when only some races of a faction can take the quest."""
+    if not required_races or required_races in WHOLE_FACTION_MASKS:
+        return None
+    return required_races
+
+
+def classes_of(required_classes: int | None) -> int | None:
+    """The class mask when only some classes can take the quest."""
+    return required_classes if required_classes else None
+
+
 def faction_of(required_races: int | None) -> str | None:
     """'A' or 'H' when only that faction's races can take the quest, else None.
 
@@ -324,11 +355,14 @@ QUEST_LINE_RE = re.compile(r'^(?:quest)?\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
-    __slots__ = ('name', 'level', 'zone', 'faction', 'repeatable')
+    __slots__ = ('name', 'level', 'zone', 'faction', 'repeatable', 'classes', 'races')
 
     def __init__(self, name: str | None, level: int | None, zone: str | None,
-                 faction: str | None = None, repeatable: bool = False):
+                 faction: str | None = None, repeatable: bool = False,
+                 classes: int | None = None, races: int | None = None):
         self.repeatable = repeatable
+        self.classes = classes
+        self.races = races
         self.name = name
         self.level = level
         self.zone = zone
@@ -376,14 +410,21 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
                 zone = AREA_ID_TO_ZONE.get(zone_id)
 
         faction = None
+        races = None
         if len(fields) >= REQUIRED_RACES:
-            faction = faction_of(parse_int(fields[REQUIRED_RACES - 1]))
+            race_mask = parse_int(fields[REQUIRED_RACES - 1])
+            faction = faction_of(race_mask)
+            races = races_of(race_mask)
+        classes = None
+        if len(fields) >= REQUIRED_CLASSES:
+            classes = classes_of(parse_int(fields[REQUIRED_CLASSES - 1]))
 
         quest_flags = parse_int(fields[QUEST_FLAGS - 1]) if len(fields) >= QUEST_FLAGS else None
         special_flags = parse_int(fields[SPECIAL_FLAGS - 1]) if len(fields) >= SPECIAL_FLAGS else None
 
         quest_meta[quest_id] = QuestMeta(name, level, zone, faction,
-                                         is_repeatable(quest_flags, special_flags))
+                                         is_repeatable(quest_flags, special_flags),
+                                         classes, races)
 
     return quests, quest_meta
 
@@ -428,6 +469,43 @@ def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
     return item_quests
 
 
+def extract_provided_only(quests: dict[int, list[str]]) -> set[int]:
+    """Items a quest hands you that no quest ever asks for.
+
+    A quest-giver's note, crate or parchment is useless once its quest is done.
+    An item that is also an objective, a required item or a starter of any
+    quest has other uses, so it is left out.
+    """
+    provided: set[int] = set()
+    wanted: set[int] = set()
+    for fields in quests.values():
+        def field(idx: int) -> str | None:
+            if idx <= len(fields):
+                f = fields[idx - 1].strip()
+                return None if f == 'nil' else f
+            return None
+
+        started_by = field(STARTED_BY)
+        if started_by:
+            item_start = get_sub_field(started_by, ITEM_START)
+            if item_start and item_start != 'nil':
+                wanted.update(i for i in extract_ints_flat(item_start) if i > 0)
+        objectives = field(OBJECTIVES)
+        if objectives:
+            item_obj_field = get_sub_field(objectives, ITEM_OBJECTIVE)
+            if item_obj_field and item_obj_field != 'nil':
+                wanted.update(extract_item_objectives(item_obj_field))
+        source_item_str = field(SOURCE_ITEM_ID)
+        if source_item_str:
+            source_item = parse_int(source_item_str)
+            if source_item and source_item > 0:
+                provided.add(source_item)
+        req_sources = field(REQUIRED_SOURCE_ITEMS)
+        if req_sources and req_sources.startswith('{'):
+            wanted.update(i for i in extract_ints_flat(req_sources) if i > 0)
+    return provided - wanted
+
+
 # ---------------------------------------------------------------------------
 # Lua output
 # ---------------------------------------------------------------------------
@@ -438,7 +516,8 @@ FOOTER = "}\n"
 def format_lua(item_quests: dict[int, set[int]],
                quest_meta: dict[int, QuestMeta],
                source_filename: str = "classicQuestDB.lua",
-               comments: bool = False) -> str:
+               comments: bool = False,
+               provided_only: set[int] | None = None) -> str:
     """Format the item->questIDs map and quest info as Lua tables.
 
     comments adds a quest-name note after every line. They help when reading the
@@ -453,12 +532,17 @@ def format_lua(item_quests: dict[int, set[int]],
         -- Questie data is licensed under GPL-3.0.  See COPYING and source/ATTRIBUTION.md.
         --
         -- QuestItems: item ID -> {{questID, ...}}
-        -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction}} for tooltips and
-        --             faction filtering (faction is "A", "H" or omitted for both)
+        -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction, classes, races}}
+        --             for tooltips and filtering. faction is "A", "H" or nil for
+        --             both; classes and races are bitmasks, set only when some
+        --             classes or some races of a faction can take the quest.
         --
         -- RepeatableQuests: quest ID -> true for daily, weekly, monthly and
         --             repeatable quests. Finishing one says nothing about
         --             whether its items are still wanted.
+        --
+        -- QuestProvided: item ID -> true for items a quest hands you that no
+        --             quest ever asks for (a giver's note, crate or parchment).
         --
         -- {len(item_quests)} items across {quest_count} quests.
 
@@ -500,8 +584,14 @@ def format_lua(item_quests: dict[int, set[int]],
         escaped_name = meta.name.replace('\\', '\\\\').replace('"', '\\"') if meta.name else None
         name_str = f'"{escaped_name}"' if escaped_name else "nil"
         name_comment = f" -- {meta.name}" if meta.name and comments else ""
-        faction_str = f', "{meta.faction}"' if meta.faction else ""
-        lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str}{faction_str} }},{name_comment}")
+        # faction, class mask and race mask follow the name; trailing blanks are left off.
+        extra = [f'"{meta.faction}"' if meta.faction else "nil",
+                 str(meta.classes) if meta.classes else "nil",
+                 str(meta.races) if meta.races else "nil"]
+        while extra and extra[-1] == "nil":
+            extra.pop()
+        extra_str = "".join(f", {part}" for part in extra)
+        lines.append(f"    [{qid}] = {{ {level_str}, {zone_str}, {name_str}{extra_str} }},{name_comment}")
         info_count += 1
 
     lines.append(FOOTER)
@@ -514,6 +604,12 @@ def format_lua(item_quests: dict[int, set[int]],
         lines.append(f"    [{qid}] = true,{' -- ' + name if name and comments else ''}")
     lines.append(FOOTER)
 
+    lines.append("MakeSpace.Data.QuestProvided = {")
+    for item_id in sorted(provided_only or ()):
+        lines.append(f"    [{item_id}] = true,")
+    lines.append(FOOTER)
+
+    print(f"  {len(provided_only or ())} items only handed out by quests (QuestProvided)")
     print(f"  {info_count} quests with level/zone info for QuestInfo")
     print(f"  {len(repeatable)} repeatable quests that use items")
     return "\n".join(lines)
@@ -578,7 +674,9 @@ def main():
     print(f"  {unique_quests} quests reference items")
 
     # Passing the actual filename to the formatter here!
-    lua_output = format_lua(item_quests, quest_meta, source_path.name, args.comments)
+    provided_only = extract_provided_only(quests)
+    lua_output = format_lua(item_quests, quest_meta, source_path.name, args.comments,
+                            provided_only)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(lua_output, encoding="utf-8")
     print(f"\nWrote {output_path}")

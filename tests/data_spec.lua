@@ -209,3 +209,16 @@ describe("Data files: auction price date", function()
   end)
 end)
 
+
+describe("ProtectedItems", function()
+  it("holds only item IDs with a short note, so the tooltip stays narrow", function()
+    local count = 0
+    for id, note in pairs(MakeSpace.Data.ProtectedItems) do
+      count = count + 1
+      assert.are.equal("number", type(id))
+      assert.are.equal("string", type(note))
+      assert.is_truthy(#note > 0 and #note <= 62)
+    end
+    assert.is_truthy(count > 0)
+  end)
+end)

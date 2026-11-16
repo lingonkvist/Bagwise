@@ -76,8 +76,9 @@ local NOTES = {
     return who .. " have no mana. May sell at the auction house", "Not for your class", "No mana for " .. who
   end,
   low_level_consumable = function(noun, level, you)
+    -- No detail line: the item's own tooltip says its level and you know yours.
     return "Low-level " .. noun .. " (level " .. level .. ", you are " .. you .. ")",
-        "Low-level " .. noun, "Level " .. level .. ", you are " .. you
+        "Low-level " .. noun, nil
   end,
   weak_bandage = function(heal, percent, health)
     return "Weak bandage", "Weak bandage",
@@ -111,7 +112,7 @@ local NOTES = {
         "Mangletooth, Camp Taurajo"
   end,
   flagged = function()
-    return "Flagged by you", "Flagged by you", nil
+    return "Marked by you", "Worth a glance", "Marked by you"
   end,
 }
 

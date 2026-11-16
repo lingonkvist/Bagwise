@@ -57,6 +57,8 @@ local note = MakeSpace.Notes.Get
 MakeSpace.Verdict.Note = note
 
 --- A yellow verdict for a rule to return: verdict, reason, detail, tag, heading.
+local MARKED_REASON = "Marked by you"
+
 local function yellow(key, ...)
   local reason, heading = note(key, ...)
   return "yellow", reason, nil, nil, heading
@@ -116,25 +118,67 @@ local QUEST_INFO_NAME  = 3
 -- QuestInfo[questID][QUEST_INFO_FACTION] is "A" or "H" when only that
 -- faction can take the quest; absent means open to both.
 local QUEST_INFO_FACTION = 4
+local QUEST_INFO_CLASSES = 5 -- class bitmask, when only some classes can take the quest
+local QUEST_INFO_RACES = 6   -- race bitmask, when only some races of a faction can
 local FACTION_CODES = { Alliance = "A", Horde = "H" }
 
---- Drop the quests the player's faction can never take.
+-- The game's class and race bits, by class token and race file. A race this
+-- table does not know (a newer one) is never filtered on.
+local CLASS_BITS = { WARRIOR = 1, PALADIN = 2, HUNTER = 4, ROGUE = 8, PRIEST = 16,
+                     SHAMAN = 64, MAGE = 128, WARLOCK = 256, DRUID = 1024 }
+local RACE_BITS = { Human = 1, Orc = 2, Dwarf = 4, NightElf = 8, Scourge = 16,
+                    Tauren = 32, Gnome = 64, Troll = 128, BloodElf = 512, Draenei = 1024 }
+
+-- Does a bitmask include a bit? Arithmetic, since masks can pass 32 bits.
+local function maskHas(mask, bit)
+  return mask % (2 * bit) >= bit
+end
+
+-- The cloth donation quests ("A Donation of Wool", Silk, Mageweave, Runecloth)
+-- and the war effort turn-ins ("The Horde Needs Mageweave Bandages!", bars,
+-- leather, herbs, food) are standing turn-ins, one for each city or kind. They
+-- would keep every stack of that material quiet for good, so they do not count
+-- as a use for an item.
+local IGNORED_QUEST_PREFIXES = { "A Donation of ", "The Alliance Needs ", "The Horde Needs " }
+
+--- Is this quest one that never keeps an item in your bags?
+function MakeSpace.Verdict.IsIgnoredQuest(questID)
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
+  local name = info and info[QUEST_INFO_NAME]
+  if not name then return false end
+  for _, prefix in ipairs(IGNORED_QUEST_PREFIXES) do
+    if name:sub(1, #prefix) == prefix then return true end
+  end
+  return false
+end
+
+--- The quests that can keep an item for this player: the ones their faction can
+-- take, leaving out the donation and war effort turn-ins.
 -- Alliance and Horde versions of the same quest have separate IDs, so an
 -- item used by both would otherwise wait forever on the other side's quest.
 -- Quests with no faction data are kept: when unsure, the item stays needed.
+-- Quests only other classes or races can take are left out too: a warrior's
+-- quest never frees or holds anything for a mage.
 -- @param questIDs table        quest IDs from QuestItems
--- @param faction  string|nil   "Alliance" or "Horde"; anything else keeps all
+-- @param who  string|table|nil  "Alliance" or "Horde" (anything else keeps both), or
+--                               { faction =, class = class token, race = race file }
 -- @return table  the quests that can matter to this player (may be empty)
-function MakeSpace.Verdict.QuestsForFaction(questIDs, faction)
+function MakeSpace.Verdict.QuestsThatMatter(questIDs, who)
+  local faction = type(who) == "table" and who.faction or who
+  local classBit = type(who) == "table" and CLASS_BITS[who.class] or nil
+  local raceBit = type(who) == "table" and RACE_BITS[who.race] or nil
   local code = FACTION_CODES[faction]
-  if not code then return questIDs end
-
   local info = MakeSpace.Data.QuestInfo
   local kept = {}
   for i = 1, #questIDs do
     local questInfo = info and info[questIDs[i]]
     local questFaction = questInfo and questInfo[QUEST_INFO_FACTION]
-    if questFaction == nil or questFaction == code then
+    local classes = questInfo and questInfo[QUEST_INFO_CLASSES]
+    local races = questInfo and questInfo[QUEST_INFO_RACES]
+    if not MakeSpace.Verdict.IsIgnoredQuest(questIDs[i])
+        and (not code or questFaction == nil or questFaction == code)
+        and not (classBit and classes and not maskHas(classes, classBit))
+        and not (raceBit and races and not maskHas(races, raceBit)) then
       kept[#kept + 1] = questIDs[i]
     end
   end
@@ -161,7 +205,22 @@ end
 -- else a quest happens to ask for (tools, mats, gear) may have other uses.
 local QUEST_CLASS_ID = 12
 local function isOrdinaryItem(item)
-  return item.classID ~= nil and item.classID ~= QUEST_CLASS_ID
+  return item.classID ~= nil and item.classID ~= QUEST_CLASS_ID and not item.questProvided
+end
+
+-- A quest giver's note, crate or parchment is often not a quest-class item in the
+-- game (the Cyclonian parchment is a consumable), yet nothing else wants it. So an
+-- item that quests only hand out, never ask for, counts as quest-bound once it is
+-- one of these kinds: a scroll or "other" consumable, or plain miscellaneous. Gear,
+-- food and potions never do.
+local PROVIDED_KINDS = { [0] = { [4] = true, [8] = true }, [15] = { [0] = true } }
+
+--- Is this a quest-provided note or crate that is safe once its quest is done?
+function MakeSpace.Verdict.IsQuestProvided(itemID, classID, subClassID, isEquippable)
+  local provided = MakeSpace.Data and MakeSpace.Data.QuestProvided
+  if not (provided and provided[itemID]) or isEquippable then return false end
+  local kinds = PROVIDED_KINDS[classID]
+  return kinds ~= nil and kinds[subClassID] == true
 end
 
 local function evaluateCompletedQuestStarter(item)
@@ -239,9 +298,15 @@ local function isTrivialQuest(questID, state)
   return level ~= nil and level > 0 and level + QUEST_TRIVIAL_GAP <= (state.level or 1)
 end
 
+--- Is this quest so far below the level that nobody keeps an item for it?
+function MakeSpace.Verdict.IsTrivialQuest(questID, level)
+  return isTrivialQuest(questID, { level = level })
+end
+
 -- Does an open quest still hold this item? Quests far below you do not: nobody
--- keeps a reagent for a level 6 quest at level 60. Used by the reagent hints,
--- which are only soft suggestions.
+-- keeps a reagent for a level 6 quest at level 60. A soft hint on a consumable
+-- stays quiet while you are on such a quest. Reagent hints do not check quests:
+-- the tooltip names the quest under the hint instead.
 local function heldByOpenQuest(item, state)
   local open = item.openQuestIDs
   if not open and item.questItemQuestIDs and not item.allQuestObjectivesCompleted then
@@ -577,62 +642,125 @@ end
 
 -- Where a reagent is used, direct and through what it is turned into: copper
 -- bars go into bronze bars, which smithing and engineering use far higher up.
--- ReagentChains (generated) holds the downstream uses; entries are merged per
--- profession into { name, minSkill, maxSkill, greenSkill }.
--- Both reagent rules ask for the same merge, so it is kept per data table. A
--- different table (new data, or a test swapping it) misses and is rebuilt.
-local reagentUseMemo = setmetatable({}, { __mode = "k" })
+-- ReagentChains (generated) holds the downstream uses. A use reached through a
+-- conversion only counts when you have the profession whose recipe makes it: a
+-- Blacksmith without Leatherworking cannot turn Light Leather into the Medium
+-- Leather that smithing uses, so that use is nothing to them. The professions a
+-- chain entry needs sit in its fifth field.
+local CHAIN_NEEDED = 5
 
-local function reagentUses(itemID)
+-- Can this player make every conversion on the way to this use? With the
+-- professions unknown the use counts: when unsure, the item stays needed.
+local function chainReachable(entry, state)
+  local needed = entry[CHAIN_NEEDED]
+  if not needed then return true end
+  local have = state and state.professionNames
+  if not have then return true end
+  for i = 1, #needed do
+    if not have[needed[i]] then return false end
+  end
+  return true
+end
+
+-- The uses as one list: the recipes that take the reagent directly, then the
+-- ones that take something made from it, each use kept on its own.
+local function useList(itemID, state)
   local direct = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[itemID]
   if not direct then return nil end
   local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID]
-  local memo = reagentUseMemo[direct]
-  if memo and memo.chains == chains then return memo.order end
-  local merged, order = {}, {}
+  local list = {}
   local function add(name, minSkill, maxSkill, greenSkill)
     if greenSkill == 0 then greenSkill = nil end
-    local use = merged[name]
-    if not use then
-      use = { name = name, minSkill = minSkill, maxSkill = maxSkill, greenSkill = greenSkill }
-      merged[name] = use
-      order[#order + 1] = use
-      return
-    end
-    if minSkill and (not use.minSkill or minSkill < use.minSkill) then use.minSkill = minSkill end
-    if maxSkill and (not use.maxSkill or maxSkill > use.maxSkill) then use.maxSkill = maxSkill end
-    if greenSkill and (not use.greenSkill or greenSkill > use.greenSkill) then use.greenSkill = greenSkill end
+    list[#list + 1] = { name = name, minSkill = minSkill, maxSkill = maxSkill, greenSkill = greenSkill }
   end
   for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4], direct[i][5]) end
   if chains then
-    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3], chains[i][4]) end
+    for i = 1, #chains do
+      if chainReachable(chains[i], state) then
+        add(chains[i][1], chains[i][2], chains[i][3], chains[i][4])
+      end
+    end
   end
-  reagentUseMemo[direct] = { chains = chains, order = order }
+  return list
+end
+
+-- The uses merged per profession into { name, minSkill, maxSkill, greenSkill }.
+local function reagentUses(itemID, state)
+  local list = useList(itemID, state)
+  if not list then return nil end
+  local merged, order = {}, {}
+  for i = 1, #list do
+    local entry = list[i]
+    local use = merged[entry.name]
+    if not use then
+      use = { name = entry.name, minSkill = entry.minSkill, maxSkill = entry.maxSkill,
+              greenSkill = entry.greenSkill }
+      merged[entry.name] = use
+      order[#order + 1] = use
+    else
+      if entry.minSkill and (not use.minSkill or entry.minSkill < use.minSkill) then use.minSkill = entry.minSkill end
+      if entry.maxSkill and (not use.maxSkill or entry.maxSkill > use.maxSkill) then use.maxSkill = entry.maxSkill end
+      if entry.greenSkill and (not use.greenSkill or entry.greenSkill > use.greenSkill) then use.greenSkill = entry.greenSkill end
+    end
+  end
   return order
 end
 
--- Each use of a reagent on its own: the recipes that take it directly, and the
--- recipes that take something made from it, kept apart. Merged into one range
--- they hide a gap ("used up to 65, then again from 200"), and the gap is what
--- tells a spent stack from one to bank.
-local reagentSegmentMemo = setmetatable({}, { __mode = "k" })
-local function reagentSegments(itemID)
+-- Each use of a reagent on its own, direct and through what is made from it,
+-- kept apart. Merged into one range they hide a gap ("used up to 65, then
+-- again from 200"), and the gap is what tells a spent stack from one to bank.
+local function reagentSegments(itemID, state)
+  return useList(itemID, state)
+end
+
+--- What the recipes say about a reagent for each profession you have, one line
+-- each, for /makespace why. A use that needs a profession you lack is listed as
+-- not counted, with the one that is missing.
+-- @return table list of strings (empty when the item is no reagent or the
+--         professions are not known)
+function MakeSpace.Verdict.ReagentUseFacts(itemID, state)
   local direct = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[itemID]
-  if not direct then return nil end
-  local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID]
-  local memo = reagentSegmentMemo[direct]
-  if memo and memo.chains == chains then return memo.segments end
-  local segments = {}
-  local function add(name, minSkill, maxSkill, greenSkill)
-    if greenSkill == 0 then greenSkill = nil end
-    segments[#segments + 1] = { name = name, minSkill = minSkill, maxSkill = maxSkill, greenSkill = greenSkill }
+  if not direct or not (state and state.professionNames and state.professionRanks) then return {} end
+  local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID] or {}
+  local lines = {}
+  local function standing(rank, minSkill, maxSkill, green)
+    if green and rank >= green then return "behind you" end
+    if not green and maxSkill and rank > maxSkill + OUTLEVELED_FALLBACK_GAP then return "behind you" end
+    if minSkill and minSkill > rank then return "ahead of you" end
+    return "in use now"
   end
-  for i = 1, #direct do add(direct[i][1], direct[i][3], direct[i][4], direct[i][5]) end
-  if chains then
-    for i = 1, #chains do add(chains[i][1], chains[i][2], chains[i][3], chains[i][4]) end
+  local function describe(name, minSkill, maxSkill, green, via)
+    local rank = state.professionRanks[name]
+    if not rank then return end
+    if green == 0 then green = nil end
+    local range = (minSkill and maxSkill) and (minSkill .. " to " .. maxSkill) or "?"
+    local text = name .. " " .. rank .. ": recipes " .. range
+        .. (green and (", green at " .. green) or "") .. ", " .. standing(rank, minSkill, maxSkill, green)
+    if via then text = text .. " (through " .. table.concat(via, ", ") .. ")" end
+    lines[#lines + 1] = text
   end
-  reagentSegmentMemo[direct] = { chains = chains, segments = segments }
-  return segments
+  for i = 1, #direct do
+    if state.professionNames[direct[i][1]] then
+      describe(direct[i][1], direct[i][3], direct[i][4], direct[i][5])
+    end
+  end
+  for i = 1, #chains do
+    local entry = chains[i]
+    if state.professionNames[entry[1]] then
+      local missing
+      for _, need in ipairs(entry[CHAIN_NEEDED] or {}) do
+        if not state.professionNames[need] then missing = need break end
+      end
+      if missing then
+        lines[#lines + 1] = entry[1] .. ": recipes " .. entry[2] .. " to " .. entry[3]
+            .. " through " .. table.concat(entry[CHAIN_NEEDED], ", ")
+            .. ", not counted, you have no " .. missing
+      else
+        describe(entry[1], entry[2], entry[3], entry[4], entry[CHAIN_NEEDED])
+      end
+    end
+  end
+  return lines
 end
 
 local Auction = MakeSpace.Auction
@@ -648,7 +776,7 @@ end
 -- use of theirs is either far above their skill or already behind them (past
 -- the point where its recipes turn green), and at least one is still ahead.
 local function evaluateDistantReagent(item, state)
-  local segments = reagentSegments(item.id)
+  local segments = reagentSegments(item.id, state)
   if not segments or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
 
@@ -687,10 +815,7 @@ local function evaluateOutleveledReagent(item, state)
   -- Without the downstream uses we cannot tell a finished material from an
   -- ingredient of something still in demand, so the rule stays silent.
   if not MakeSpace.Data.ReagentChains then return nil end
-  -- A quest that still wants it (a profession quest, say) is a use the recipe
-  -- data knows nothing about, whatever your skill is.
-  if heldByOpenQuest(item, state) then return nil end
-  local entries = reagentUses(item.id)
+  local entries = reagentUses(item.id, state)
   if not entries or state.professionsKnown == false then return nil end
   if not (state.professionNames and state.professionRanks) then return nil end
 
@@ -745,10 +870,9 @@ end
 -- only gathering professions (everything gathered is meant to be sold).
 local function evaluateOtherProfessionReagent(item, state)
   if item.classID ~= TRADE_GOODS_CLASS_ID then return nil end
-  local entries = reagentUses(item.id)
+  local entries = reagentUses(item.id, state)
   if not entries or state.professionsKnown == false or not state.professionNames then return nil end
   if not Auction.IsTradeable(item) then return nil end
-  if heldByOpenQuest(item, state) then return nil end
   local data = MakeSpace.Data
   if data.VendorReagents and data.VendorReagents[item.id] then return nil end
   if data.ClassReagents and data.ClassReagents[item.id] then return nil end
@@ -1211,12 +1335,15 @@ local CONSUMABLE_CLASS_ID = 0
 -- dropped because the auction pays clearly more: the player sees no green dot,
 -- and the tooltip uses the note to say why there is none.
 function MakeSpace.Verdict.Evaluate(item, state)
+  -- Your own marks come before every rule. They are "marked", so the bank keeps
+  -- them as they are and the tooltip can say whose call it is.
   if item.isKept then return nil, nil, nil end
+  if item.isMarkedGreen then return "green", MARKED_REASON, nil, nil, "marked" end
   if item.isFlagged then
     local verdict, reason, _, _, heading = yellow("flagged")
-    return verdict, reason, nil, nil, nil, heading
+    return verdict, reason, nil, nil, "marked", heading
   end
-  if item.classID == CONSUMABLE_CLASS_ID then
+  if item.classID == CONSUMABLE_CLASS_ID and not item.questProvided then
     local verdict, reason, _, _, heading = evaluateItemHint(item, state)
     if verdict then return verdict, reason, nil, nil, "item_hint", heading end
     verdict, reason, _, _, heading = evaluateOpenable(item, state)
@@ -1267,7 +1394,8 @@ function MakeSpace.Verdict.Judge(item, state)
   local verdict, reason, detail, tag, rule, heading, auctionNote = MakeSpace.Verdict.Evaluate(item, state)
   return { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
            heading = heading, auctionNote = auctionNote,
-           sellable = MakeSpace.Verdict.Sellable(item, verdict) }
+           -- A green you set yourself says "Safe to delete", never "Safe to vendor".
+           sellable = rule ~= "marked" and MakeSpace.Verdict.Sellable(item, verdict) }
 end
 
 --- Every rule that had something to say about an item, including greens that

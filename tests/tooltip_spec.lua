@@ -142,6 +142,23 @@ describe("tooltip basic output", function()
     assert.are.equal(1.0, tt.lines[2].b)
   end)
 
+  it("a green you set yourself says Safe to delete, and whose call it is", function()
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = "Marked by you", rule = "marked", sellable = false }
+      end,
+    }
+
+    local tt = makeTooltip(
+      "|cff...|Hitem:127:...|h[Mail Belt]|h|r",
+      "ContainerFrame1", 0, 5)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+
+    assert.is_truthy(tt.lines[1].text:find("pearl_green:14:14|t Safe to delete$"))
+    assert.are.equal("Marked by you", tt.lines[2].text)
+  end)
+
   it("says Safe to vendor for a green tagged as sellable", function()
     MakeSpace.Data.ReagentProfessions = {}
     MakeSpace.Scanner = {
@@ -746,6 +763,127 @@ describe("tooltip merged verdict lines", function()
   end)
 end)
 
+describe("tooltip: a reagent that a quest wants", function()
+  local function setup(result, recipes)
+    MakeSpace.Data.ReagentProfessions = { [3470] = { { "Alchemy", recipes or 2, 1, 100 } } }
+    MakeSpace.Data.QuestItems = { [3470] = { 301, 302, 303 } }
+    MakeSpace.Data.QuestInfo = {
+      [301] = { 40, "Tanaris", "First Quest" },
+      [302] = { 45, "Un'Goro", "Second Quest" },
+      [303] = { 50, "Silithus", "Third Quest" },
+    }
+    MakeSpace.Data.VendorReagents = {}
+    MakeSpace.Scanner = { GetResult = function() return result end, professionNames = nil }
+  end
+
+  it("names the quest under the hint, with how many more", function()
+    setup({ verdict = "yellow", reason = "Outleveled", heading = { title = "Outleveled reagent", detail = "Recipes turn green at Alchemy 100" } })
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+
+    assert.is_truthy(tt.lines[1].text:find("Outleveled reagent$"))
+    assert.are.equal("Recipes turn green at Alchemy 100", tt.lines[2].text)
+    assert.are.equal("[40] Test Quest 301 (Tanaris) +2", tt.lines[3].text)
+  end)
+
+  it("puts the quest last when there is no hint, below the skill ranges", function()
+    setup({ verdict = nil, reason = nil })
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+
+    assert.is_truthy(tt.lines[1].text:find("Alchemy"))
+    assert.are.equal("[40] Test Quest 301 (Tanaris) +2", tt.lines[#tt.lines].text)
+  end)
+
+  it("leaves out repeatable quests, so they are not on every row", function()
+    setup({ verdict = nil, reason = nil })
+    MakeSpace.Data.RepeatableQuests = { [301] = true, [302] = true }
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Data.RepeatableQuests = nil
+
+    assert.are.equal("[50] Test Quest 303 (Silithus)", tt.lines[#tt.lines].text)
+  end)
+
+  it("cuts a long quest name so the tooltip does not stretch", function()
+    setup({ verdict = nil, reason = nil })
+    MakeSpace.Data.QuestInfo[301] = { 40, "A Very Long Zone Name That Would Stretch The Tooltip Wide", "Quest" }
+    MakeSpace.Data.QuestItems = { [3470] = { 301 } }
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    local row = tt.lines[#tt.lines].text
+    assert.are.equal(46, #row)
+    assert.are.equal("...", row:sub(-3))
+  end)
+
+  it("shows a quest in your log in plain words, for any reagent", function()
+    setup({ verdict = nil, reason = nil }, 12)
+    _G.C_QuestLog.IsOnQuest = function(id) return id == 302 end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_QuestLog.IsOnQuest = nil
+
+    assert.are.equal("In log: Test Quest 302", tt.lines[#tt.lines].text)
+  end)
+
+  it("counts the other quests in your log", function()
+    setup({ verdict = nil, reason = nil }, 12)
+    _G.C_QuestLog.IsOnQuest = function(id) return id ~= 303 end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_QuestLog.IsOnQuest = nil
+
+    assert.are.equal("In log: Test Quest 301 +1", tt.lines[#tt.lines].text)
+  end)
+
+  it("says nothing of quests you have not taken on a common material", function()
+    setup({ verdict = nil, reason = nil }, 4)
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Alchemy"))
+  end)
+
+  it("leaves out finished quests, and shows no row when none are left", function()
+    setup({ verdict = nil, reason = nil })
+    local saved = _G.C_QuestLog.IsQuestFlaggedCompleted
+    _G.C_QuestLog.IsQuestFlaggedCompleted = function() return true end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_QuestLog.IsQuestFlaggedCompleted = saved
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Alchemy"))
+  end)
+end)
+
+describe("tooltip: a quest item with no quest found", function()
+  local savedInstant
+  local function run(classID)
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Data.QuestItems = {}
+    MakeSpace.Data.VendorReagents = {}
+    MakeSpace.Scanner = { GetResult = function() return { verdict = nil } end }
+    savedInstant = _G.C_Item
+    _G.C_Item = { GetItemInfoInstant = function() return 9999, "", "", "", 0, classID, 0 end }
+    local tt = makeTooltip("|cff...|Hitem:9999:...|h[Odd Thing]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_Item = savedInstant
+    return tt
+  end
+
+  it("says so once, in one row, for a quest-class item", function()
+    local tt = run(12)
+    assert.are.equal(1, #tt.lines)
+    assert.are.equal("Quest item, no quest found", tt.lines[1].text)
+  end)
+
+  it("says nothing for any other item", function()
+    assert.are.equal(0, #run(15).lines)
+  end)
+end)
+
 describe("tooltip quest details with level and zone", function()
   it("shows [level] name (zone) when QuestInfo has both", function()
     MakeSpace.Data.ReagentProfessions = {}
@@ -1203,13 +1341,13 @@ describe("tooltip in the loot window", function()
 
   it("shows only the heading when a yellow has no detail", function()
     setup()
-    installScanner({ verdict = "yellow", reason = "Flagged by you", heading = { title = "Flagged by you" } })
+    installScanner({ verdict = "yellow", reason = "Marked by you", heading = { title = "Marked by you" } })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)
     MakeSpace.Tooltip.OnTooltipSetItem(tt)
     teardown()
 
-    assert.is_truthy(tt.lines[1].text:find("Flagged by you$"))
+    assert.is_truthy(tt.lines[1].text:find("Marked by you$"))
     assert.are.equal(1, #tt.lines)
   end)
 

@@ -148,9 +148,17 @@ local function snapshotAgeDays()
   return okNow and MakeSpace.Curves.SnapshotAgeDays(date, now) or nil
 end
 
+--- Who is asking, for the quests that can matter: faction, class token, race file.
+function MakeSpace.Scanner.QuestAudience()
+  local _, classToken = UnitClass("player")
+  local _, raceFile = UnitRace("player")
+  return { faction = UnitFactionGroup and UnitFactionGroup("player") or nil,
+           class = classToken, race = raceFile }
+end
+
 local function getPlayerState()
   local class, playerClass = UnitClass("player")
-  local race = UnitRace("player")
+  local race, raceFile = UnitRace("player")
   local level = UnitLevel("player")
   local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
 
@@ -191,6 +199,7 @@ local function getPlayerState()
     class = class,
     playerClass = playerClass,
     race = race,
+    raceFile = raceFile,
     faction = faction,
     level = level,
     maxHealth = UnitHealthMax and UnitHealthMax("player") or nil,
@@ -348,7 +357,8 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   local questItemQuestIDs = MakeSpace.Data.QuestItems
       and MakeSpace.Data.QuestItems[itemID]
   if questItemQuestIDs then
-    questItemQuestIDs = MakeSpace.Verdict.QuestsForFaction(questItemQuestIDs, state.faction)
+    questItemQuestIDs = MakeSpace.Verdict.QuestsThatMatter(questItemQuestIDs,
+        { faction = state.faction, class = state.playerClass, race = state.raceFile })
     if #questItemQuestIDs == 0 then questItemQuestIDs = nil end
   end
   local allQuestObjectivesCompleted = nil
@@ -394,6 +404,8 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
     equippedInSlots = isEquippable and equippedInSlotsFor(equipSlot) or nil,
     isKept = MakeSpace.Overrides.IsKept(itemID),
     isFlagged = MakeSpace.Overrides.IsFlagged(itemID),
+    isMarkedGreen = MakeSpace.Overrides.IsMarkedGreen(itemID),
+    questProvided = MakeSpace.Verdict.IsQuestProvided(itemID, classID, subClassID, isEquippable),
   }
 end
 
@@ -672,6 +684,7 @@ local function evaluateCached(item, state, profKey)
       .. ":" .. tostring(item.onOpenQuest)
       .. ":" .. tostring(item.isKept)
       .. ":" .. tostring(item.isFlagged)
+      .. ":" .. tostring(item.isMarkedGreen)
       .. ":" .. tostring(item.count)
       .. ":" .. tostring(item.hasLoot)
       .. ":" .. tostring(item.requiredSkill) .. ":" .. tostring(item.restoresHealthOrMana) .. ":" .. tostring(item.givesBuff)
@@ -914,8 +927,7 @@ end
 local function questStillWantsIt(itemID)
   local ids = MakeSpace.Data and MakeSpace.Data.QuestItems and MakeSpace.Data.QuestItems[itemID]
   if not ids then return nil end
-  local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
-  ids = MakeSpace.Verdict.QuestsForFaction(ids, faction)
+  ids = MakeSpace.Verdict.QuestsThatMatter(ids, MakeSpace.Scanner.QuestAudience())
   if #ids == 0 then return nil end
   for _, questID in ipairs(ids) do
     if not questFinished(questID) then return true end
@@ -1107,6 +1119,24 @@ function MakeSpace.Scanner.GetResult(bag, slot)
   return slotResults[bag .. ":" .. slot]
 end
 
+--- The dot an item would get without any mark of yours: "green", "yellow" or nil.
+-- Unmarked, that is what the slot shows now; marked, the verdict is worked out again
+-- with the mark left off. Used by the item menu.
+function MakeSpace.Scanner.DefaultVerdict(bag, slot)
+  local itemID = C_Container.GetContainerItemID(bag, slot)
+  if not itemID then return nil end
+  if not MakeSpace.Overrides.Get(itemID) then
+    local result = slotResults[bag .. ":" .. slot]
+    return result and not result.quiet and result.verdict or nil
+  end
+  local state = getPlayerState()
+  local ok, item = pcall(gatherItem, bag, slot, state)
+  if not ok or not item then return nil end
+  item.isKept, item.isFlagged, item.isMarkedGreen = false, false, false
+  local judged = MakeSpace.Verdict.Judge(item, state)
+  return judged and judged.verdict or nil
+end
+
 --- Clear the verdict cache. Call when player state changes.
 function MakeSpace.Scanner.ClearCache()
   verdictCache = {}
@@ -1209,6 +1239,7 @@ function MakeSpace.Scanner.CollectInventory()
           equippedInSlots = equipSlot and EQUIP_SLOTS[equipSlot] and equippedInSlotsFor(equipSlot) or nil,
           isKept = MakeSpace.Overrides.IsKept(itemID),
           isFlagged = MakeSpace.Overrides.IsFlagged(itemID),
+          isMarkedGreen = MakeSpace.Overrides.IsMarkedGreen(itemID),
           lootable = containerInfo.hasLoot and true or false,
           verdict = result and result.verdict,
           reason = result and result.reason,

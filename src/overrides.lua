@@ -1,59 +1,84 @@
--- MakeSpace: user override lists
--- Manages the keep-list and flag-list in SavedVariables (per character).
--- Keep and flag are mutually exclusive: setting one clears the other.
+-- MakeSpace: your own marks on items
+-- One choice per item, kept for the whole account (MakeSpaceAccountDB.marks):
+--   "green"  always a green dot, "safe to delete"
+--   "yellow" always a yellow dot, "worth a glance"
+--   "none"   never a dot
+-- An item with no mark follows the normal rules.
 
 MakeSpace = MakeSpace or {}
 MakeSpace.Overrides = {}
 
+MakeSpace.Overrides.MARKS = { green = true, yellow = true, none = true }
+
+local function markTable()
+    return MakeSpaceAccountDB and MakeSpaceAccountDB.marks
+end
+
+--- The mark on an item: "green", "yellow", "none", or nil for the normal rules.
+function MakeSpace.Overrides.Get(itemID)
+    local entries = markTable()
+    local entry = entries and entries[itemID]
+    return entry and entry.mark or nil
+end
+
 function MakeSpace.Overrides.IsKept(itemID)
-    return MakeSpaceDB and MakeSpaceDB.keepList[itemID] and true or false
+    return MakeSpace.Overrides.Get(itemID) == "none"
 end
 
 function MakeSpace.Overrides.IsFlagged(itemID)
-    return MakeSpaceDB and MakeSpaceDB.flagList[itemID] and true or false
+    return MakeSpace.Overrides.Get(itemID) == "yellow"
+end
+
+function MakeSpace.Overrides.IsMarkedGreen(itemID)
+    return MakeSpace.Overrides.Get(itemID) == "green"
+end
+
+--- Set an item's mark. A nil mark (or "default") goes back to the normal rules.
+-- @param itemName string|nil  stored so /makespace list can show it
+-- @return boolean  true if the mark changed
+function MakeSpace.Overrides.Set(itemID, mark, itemName)
+    local entries = markTable()
+    if not entries then return false end
+    if mark == "default" then mark = nil end
+    if mark ~= nil and not MakeSpace.Overrides.MARKS[mark] then return false end
+    local before = entries[itemID] and entries[itemID].mark or nil
+    if mark == nil then
+        entries[itemID] = nil
+    else
+        local previous = entries[itemID]
+        entries[itemID] = { mark = mark, name = itemName or (previous and previous.name) }
+    end
+    return before ~= mark
+end
+
+--- The normal rules again for this item.
+-- @return boolean  true if the item had a mark
+function MakeSpace.Overrides.Remove(itemID)
+    return MakeSpace.Overrides.Set(itemID, nil)
 end
 
 function MakeSpace.Overrides.AddKeep(itemID, itemName)
-    if not MakeSpaceDB then return end
-    MakeSpaceDB.keepList[itemID] = itemName or true
-    MakeSpaceDB.flagList[itemID] = nil  -- keep overrides flag
+    MakeSpace.Overrides.Set(itemID, "none", itemName)
 end
 
 function MakeSpace.Overrides.AddFlag(itemID, itemName)
-    if not MakeSpaceDB then return end
-    MakeSpaceDB.flagList[itemID] = itemName or true
-    MakeSpaceDB.keepList[itemID] = nil  -- flag overrides keep
+    MakeSpace.Overrides.Set(itemID, "yellow", itemName)
 end
 
---- Copy a player's lists and settings over from the old addon's saved data
--- (the addon was called Bagwise before 0.6.6). Only fills in what is missing.
--- @return boolean  true if anything was copied
-function MakeSpace.Overrides.ImportOld(old, new)
-    if type(old) ~= "table" or type(new) ~= "table" then return false end
-    local copied = false
-    for _, listName in ipairs({ "keepList", "flagList" }) do
-        if type(old[listName]) == "table" then
-            new[listName] = new[listName] or {}
-            for itemID, value in pairs(old[listName]) do
-                new[listName][itemID] = value
-                copied = true
-            end
-        end
+--- Every marked item as { itemID, mark, name }, for /makespace list.
+function MakeSpace.Overrides.All()
+    local list = {}
+    for itemID, entry in pairs(markTable() or {}) do
+        list[#list + 1] = { itemID = itemID, mark = entry.mark, name = entry.name }
     end
-    if type(old.autoOpenBags) == "boolean" then
-        new.autoOpenBags = old.autoOpenBags
-        copied = true
-    end
-    return copied
+    return list
 end
 
---- Remove an item from both lists, returning it to the normal rules.
--- @return boolean  true if the item was on either list
-function MakeSpace.Overrides.Remove(itemID)
-    if not MakeSpaceDB then return false end
-    local wasListed = MakeSpaceDB.keepList[itemID] ~= nil
-        or MakeSpaceDB.flagList[itemID] ~= nil
-    MakeSpaceDB.keepList[itemID] = nil
-    MakeSpaceDB.flagList[itemID] = nil
-    return wasListed
+--- How many items carry each mark.
+function MakeSpace.Overrides.Counts()
+    local counts = { green = 0, yellow = 0, none = 0 }
+    for _, entry in pairs(markTable() or {}) do
+        if counts[entry.mark] then counts[entry.mark] = counts[entry.mark] + 1 end
+    end
+    return counts
 end

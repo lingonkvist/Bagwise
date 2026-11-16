@@ -68,17 +68,14 @@ local function invalidateAndRescan()
   rescanAll()
 end
 
--- A new level changes what is outdated, so say what the dots add up to. The
--- client can still report the old level for a moment after the event, so the
--- count waits and scans once more before it speaks.
-local LEVEL_UP_SUMMARY_DELAY_SECONDS = 2
+-- A new level changes what is outdated. The client can still report the old
+-- level for a moment after the event, so the bags are scanned once more after
+-- a short wait.
+local LEVEL_UP_RESCAN_DELAY_SECONDS = 2
 local function onPlayerLevelUp()
   invalidateAndRescan()
   if not (C_Timer and C_Timer.After) then return end
-  C_Timer.After(LEVEL_UP_SUMMARY_DELAY_SECONDS, function()
-    invalidateAndRescan()
-    MakeSpace.Commands.PrintSummary(true)
-  end)
+  C_Timer.After(LEVEL_UP_RESCAN_DELAY_SECONDS, invalidateAndRescan)
 end
 
 -- Loot window: read what is in it, work out what is worth a slot, repaint.
@@ -97,6 +94,10 @@ end
 -- With full bags the dots that matter are in the bags, so open them. If they
 -- were closed, close them again when the loot window goes away.
 local openedBagsForLoot = false
+-- OpenAllBags is a toggle: a second call closes what the first one opened. A
+-- bag addon that replaces the bags is not seen by anyBagOpen, so the check
+-- below cannot be trusted to stop a second call. One call per loot window.
+local triedOpeningBags = false
 
 -- Is a bag window showing? Checks the frames themselves rather than trusting
 -- IsAnyBagOpen alone, which can say yes while nothing is on screen.
@@ -112,7 +113,8 @@ end
 local function openBagsForLoot()
   if MakeSpaceDB and MakeSpaceDB.autoOpenBags == false then return end
   if not MakeSpace.Scanner.MakeRoomSummary().active then return end
-  if anyBagOpen() or not OpenAllBags then return end
+  if triedOpeningBags or anyBagOpen() or not OpenAllBags then return end
+  triedOpeningBags = true
   if pcall(OpenAllBags) then openedBagsForLoot = true end
 end
 
@@ -129,6 +131,7 @@ local function onLootOpened(self, ...)
 end
 
 local function onLootClosed()
+  triedOpeningBags = false
   MakeSpace.Scanner.ClearLoot()
   rescanAll()
   MakeSpace.Overlay.UpdateLoot()
@@ -143,13 +146,9 @@ local function onAddonLoaded(self, addonName)
 
   -- Fill in anything missing, so a saved file from an older version (or one
   -- edited by hand) never leaves a nil list for the rest of the addon to trip on.
-  -- A first run on this character: bring over the old addon's lists when it is
-  -- still loaded (OptionalDeps makes it load first and fill BagwiseDB).
-  local firstRun = MakeSpaceDB == nil
   MakeSpaceDB = MakeSpaceDB or {}
-  if firstRun then MakeSpace.Overrides.ImportOld(BagwiseDB, MakeSpaceDB) end
-  MakeSpaceDB.keepList = MakeSpaceDB.keepList or {}
-  MakeSpaceDB.flagList = MakeSpaceDB.flagList or {}
+  MakeSpaceAccountDB = MakeSpaceAccountDB or {}
+  MakeSpaceAccountDB.marks = MakeSpaceAccountDB.marks or {}
   if MakeSpaceDB.autoOpenBags == nil then MakeSpaceDB.autoOpenBags = true end
   MakeSpaceDB.version = MakeSpaceDB.version or 1
 
@@ -215,13 +214,6 @@ local function onPlayerLogin(self)
   local notice = okNow and MakeSpace.Curves.SnapshotNotice(
     MakeSpace.Curves.SnapshotAgeDays(MakeSpace.Data and MakeSpace.Data.AuctionPricesDate, now))
   if notice then print("|cff54de7d[Make Space]|r " .. notice) end
-
-  -- The addon used to be called Bagwise. Both folders side by side would paint
-  -- every slot twice, so say so once and leave it to the player to delete the old one.
-  local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
-  if isAddOnLoaded and isAddOnLoaded("Bagwise") then
-    print("|cff54de7d[Make Space]|r The old Bagwise folder is still installed. Delete Interface\\AddOns\\Bagwise, this addon replaces it.")
-  end
 end
 
 local EVENT_HANDLERS = {

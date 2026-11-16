@@ -21,6 +21,17 @@ local VERDICT_COLORS        = {
 -- Detail text under a verdict header uses the same blue as every other
 -- MakeSpace detail row, so all of it reads as one family.
 local DETAIL_COLOR          = INFO_COLOR
+local MUTED_COLOR           = { r = 0.66, g = 0.66, b = 0.66 } -- a fact, not a call
+local QUEST_ITEM_CLASS_ID   = 12
+local NO_QUEST_ROW          = "Quest item, no quest found"
+
+--- Is this one of the game's own quest items? (Not known before the client has it.)
+local function isQuestItem(itemID)
+  local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not instant then return false end
+  local _, _, _, _, _, classID = instant(itemID)
+  return classID == QUEST_ITEM_CLASS_ID
+end
 
 -- The tooltip header carries the same shape as the bag slot (round for green, a diamond for yellow), without the
 -- shadow and centred in its frame (colour is baked into each texture).
@@ -322,6 +333,72 @@ local function renderQuestDetails(tooltip, questIDs)
   return shown
 end
 
+-- One row about the quests that want a reagent, for the tooltip of an item that
+-- has recipe uses. Only the quests that could keep it count: not repeatable ones
+-- (they want the item for good, so they would be on every row), quests far below
+-- your level, or ones you have finished.
+--   A quest in your log: "In log: Name", for any reagent. This is the case
+--   where the row decides something.
+--   No quest in your log: "[level] Name (Zone)" in grey, only for a reagent
+--   few recipes use. A common material (copper bars, linen) is wanted by some
+--   quest somewhere and would carry the row for good.
+-- @return string|nil text
+-- @return boolean|nil inLog  true when the row is about a quest in your log
+local QUEST_ROW_MAX = 46
+local COMMON_REAGENT_RECIPES = 4 -- a reagent in this many recipes or more is a common material
+
+local function recipeCount(profEntries)
+  local total = 0
+  for _, entry in ipairs(profEntries or {}) do
+    total = total + (entry[PROF_RECIPE_COUNT] or 0)
+  end
+  return total
+end
+
+local function questNameOf(questID)
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
+  return (getQuestTitle and getQuestTitle(questID)) or (info and info[QUEST_INFO_NAME])
+end
+
+local function questRowText(prefix, text, more)
+  local row = prefix .. text
+  if #row > QUEST_ROW_MAX then row = row:sub(1, QUEST_ROW_MAX - 3) .. "..." end
+  if more > 0 then row = row .. " +" .. more end
+  return row
+end
+
+local function openQuestRow(questIDs, profEntries)
+  local level = UnitLevel and UnitLevel("player") or nil
+  local repeatable = MakeSpace.Data.RepeatableQuests
+  local open, inLog = {}, {}
+  for i = 1, #questIDs do
+    local id = questIDs[i]
+    local isRepeatable = repeatable and repeatable[id]
+    local done = C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id)
+    local trivial = level and MakeSpace.Verdict.IsTrivialQuest(id, level)
+    if not isRepeatable and not done and not trivial then
+      open[#open + 1] = id
+      if C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(id) then inLog[#inLog + 1] = id end
+    end
+  end
+
+  if #inLog > 0 then
+    local name = questNameOf(inLog[1])
+    if not name then return nil end
+    return questRowText("In log: ", name, #inLog - 1), true
+  end
+
+  if #open == 0 or recipeCount(profEntries) >= COMMON_REAGENT_RECIPES then return nil end
+  local text = formatQuestLine(open[1])
+  if not text then return nil end
+  return questRowText("", text, #open - 1), false
+end
+
+local function addQuestRow(tooltip, row, inLog)
+  local color = inLog and INFO_COLOR or MUTED_COLOR
+  addLine(tooltip, row, color.r, color.g, color.b)
+end
+
 local VERDICT_LINE_WRAP = 45
 
 -- The header names the verdict in words, so it never depends on color alone.
@@ -469,8 +546,10 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
   local questIDs = MakeSpace.Data.QuestItems
       and MakeSpace.Data.QuestItems[itemID]
   if questIDs then
-    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
-    questIDs = MakeSpace.Verdict.QuestsForFaction(questIDs, faction)
+    local scanner = MakeSpace.Scanner
+    questIDs = MakeSpace.Verdict.QuestsThatMatter(questIDs,
+        scanner and scanner.QuestAudience and scanner.QuestAudience()
+        or (UnitFactionGroup and UnitFactionGroup("player")))
     if #questIDs == 0 then questIDs = nil end
   end
 
@@ -485,6 +564,13 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
       addLine(tooltip, result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
     addPriceNote(tooltip, result)
+    -- A reagent with a hint still says which quest wants it, so the hint and the
+    -- reason to keep the item are side by side.
+    if profEntries and questIDs and not (MakeSpace.Data.VendorReagents
+        and MakeSpace.Data.VendorReagents[itemID]) then
+      local row, inLog = openQuestRow(questIDs, profEntries)
+      if row then addQuestRow(tooltip, row, inLog) end
+    end
   else
     -- An item that would have been green but sells for more at auction: say so,
     -- so the missing dot is not a mystery. One row, leaving room for one more.
@@ -496,10 +582,17 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
         and MakeSpace.Data.VendorReagents[itemID]
     if profEntries and not isVendorReagent then
       renderProfessionDetails(tooltip, profEntries)
+      local row, inLog
+      if questIDs then row, inLog = openQuestRow(questIDs, profEntries) end
+      if row then addQuestRow(tooltip, row, inLog) end
     elseif questIDs and not isVendorReagent then
       renderQuestDetails(tooltip, questIDs)
     elseif protectedNote then
       addLine(tooltip, protectedNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
+    elseif not questIDs and isQuestItem(itemID) then
+      -- The one case that would otherwise say nothing at all: the game calls it a
+      -- quest item and the quest data has no quest for you that wants it.
+      addLine(tooltip, NO_QUEST_ROW, MUTED_COLOR.r, MUTED_COLOR.g, MUTED_COLOR.b)
     end
   end
 

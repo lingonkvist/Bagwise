@@ -33,8 +33,10 @@ local NEVER_JUNK_CLASSES = {
 function MakeSpace.MakeRoom.IsJunkCandidate(item, existing)
   if item.isKept or item.isFlagged then return false end
   if (item.sellPrice or 0) <= 0 then return false end
-  if NEVER_JUNK_CLASSES[item.classID] then return false end
   if MakeSpace.Safety.IsProtected(item) then return false end
+  -- A green you set says you don't need it, so it is offered whatever it is.
+  if item.isMarkedGreen then return true end
+  if NEVER_JUNK_CLASSES[item.classID] then return false end
 
   if item.quality == POOR_QUALITY then return true end
   if item.quality ~= COMMON_QUALITY then return false end

@@ -23,7 +23,7 @@ describe("Dump.Format", function()
   it("starts with player state and a column header", function()
     local text = MakeSpace.Dump.Format(snapshotWith({}), { version = "0.3.0", build = "1.15.6 (1)" })
 
-    assert.is_truthy(text:find("# bagwise=0.3.0 wow=1.15.6 (1)", 1, true))
+    assert.is_truthy(text:find("# makespace=0.3.0 wow=1.15.6 (1)", 1, true))
     assert.is_truthy(text:find("# class=MAGE race=Human faction=Alliance level=42", 1, true))
     assert.is_truthy(text:find("# professions=Alchemy,Tailoring", 1, true))
     assert.is_truthy(text:find("# columns: bag;slot;id;name", 1, true))

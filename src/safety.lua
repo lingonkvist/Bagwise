@@ -87,6 +87,7 @@ local PROTECTIONS = {
   { name = "dual_use", test = function(item)
       local isQuestData = item.questItemQuestIDs ~= nil or item.startsQuestID ~= nil
       return isQuestData and item.classID ~= nil and item.classID ~= QUEST_CLASS_ID
+          and not item.questProvided
     end },
   { name = "open_quest_item", test = function(item)
       return item.questItemQuestIDs ~= nil and not item.allQuestObjectivesCompleted

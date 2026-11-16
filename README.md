@@ -18,6 +18,8 @@ Make Space checks every item against your quests, professions, class, level and 
 
 Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it. Prices show the numbers in white and `g`, `s` and `c` in the usual coin colours.
 
+An item the game calls a quest item, with no quest for you in the data, says "Quest item, no quest found" on its tooltip. Quests only another class or race can take are ignored.
+
 You make every deletion yourself. Make Space has no delete button, no auto-destroy and no popups.
 
 ## What gets a dot
@@ -47,7 +49,7 @@ Yellow:
 - "Bank it" for recipes and reagents far above your skill. A recipe is far above you when it needs more than 25 skill points. A reagent needs more than 50, or more than 25 once you have stopped leveling that profession for 6 hours. A profession counts as idle after 12 hours without a skill gain (and a new play session), and then any recipe out of reach is banked.
 - "Bank it" for a reagent when your skill is past one of its uses and the next one is far ahead, since every use is judged on its own (Linen Cloth with First Aid done and Blacksmithing 200 far off).
 - A reagent stack worth under the same 50c bar gets no bank hint, since banking it is only clutter. It needs a known price.
-- Reagents you have outleveled. Make Space follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them. The hint appears once the last recipe that needs the item, directly or through what it is turned into, has turned green (the skill-up chance is then under half), and the tooltip says "Recipes turn green at Profession N", the skill where the color changes in your profession window. Data built before 0.6.1 uses the skill the best recipe is learned at instead. An open quest that wants the item holds the hint back, unless that quest is 10 or more levels below you (the same goes for the hint on reagents only other professions use).
+- Reagents you have outleveled. Make Space follows the whole chain, so copper bars stay safe while bronze or a later recipe still uses them, as long as you have the profession that makes the conversion (a smith without Leatherworking cannot turn Light Leather into the Medium Leather smithing uses). The hint appears once the last recipe that needs the item, directly or through what it is turned into, has turned green (the skill-up chance is then under half), and the tooltip says "Recipes turn green at Profession N", the skill where the color changes in your profession window. Data built before 0.6.1 uses the skill the best recipe is learned at instead. A quest that wants the item does not hold the hint back. The tooltip adds one quest row under the hint (and below the skill ranges when there is no hint): "In log: Name" when a quest in your log wants the item, and a grey "[level] Name (Zone)" for a reagent few recipes use. Common materials get a row only for a quest in your log. Left out are quests you have finished, repeatable quests, quests 10 or more levels below you and the standing turn-ins (cloth donations and the "Horde Needs" and "Alliance Needs" quests).
 - Food, drink, potions, elixirs, flasks and stat scrolls (Strength, Agility, Stamina, Intellect, Spirit, Protection) that need a level 20 or more below yours. Elixirs and flasks count only when they give stats, health or mana, so water breathing, speed and the like are left alone, and so is anything whose tooltip carries its own level limit ("cannot be used above level 20", "cures diseases up to level 25"). Food with an effect is left alone, and Enchanters keep scrolls that are Enchanting reagents. When the auction house pays clearly more than a vendor for one of these, the tooltip adds the price line (for example `Vendor 5c, auction about 8s`), so the hint never reads as "throw it away".
 - Bandages that heal under 15% of your health. The tooltip says what it heals, for example `Heals 9% of your health (400 of 4500)`. Without that to go on, a bandage follows its required level like other consumables.
 - Mana potions and drinks, if your class has no mana.
@@ -55,7 +57,7 @@ Yellow:
 - Library books, with who to hand them in to (Garion Wendell in Stormwind, Owen Thadd in Undercity). A deleted book cannot be looted again.
 - Blood Shards on a Horde character: trade 4 to Mangletooth for a buff.
 - Quest items for a quest far below your level, and a hint to bank items that only quests you cannot accept for another 10 levels or more want. It goes by the level you need to accept the quest, not the quest's own level, so a level 60 quest that opens at level 30 is left alone, and so is any quest without data. Items for a Darkmoon Faire or holiday quest get the same hint at any level, naming the event (`Darkmoon Faire: [60] Vibrant Plumes`), since those quests can only be done while the event runs. Make Space cannot see whether the event is on. Neither shows while the quest is in your log, and the bank does not show the second. Repeatable quests do not count, since they want the item at any level.
-- Anything you flag yourself.
+- Anything you mark yellow yourself.
 
 ## Auction prices
 
@@ -93,7 +95,7 @@ Anything that could still matter:
 - Profession tools, the Hearthstone and soul shards.
 - Containers, gems, keys and ammo your class can use. Recipes are yellow, and green only as "Worth very little".
 - Consumables, other than the yellow cases above.
-- Anything you have told Make Space to keep.
+- Anything you have told Make Space to show no dot on.
 
 ## Item links in chat
 
@@ -119,11 +121,10 @@ Loot that joins a stack you already carry does not count as needing a slot. Quiv
 `/makespace` and `/bagwise` do the same thing. The examples below use `/makespace`.
 
 Everyday:
-- `/makespace keep [item]`: never show a dot on this item.
-- `/makespace flag [item]`: always show a yellow dot on this item.
-- `/makespace reset [item]`: return this item to the normal rules.
-- `/makespace list`: show your kept and flagged items.
-- `/makespace summary`: what the dots in your bags add up to, for example `9 green (2g 14s at a vendor), 5 yellow`. Make Space also says this when you level up, if anything is marked.
+- Alt-right-click an item in your bags to open a small menu: **Default**, **Safe to delete** (green), **Worth a glance** (yellow) or **No dot**. The row for the choice you have made is highlighted, and the dot changes at once. Your marks are kept for the whole account.
+- `/makespace mark green|yellow|none|default [item]`: the same choices as a command. `keep` is `mark none`, `flag` is `mark yellow` and `reset` is `mark default`.
+- `/makespace list`: show your marked items.
+- `/makespace summary`: what the dots in your bags add up to, for example `9 green (2g 14s at a vendor), 5 yellow`.
 
 `[item]` can be a shift-clicked link, an item ID or an item name.
 

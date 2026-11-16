@@ -201,6 +201,30 @@ describe("Bank bags", function()
 end)
 
 
+describe("Blizzard combined bags (Forever)", function()
+  it("paints the buttons in the frame's Items array without calling the enumerator", function()
+    local shown = makeButton(0, 3)
+    function shown:GetBagID() return 2 end
+    shown.IsShown = function() return true end
+    local pooled = makeButton(0, 4)
+    function pooled:GetBagID() return 2 end
+    pooled.IsShown = function() return false end
+    local frame = { Items = { shown, pooled } }
+    function frame:IsVisible() return true end
+    function frame:EnumerateValidItems() error("the client enumerator must not be called") end
+    _G.ContainerFrameCombinedBags = frame
+    local realIsScanned = MakeSpace.Bags.IsScanned
+    MakeSpace.Bags.IsScanned = function() return true end
+    installScanner({ ["2:3"] = { verdict = "green" }, ["2:4"] = { verdict = "green" } })
+    MakeSpace.Overlay.UpdateAll()
+    _G.ContainerFrameCombinedBags = nil
+    MakeSpace.Bags.IsScanned = realIsScanned
+
+    assert.are.equal(1, #shown.dots)
+    assert.are.equal(0, #pooled.dots)
+  end)
+end)
+
 describe("Blizzard tabbed bank (Forever)", function()
   -- A bank button knows its own tab and slot; its parent frame carries no bag ID.
   local realIsScanned = MakeSpace.Bags.IsScanned
@@ -243,6 +267,20 @@ describe("Blizzard tabbed bank (Forever)", function()
     local first = makeBankButton(6, 4)
     installBankPanel({ first })
     installScanner({ ["6:4"] = { verdict = "yellow" } })
+    MakeSpace.Bags.IsScanned = function() return true end
+    MakeSpace.Overlay.UpdateAll()
+    assert.are.equal(1, #first.dots)
+    assert.is_truthy(first.dots[1].shown)
+    teardown()
+  end)
+
+  it("reads the panel's child frames and never calls the client's enumerator", function()
+    local first = makeBankButton(6, 4)
+    first.IsShown = function() return true end
+    local panel = installBankPanel({ first })
+    panel.EnumerateValidItems = function() error("the client enumerator must not be called") end
+    panel.GetChildren = function() return first end
+    installScanner({ ["6:4"] = { verdict = "green" } })
     MakeSpace.Bags.IsScanned = function() return true end
     MakeSpace.Overlay.UpdateAll()
     assert.are.equal(1, #first.dots)

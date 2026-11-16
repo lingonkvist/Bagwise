@@ -67,8 +67,15 @@ local function refreshDots()
   MakeSpace.Overlay.UpdateAll()
 end
 
---- Build a handler that applies an override action to the item in the argument.
-local function overrideCommand(usage, apply, confirmation)
+local MARK_CONFIRMATIONS = {
+  green   = "%s will always get a green dot.",
+  yellow  = "%s will always get a yellow dot.",
+  none    = "%s will never get a dot.",
+  default = "%s is back to the normal rules.",
+}
+
+--- Build a handler that sets one mark on the item in the argument.
+local function markCommand(usage, mark)
   return function(argument)
     local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
     if not itemID then
@@ -76,8 +83,8 @@ local function overrideCommand(usage, apply, confirmation)
       return
     end
     local name = itemNameOf(itemID)
-    apply(itemID, name)
-    say(confirmation:format(name))
+    MakeSpace.Overrides.Set(itemID, mark, name)
+    say(MARK_CONFIRMATIONS[mark or "default"]:format(name))
     refreshDots()
   end
 end
@@ -108,9 +115,9 @@ local function reportDetails()
       .. ", junkCandidates " .. plan.junkCandidates
       .. ", active " .. tostring(plan.active)
   end)
-  add("keptAndFlagged", function()
-    local function size(tbl) local n = 0 for _ in pairs(tbl or {}) do n = n + 1 end return n end
-    return size(MakeSpaceDB.keepList) .. " kept, " .. size(MakeSpaceDB.flagList) .. " flagged"
+  add("marks", function()
+    local counts = MakeSpace.Overrides.Counts()
+    return counts.green .. " green, " .. counts.yellow .. " yellow, " .. counts.none .. " no dot"
   end)
   return details
 end
@@ -159,12 +166,12 @@ function MakeSpace.Commands.SummaryLine(summary)
   return table.concat(parts, ", ")
 end
 
---- Say the summary. At level up it stays quiet when there is nothing to say.
-function MakeSpace.Commands.PrintSummary(quietWhenEmpty)
+--- Say the summary.
+function MakeSpace.Commands.PrintSummary()
   local line = MakeSpace.Commands.SummaryLine(MakeSpace.Scanner.Summary())
   if line then
     say("Your bags: " .. line .. ".")
-  elseif not quietWhenEmpty then
+  else
     say("Nothing marked in your bags.")
   end
 end
@@ -172,10 +179,13 @@ end
 local COMMAND_HANDLERS = {
   help = function()
     say("commands:")
-    print("  /makespace keep [item]    - Never show a dot on this item")
-    print("  /makespace flag [item]    - Always show a yellow dot on this item")
-    print("  /makespace reset [item]   - Return this item to the normal rules")
-    print("  /makespace list           - Show your kept and flagged items")
+    print("  /makespace mark green|yellow|none|default [item]")
+    print("                            - Set the dot for this item (default: normal rules)")
+    print("  /makespace keep [item]    - Same as mark none: never show a dot")
+    print("  /makespace flag [item]    - Same as mark yellow")
+    print("  /makespace reset [item]   - Same as mark default")
+    print("  /makespace list           - Show your marked items")
+    print("  Alt-right-click an item in your bags to set its dot from a menu.")
     print("  /makespace autoopen       - Turn on or off opening your bags when loot needs room")
     print("  /makespace summary        - What the dots in your bags add up to")
     print("  /makespace help           - Show this message")
@@ -189,7 +199,7 @@ local COMMAND_HANDLERS = {
     print("  /makespace bank           - What Make Space sees of the bank")
   end,
   summary = function()
-    MakeSpace.Commands.PrintSummary(false)
+    MakeSpace.Commands.PrintSummary()
   end,
   bank = function()
     say("bank:")
@@ -232,8 +242,9 @@ local COMMAND_HANDLERS = {
       and ("Auctionator found, prices seen in the last " .. MakeSpace.Live.MAX_AGE_DAYS .. " days are used")
       or "Auctionator not found, using the price snapshot only"))
     print("  Safety checks: " .. table.concat(MakeSpace.Safety.Names(), ", "))
-    print("  Your lists: " .. size(MakeSpaceDB.keepList) .. " kept, "
-      .. size(MakeSpaceDB.flagList) .. " flagged")
+    local counts = MakeSpace.Overrides.Counts()
+    print("  Your marks: " .. counts.green .. " green, " .. counts.yellow .. " yellow, "
+      .. counts.none .. " no dot")
   end,
   why = function(argument)
     local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
@@ -277,11 +288,17 @@ local COMMAND_HANDLERS = {
         print("    " .. quest.id .. " " .. tostring(quest.name)
           .. " [" .. (quest.faction or "both") .. "] "
           .. (quest.done and "done" or "not done")
-          .. (otherFaction(quest.faction, explained.faction) and ", other faction, ignored" or ""))
+          .. (otherFaction(quest.faction, explained.faction) and ", other faction, ignored" or "")
+          .. (MakeSpace.Verdict.IsIgnoredQuest(quest.id) and ", standing turn-in quest, ignored" or ""))
       end
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0
       and table.concat(explained.recipeProfessions, ", ") or "none"))
+    local useFacts = MakeSpace.Verdict.ReagentUseFacts(itemID, explained.state)
+    if #useFacts > 0 then
+      print("  your professions and this item:")
+      for _, line in ipairs(useFacts) do print("    " .. line) end
+    end
     if item.classID == 0 and item.subClassID == 7 then
       print("  bandage heal, read from the tooltip: " .. tostring(item.healAmount or "not found")
         .. ", your max health: " .. tostring(explained.state and explained.state.maxHealth or "unknown"))
@@ -344,37 +361,36 @@ local COMMAND_HANDLERS = {
   end,
   report = function() openReport() end,
   dump = function() openReport() end,
-  keep = overrideCommand("/makespace keep [item]",
-    MakeSpace.Overrides.AddKeep, "%s will never get a dot."),
-  flag = overrideCommand("/makespace flag [item]",
-    MakeSpace.Overrides.AddFlag, "%s will always get a yellow dot."),
-  reset = function(argument)
-    local itemID = MakeSpace.Commands.ParseItemID(argument, lookupItemLinkByName)
-    if not itemID then
-      say("Usage: /makespace reset [item]")
+  mark = function(argument)
+    local word, rest = (argument or ""):match("^(%a+)%s*(.-)$")
+    word = word and word:lower() or ""
+    if word ~= "green" and word ~= "yellow" and word ~= "none" and word ~= "default" then
+      say("Usage: /makespace mark green|yellow|none|default [item]")
       return
     end
-    local name = itemNameOf(itemID)
-    if MakeSpace.Overrides.Remove(itemID) then
-      say(name .. " is back to the normal rules.")
-      refreshDots()
-    else
-      say(name .. " was not on either list.")
-    end
+    markCommand("/makespace mark " .. word .. " [item]", word ~= "default" and word or nil)(rest)
   end,
+  keep = markCommand("/makespace keep [item]", "none"),
+  flag = markCommand("/makespace flag [item]", "yellow"),
+  reset = markCommand("/makespace reset [item]", nil),
   list = function()
-    local function printList(title, entries)
+    local groups = {
+      { mark = "green", title = "Safe to delete" },
+      { mark = "yellow", title = "Worth a glance" },
+      { mark = "none", title = "No dot" },
+    }
+    local all = MakeSpace.Overrides.All()
+    for _, group in ipairs(groups) do
       local lines = {}
-      for itemID, stored in pairs(entries) do
-        local name = type(stored) == "string" and stored or itemNameOf(itemID)
-        lines[#lines + 1] = name
+      for _, entry in ipairs(all) do
+        if entry.mark == group.mark then
+          lines[#lines + 1] = entry.name or itemNameOf(entry.itemID)
+        end
       end
       table.sort(lines)
-      say(title .. " (" .. #lines .. ")")
+      say(group.title .. " (" .. #lines .. ")")
       for i = 1, #lines do print("  " .. lines[i]) end
     end
-    printList("Kept", MakeSpaceDB.keepList)
-    printList("Flagged", MakeSpaceDB.flagList)
   end,
 }
 

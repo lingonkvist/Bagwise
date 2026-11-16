@@ -380,56 +380,82 @@ def build_chains(spell_reagents, abilities, prof_names, products):
 
     A recipe that consumes item I and creates item P passes every use of P on
     to I: copper bar -> bronze bar -> the smithing and engineering recipes that
-    use bronze bars. Returns {itemID: {profName: [minSkill, maxSkill, greenSkill]}} holding
-    only uses reached through at least one intermediate (direct uses stay in
-    ReagentProfessions). Cycles (transmutes both ways) are handled by iterating
-    to a fixed point.
+    use bronze bars. Only the profession whose recipe does the converting can
+    make that step, so each use carries the professions its conversions need
+    (copper bars become bronze bars by Mining), not counting the profession
+    that uses it, which the player needs anyway. A Blacksmith without Leatherworking
+    can never turn Light Leather into the Medium Leather smithing uses.
+
+    Returns {itemID: {profName: [[min, max, green, [needed professions]], ...]}}
+    holding only uses reached through at least one intermediate (direct uses
+    stay in ReagentProfessions). Cycles (transmutes both ways) are handled by
+    iterating to a fixed point.
     """
     direct = build_reagent_map(spell_reagents, abilities, prof_names)
-    # makes[I] = items made from I
+    # makes[I][P] = the professions whose recipes turn I into P
     makes = {}
     for spell_id, reagents in spell_reagents.items():
         product = products.get(spell_id)
         if not product or spell_id not in abilities:
             continue
+        converter = prof_names.get(abilities[spell_id][0]) or FALLBACK_NAMES.get(abilities[spell_id][0], "?")
         for item_id, _qty in reagents:
             if item_id != product:
-                makes.setdefault(item_id, set()).add(product)
+                makes.setdefault(item_id, {}).setdefault(product, set()).add(converter)
 
-    reach = {}  # itemID -> {prof: [min, max]} through intermediates
+    def merge(span, other):
+        return [min(span[0], other[0]), max(span[1], other[1]), max(span[2], other[2])]
+
+    reach = {}  # itemID -> {prof: {frozenset(needed professions): [min, max, green]}}
     changed = True
     while changed:
         changed = False
         for item_id, outputs in makes.items():
-            for product in outputs:
-                uses = {}
-                for prof, entry in direct.get(product, {}).items():
-                    uses[prof] = [entry["min"], entry["max"], entry["green"]]
-                for prof, span in reach.get(product, {}).items():
-                    if prof in uses:
-                        uses[prof] = [min(uses[prof][0], span[0]), max(uses[prof][1], span[1]),
-                                      max(uses[prof][2], span[2])]
-                    else:
-                        uses[prof] = list(span)
-                mine = reach.setdefault(item_id, {})
-                for prof, span in uses.items():
-                    if prof not in mine:
-                        mine[prof] = list(span)
-                        changed = True
-                    else:
-                        lo = min(mine[prof][0], span[0])
-                        hi = max(mine[prof][1], span[1])
-                        gr = max(mine[prof][2], span[2])
-                        if [lo, hi, gr] != mine[prof]:
-                            mine[prof] = [lo, hi, gr]
+            for product, converters in outputs.items():
+                for converter in converters:
+                    found = []  # (profession, needed, span)
+                    for prof, entry in direct.get(product, {}).items():
+                        found.append((prof, frozenset([converter]), [entry["min"], entry["max"], entry["green"]]))
+                    for prof, by_needed in reach.get(product, {}).items():
+                        for needed, span in by_needed.items():
+                            found.append((prof, needed | {converter}, list(span)))
+                    mine = reach.setdefault(item_id, {})
+                    for prof, needed, span in found:
+                        needed = needed - {prof}
+                        by_needed = mine.setdefault(prof, {})
+                        if needed not in by_needed:
+                            by_needed[needed] = span
                             changed = True
-    # A green point below the highest skill means the merged uses disagree
-    # (one use had no green data); treat it as unknown rather than wrong.
-    for spans in reach.values():
-        for span in spans.values():
-            if span[2] < span[1]:
-                span[2] = 0
-    return reach
+                        else:
+                            merged = merge(by_needed[needed], span)
+                            if merged != by_needed[needed]:
+                                by_needed[needed] = merged
+                                changed = True
+
+    result = {}
+    for item_id, by_prof in reach.items():
+        result[item_id] = {}
+        for prof, by_needed in by_prof.items():
+            entries = []
+            for needed, span in by_needed.items():
+                # A green point below the highest skill means the merged uses
+                # disagree (one use had no green data); treat it as unknown.
+                green = span[2] if span[2] >= span[1] else 0
+                entries.append((needed, [span[0], span[1], green]))
+            # Drop a use that something needing fewer professions already covers.
+            kept = []
+            for needed, span in entries:
+                covered = any(
+                    other != needed and other <= needed
+                    and o[0] <= span[0] and o[1] >= span[1]
+                    and (o[2] >= span[2] if span[2] else True)
+                    for other, o in entries
+                )
+                if not covered:
+                    kept.append([span[0], span[1], span[2], sorted(needed)])
+            kept.sort(key=lambda e: (len(e[3]), e[3], e[0], e[1]))
+            result[item_id][prof] = kept
+    return result
 
 
 def generate_chains_lua(chains, build_version):
@@ -444,13 +470,18 @@ def generate_chains_lua(chains, build_version):
         "MakeSpace                      = MakeSpace or {}",
         "MakeSpace.Data                 = MakeSpace.Data or {}",
         "",
-        "-- Format: [itemID] = { { profession, min_level, max_level, green_level }, ... }",
+        "-- Format: [itemID] = { { profession, min_level, max_level, green_level, { needed } }, ... }",
+        "-- needed lists the other professions whose recipes make the conversions (left out",
+        "-- when none): a use counts for a player only when they have all of them.",
         "MakeSpace.Data.ReagentChains = {",
     ]
     for item_id in sorted(chains):
-        parts = ", ".join('{ "%s", %d, %d, %d }' % (p, span[0], span[1], span[2])
-                          for p, span in sorted(chains[item_id].items()))
-        out.append(f"  [{item_id}] = {{ {parts} }},")
+        parts = []
+        for prof, entries in sorted(chains[item_id].items()):
+            for lo, hi, green, needed in entries:
+                tail = ", { %s }" % ", ".join('"%s"' % n for n in needed) if needed else ""
+                parts.append('{ "%s", %d, %d, %d%s }' % (prof, lo, hi, green, tail))
+        out.append(f"  [{item_id}] = {{ {', '.join(parts)} }},")
     out.append("}")
     out.append("")
     return "\n".join(out)
@@ -472,10 +503,21 @@ def selftest():
     products = {1: 99, 2: 200, 3: 300, 4: 301}
     names = {186: "Mining", 164: "Blacksmithing"}
     chains = build_chains(reagents, abilities, names, products)
-    assert chains[99]["Blacksmithing"] == [85, 155, 180], chains
-    assert chains[200]["Blacksmithing"] == [155, 155, 180], chains
-    assert chains[98]["Mining"] == [65, 65, 87] and chains[98]["Blacksmithing"] == [85, 155, 180], chains
+    # Copper bars are smelted into bronze bars by Mining, so smithing's use of them needs Mining.
+    assert chains[99]["Blacksmithing"] == [[85, 155, 180, ["Mining"]]], chains
+    assert chains[200]["Blacksmithing"] == [[155, 155, 180, []]], chains
+    assert chains[98]["Mining"] == [[65, 65, 87, []]], chains
+    assert chains[98]["Blacksmithing"] == [[85, 155, 180, ["Mining"]]], chains
     assert 301 not in chains and 300 in chains, chains
+    # A second route that needs nothing extra covers the one that does.
+    reagents2 = dict(reagents)
+    reagents2[5] = [(99, 1)]       # copper bar -> item 200 by Blacksmithing, no Mining needed
+    abilities2 = dict(abilities)
+    abilities2[5] = (164, 70, 70, 90)
+    products2 = dict(products)
+    products2[5] = 200
+    chains2 = build_chains(reagents2, abilities2, names, products2)
+    assert chains2[99]["Blacksmithing"] == [[85, 155, 180, []]], chains2
     direct = build_reagent_map(reagents, abilities, names)
     assert direct[99]["Mining"]["green"] == 87, direct  # copper bar: bronze recipe turns green at 87
     assert direct[300]["Blacksmithing"]["green"] == 180, direct
@@ -679,6 +721,11 @@ def main():
         help="Cache downloaded CSVs here (keyed by build). "
              "Reuses them on subsequent runs.",
     )
+    ap.add_argument(
+        "--chains-only", action="store_true",
+        help="Write only reagent_chains.lua (needs no item names). "
+             "Reads the tables from --cache-dir/<build>/ when they are there.",
+    )
     ap.add_argument("--selftest", action="store_true", help="Run the offline check and exit.")
     args = ap.parse_args()
     if args.selftest:
@@ -691,11 +738,12 @@ def main():
     # Download tables.
     print(f"\nFetching DB2 tables for build {build}...")
     tables = {}
-    for name in TABLES:
+    needed_tables = [t for t in TABLES if not (args.chains_only and t == "ItemSparse")]
+    for name in needed_tables:
         tables[name] = fetch_csv_table(name, build, args.cache_dir)
 
     # Print column names once for diagnostics.
-    for name in TABLES:
+    for name in needed_tables:
         if tables[name]:
             cols = list(tables[name][0].keys())
             print(f"  {name} columns: {', '.join(cols[:12])}"
@@ -713,6 +761,16 @@ def main():
     for sl in CRAFTING_LINES:
         n = prof_names.get(sl) or FALLBACK_NAMES.get(sl, "?")
         print(f"    {sl} = {n}")
+
+    if args.chains_only:
+        products = parse_spell_products(tables["SpellEffect"])
+        chains = build_chains(spell_reagents, abilities, prof_names, products)
+        print(f"  {len(chains)} reagents with downstream uses")
+        chains_path = os.path.join(os.path.dirname(os.path.abspath(args.output)), "reagent_chains.lua")
+        with open(chains_path, "w", encoding="utf-8") as fh:
+            fh.write(generate_chains_lua(chains, build))
+        print(f"Wrote {chains_path}")
+        return
 
     item_names = parse_item_sparse(tables["ItemSparse"])
     print(f"  {len(item_names)} item names loaded")

@@ -87,7 +87,7 @@ function Replay.Evaluate(snapshot, overrides)
       subClassID = tonumber(row.subclass),
       isEquippable = not NOT_GEAR[row.equipSlot or ""],
       isBound = row.bound == "1", sellPrice = tonumber(row.sellCopper),
-      isKept = row.kept == "1", isFlagged = row.flagged == "1",
+      isKept = row.kept == "1", isFlagged = row.flagged == "1", isMarkedGreen = row.markedGreen == "1",
       hasLoot = row.lootable == "1",
       questItemQuestIDs = questIDs, allQuestObjectivesCompleted = allDone,
     }
