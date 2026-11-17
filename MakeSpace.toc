@@ -2,7 +2,7 @@
 ## Title: Make Space
 ## Notes: Colored dots on bag items that mark what to delete, vendor, bank or keep
 ## Author: lingonkvist
-## Version: 0.6.7
+## Version: 0.6.8
 ## IconTexture: Interface\AddOns\MakeSpace\textures\icon
 ## SavedVariables: MakeSpaceAccountDB
 ## SavedVariablesPerCharacter: MakeSpaceDB

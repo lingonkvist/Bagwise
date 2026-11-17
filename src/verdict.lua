@@ -64,6 +64,8 @@ local function yellow(key, ...)
   return "yellow", reason, nil, nil, heading
 end
 
+local PLACEHOLDER_ITEM_LEVEL = 1
+
 local function evaluateLevelGap(item, state)
   if not (item.isBound and item.isEquippable) then return nil end
   if item.hasEffect then return nil end
@@ -80,6 +82,11 @@ local function evaluateLevelGap(item, state)
   -- level is the truer picture. Gear is only outdated when both say so.
   local requiredLevel = item.reqLevel or 0
   local itemLevel = item.itemLevel or 0
+  -- Item level 1 with no required level is a placeholder, not a level: special
+  -- items carry it (the Argent Dawn Commission, insignias, holiday outfits,
+  -- cosmetics), and so does starter gear. Neither says "outdated", so there is
+  -- no basis to judge.
+  if requiredLevel == 0 and itemLevel <= PLACEHOLDER_ITEM_LEVEL then return nil end
   local compareLevel = math.max(requiredLevel, itemLevel)
   if compareLevel <= 0 then return nil end
   local isItemLevel = itemLevel > requiredLevel
@@ -1106,9 +1113,15 @@ end
 -- game hasn't loaded yet, means no verdict (the scanner leaves
 -- equippedInSlots nil then). Weapons are left out: which weapon you want
 -- depends on proficiencies and class, not just level.
+local MISC_ARMOR_SUBCLASS_ID = 0 -- rings, necks, trinkets and the like: no armor value
+
 local function evaluateOutgearedWhite(item, state)
   if item.quality ~= COMMON_QUALITY then return nil end
   if not item.isEquippable or item.classID ~= ARMOR_CLASS_ID then return nil end
+  -- "A white has no stats, only armor" holds for cloth to plate and shields. A
+  -- white ring, neck or trinket is there for what it does, so it is not
+  -- compared; neither is anything with an effect.
+  if item.subClassID == MISC_ARMOR_SUBCLASS_ID or item.hasEffect then return nil end
 
   local equipped = item.equippedInSlots
   if not equipped or #equipped == 0 then return nil end

@@ -226,6 +226,11 @@ local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 -- Classic Era returns INVTYPE_NON_EQUIP_IGNORE for everything else
 -- (quest items, crafting mats, consumables, ammo, etc.), so a blocklist
 -- approach misses too many edge cases.
+local COSMETIC_SLOTS = {
+  INVTYPE_BODY   = true, -- shirt
+  INVTYPE_TABARD = true,
+}
+
 local EQUIP_SLOTS = {
   INVTYPE_HEAD           = true,
   INVTYPE_NECK           = true,
@@ -338,7 +343,9 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
   -- Item not cached by the client yet, skip for now
   if not name then return nil end
 
-  local isEquippable = equipSlot and EQUIP_SLOTS[equipSlot] or false
+  -- Shirts and tabards are worn for looks. No gear rule may judge them: an old
+  -- guild tabard is not "outdated", and a rare one is worth real gold.
+  local isEquippable = equipSlot and EQUIP_SLOTS[equipSlot] and not COSMETIC_SLOTS[equipSlot] or false
 
   -- Quest data: does this item start a quest? Is that quest done?
   local startsQuestID = questInfo and questInfo.questID or nil

@@ -3823,3 +3823,40 @@ describe("ReagentUseFacts, for /makespace why", function()
     assert.are.equal(0, #MakeSpace.Verdict.ReagentUseFacts(2318, {}))
   end)
 end)
+
+describe("Special items that carry a placeholder level", function()
+  local state = { class = "Warrior", race = "Orc", level = 41 }
+
+  it("gives bound gear with item level 1 and no required level no verdict (Argent Dawn Commission)", function()
+    local item = { id = 12846, classID = 4, subClassID = 0, quality = 1, isBound = true,
+                   isEquippable = true, reqLevel = 0, itemLevel = 1 }
+    assert.is_nil((MakeSpace.Verdict.Evaluate(item, state)))
+  end)
+
+  it("still judges real low-level gear", function()
+    local item = { id = 44002, classID = 4, subClassID = 2, quality = 1, isBound = true,
+                   isEquippable = true, reqLevel = 5, itemLevel = 5 }
+    assert.are.equal("green", (MakeSpace.Verdict.Evaluate(item, state)))
+  end)
+
+  it("does not compare a white ring, neck or trinket to what you wear", function()
+    local item = { id = 44003, classID = 4, subClassID = 0, quality = 1, isEquippable = true,
+                   itemLevel = 12, reqLevel = 0, isBound = false,
+                   equippedInSlots = { { quality = 2, itemLevel = 20 } } }
+    assert.is_nil((MakeSpace.Verdict.Evaluate(item, state)))
+  end)
+
+  it("does not compare white armor with an effect to what you wear", function()
+    local item = { id = 44004, classID = 4, subClassID = 2, quality = 1, isEquippable = true,
+                   itemLevel = 12, reqLevel = 5, isBound = false, hasEffect = true,
+                   equippedInSlots = { { quality = 2, itemLevel = 20 } } }
+    assert.is_nil((MakeSpace.Verdict.Evaluate(item, state)))
+  end)
+
+  it("protects the Forever fruit pulps no recipe in the data uses", function()
+    for _, id in ipairs({ 247815, 249802, 249803 }) do
+      local item = { id = id, classID = 7, subClassID = 8, quality = 1, count = 5, sellPrice = 0 }
+      assert.is_nil((MakeSpace.Verdict.Evaluate(item, state)))
+    end
+  end)
+end)

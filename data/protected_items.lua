@@ -19,6 +19,12 @@ MakeSpace.Data.ProtectedItems = {
   [268418] = "Plant in a Herbalism Greenhouse (camp item)", -- Scarce Herb Seeds
   -- Keys: a quest reward that does a job. Deleting it means going back for it.
   [9173] = "Needed to use the Gnomeregan teleporter in Booty Bay", -- Goblin Transponder
+  -- Forever cooking ingredients no recipe in the data uses. Forever may use them
+  -- somewhere the data does not reach, so no rule may call them safe.
+  [247815] = "Cooking ingredient, use not found", -- Crude Fruit Pulp
+  [249802] = "Cooking ingredient, use not found", -- Grainy Fruit Pulp
+  [249803] = "Cooking ingredient, use not found", -- Tangy Fruit Pulp
+
   -- Forever secrets and the like, from a community-researched list.
   -- The rules would call some of these safe (a level 15 sword at level 60, or a
   -- gray key), so each is held back and the tooltip says what it is. Where an
