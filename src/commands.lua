@@ -289,7 +289,11 @@ local COMMAND_HANDLERS = {
           .. " [" .. (quest.faction or "both") .. "] "
           .. (quest.done and "done" or "not done")
           .. (otherFaction(quest.faction, explained.faction) and ", other faction, ignored" or "")
-          .. (MakeSpace.Verdict.IsIgnoredQuest(quest.id) and ", standing turn-in quest, ignored" or ""))
+          .. (MakeSpace.Verdict.IsIgnoredQuest(quest.id) and ", standing turn-in quest, ignored" or "")
+          .. (MakeSpace.Verdict.IsLogOnlyQuest(quest.id) and ", crafting writ, counts only while in your log" or "")
+          .. (MakeSpace.Verdict.NeedsOtherProfession(quest.id,
+                explained.state.professionsKnown ~= false and explained.state.professionSkillLines or nil)
+              and ", needs a primary profession you do not have, ignored" or ""))
       end
     end
     print("  recipes: " .. (#explained.recipeProfessions > 0

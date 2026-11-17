@@ -416,6 +416,20 @@ describe("Scanner: the bank", function()
     assert.are.equal("green", MakeSpace.Scanner.GetResult(5, 1).verdict)
   end)
 
+  it("thins bank grays on their own, so a bank gray never takes a bag gray's dot", function()
+    scanWithBank({ { id = 300 }, { id = 300 } }, { [5] = { { id = 300 }, { id = 300 }, { id = 300 } } })
+    local function dots(bag, count)
+      local lit = 0
+      for slot = 1, count do
+        local result = MakeSpace.Scanner.GetResult(bag, slot)
+        if result and result.verdict then lit = lit + 1 end
+      end
+      return lit
+    end
+    assert.are.equal(1, dots(0, 2))
+    assert.are.equal(1, dots(5, 3))
+  end)
+
   it("counts only what you carry in the status numbers", function()
     scanWithBank({ { id = 300 } }, { [5] = { { id = 300 }, { id = 300 } } })
     assert.are.equal(1, MakeSpace.Scanner.Counts().items)

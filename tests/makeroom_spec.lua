@@ -148,10 +148,10 @@ end)
 
 describe("MakeRoom.MarkedResult", function()
   it("keeps the slot's own verdict and adds the delete detail", function()
-    local existing = { verdict = "green", reason = "Poor quality, sells for 5c" }
+    local existing = { verdict = "green", reason = "Cheapest gray, sells for 5c" }
     local result = MakeSpace.MakeRoom.MarkedResult(existing, 205)
     assert.are.equal("green", result.verdict)
-    assert.are.equal("Poor quality, sells for 5c", result.reason)
+    assert.are.equal("Cheapest gray, sells for 5c", result.reason)
     assert.are.equal("Delete to make room for your loot", result.detail)
     assert.is_nil(existing.detail)
   end)

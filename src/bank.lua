@@ -15,14 +15,15 @@ local BANK_KEEPS = {
   marked = true, -- your own mark holds wherever the item is
 }
 local BANK_DROPS = {
-  sell_at_vendor = true,     -- a vendor suggestion is not needed in the bank
   trivial_quest_item = true, -- you cannot abandon a quest from the bank
   other_profession_reagent = true, -- the bank is where mats for another character wait
 }
 
--- These only ever turn green as "worth very little": a hint to vendor something
--- that is already banked, and banked for a reason, so it is dropped like the rest.
+-- Their greens only say "vendor it" (worth very little, or about the vendor
+-- price): a hint for something already banked, and banked for a reason, so
+-- the green is dropped. A yellow from the same rule is still shown.
 local BANK_DROPS_GREEN = {
+  sell_at_vendor = true, -- a vendor suggestion is not needed in the bank (the auction hint is)
   recipe = true,
   outleveled_reagent = true,
 }

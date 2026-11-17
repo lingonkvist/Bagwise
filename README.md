@@ -18,7 +18,7 @@ Make Space checks every item against your quests, professions, class, level and 
 
 Hover an item and the tooltip explains the dot. On an item with no dot it names the quest that still needs the item, or the professions that use it. Prices show the numbers in white and `g`, `s` and `c` in the usual coin colours.
 
-An item the game calls a quest item, with no quest for you in the data, says "Quest item, no quest found" on its tooltip. Quests only another class or race can take are ignored.
+An item the game calls a quest item, with no quest for you in the data, says "Quest item, no quest found" on its tooltip. Quests only another class or race can take are ignored, and so are quests for a primary profession you do not have (unless the quest is already in your log; Cooking, First Aid and Fishing count, since anyone can learn them) and the crafting writs ("Craftsman's Writ: ...") unless one is in your log.
 
 You make every deletion yourself. Make Space has no delete button, no auto-destroy and no popups.
 
@@ -36,6 +36,7 @@ Green:
 - Trade goods that no recipe or quest uses.
 - Recipes and reagents for professions you do not have, and reagents you have outleveled, when the price is known, the auction pays too little to list, and the whole slot is worth under 50c (5c per level above level 10). The tooltip shows the price line under "Safe to vendor", or says "Worth very little" when there is no price line. A missing price never counts: an item nobody lists may be rare.
 - Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
+- Tradable green gear that auctions for clearly more than a vendor pays gets a yellow dot, "Consider auctioning". With a price from the shipped data both prices show underneath; a live Auctionator price is not repeated, since its tooltip shows it. It waits until the gear is judged not an upgrade, and Enchanters do not get it.
 
 A tradable green loses its dot when the auction pays clearly more than a vendor (finished quest items, unused trade goods, vendor and class reagents, white gear you cannot use). The tooltip then says why in one blue line, for example `Vendor 5c, auction up to 8s`, so a missing dot is not a mystery.
 
@@ -103,7 +104,7 @@ Click an item link in chat and the pop-out tooltip gets the general blue info: w
 
 ## In the bank
 
-Dots work in the bank and the warband bank too. People bank things on purpose, so a verdict only stays as it is when it holds for any character. Anything that depends on your professions, class or quests is at most yellow, "Bank it" hints are dropped because the item is already there, and vendor suggestions are not shown.
+Dots work in the bank and the warband bank too. People bank things on purpose, so a verdict only stays as it is when it holds for any character. Anything that depends on your professions, class or quests is at most yellow, "Bank it" hints are dropped because the item is already there, and vendor suggestions are not shown. "Consider auctioning" does show, since banked gear may still be worth listing. Grays in the bank are thinned like the ones in your bags: the cheapest keeps its dot, apart from the bags.
 
 ## Making room for loot
 

@@ -163,7 +163,7 @@ describe("tooltip basic output", function()
     MakeSpace.Data.ReagentProfessions = {}
     MakeSpace.Scanner = {
       GetResult = function()
-        return { verdict = "green", reason = "Shamans can't wear mail until 40",
+        return { verdict = "green", reason = "Shamans can't wear mail until level 40",
                  sellable = true }
       end,
     }
@@ -174,7 +174,7 @@ describe("tooltip basic output", function()
     MakeSpace.Tooltip.OnTooltipSetItem(tt)
 
     assert.is_truthy(tt.lines[1].text:find("pearl_green:14:14|t Safe to vendor$"))
-    assert.are.equal("Shamans can't wear mail until 40", tt.lines[2].text)
+    assert.are.equal("Shamans can't wear mail until level 40", tt.lines[2].text)
   end)
 
   it("shows a price with white numbers and coloured coin letters", function()
@@ -558,6 +558,26 @@ describe("tooltip profession info (no verdict)", function()
 
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Leatherworking %(170%-200%)"))
+  end)
+
+  it("shows the range through a conversion, not just the direct recipes", function()
+    MakeSpace.Data.ReagentProfessions = {
+      [2838] = { { "Blacksmithing", 3, 100, 100, 112 } },
+    }
+    MakeSpace.Data.ReagentChains = {
+      [2838] = { { "Blacksmithing", 125, 240, 250 } },
+    }
+    MakeSpace.Scanner = {
+      professionNames = { Blacksmithing = true },
+      GetResult = function() return {} end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:2838:...|h[Heavy Stone]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Data.ReagentChains = nil
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Blacksmithing %(100%-240%)"))
   end)
 
   it("player has 2 matching: both shown, main first", function()
@@ -1277,7 +1297,7 @@ describe("tooltip in the loot window", function()
 
   it("a skipped gray does not repeat its own price", function()
     setup()
-    installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
+    installScanner({ verdict = "green", reason = "Cheapest gray, sells for 1s 1c",
                      tag = MakeSpace.Verdict.POOR_QUALITY_TAG })
     MakeSpace.Scanner.LootDecision = function() return "leave" end
     MakeSpace.Scanner.MakeRoomSummary = function()
@@ -1296,7 +1316,7 @@ describe("tooltip in the loot window", function()
 
   it("does not repeat a gray's own sell price next to the comparison", function()
     setup()
-    installScanner({ verdict = "green", reason = "Poor quality, sells for 1s 1c",
+    installScanner({ verdict = "green", reason = "Cheapest gray, sells for 1s 1c",
       tag = MakeSpace.Verdict.POOR_QUALITY_TAG })
     MakeSpace.Scanner.LootDecision = function() return "leave" end
     MakeSpace.Scanner.MakeRoomSummary = function()
@@ -1327,7 +1347,7 @@ describe("tooltip in the loot window", function()
 
   it("tells a yellow gray to be saved for the vendor, with the value on one line", function()
     setup()
-    local reason, heading = MakeSpace.Verdict.PoorQualityReason(500, true, true)
+    local reason, heading = MakeSpace.Verdict.PoorQualityReason(500, true)
     installScanner({ verdict = "yellow", reason = reason, heading = heading })
 
     local tt = makeLootTooltip("|cff...|Hitem:2320:...|h[Coarse Thread]|h|r", 1)

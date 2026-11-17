@@ -126,6 +126,7 @@ local QUEST_INFO_NAME  = 3
 -- faction can take the quest; absent means open to both.
 local QUEST_INFO_FACTION = 4
 local QUEST_INFO_CLASSES = 5 -- class bitmask, when only some classes can take the quest
+local QUEST_INFO_SKILL   = 7 -- skillLine ID of the profession the quest needs, when it needs one
 local QUEST_INFO_RACES = 6   -- race bitmask, when only some races of a faction can
 local FACTION_CODES = { Alliance = "A", Horde = "H" }
 
@@ -148,6 +149,38 @@ end
 -- as a use for an item.
 local IGNORED_QUEST_PREFIXES = { "A Donation of ", "The Alliance Needs ", "The Horde Needs " }
 
+-- The crafting writs ("Craftsman's Writ: Small Silk Pack", about 175 in Forever)
+-- are orders from a customer that start from a writ item you have to be holding.
+-- Without one in your log they ask nothing of you, but each names an item, so
+-- they would hold every bag, robe and potion of that kind. They count only
+-- while the quest is in your log.
+local LOG_ONLY_QUEST_PREFIX = "Craftsman's Writ"
+
+local function isLogOnlyQuest(questID)
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
+  local name = info and info[QUEST_INFO_NAME]
+  return name ~= nil and name:sub(1, #LOG_ONLY_QUEST_PREFIX) == LOG_ONLY_QUEST_PREFIX
+end
+
+-- Cooking, First Aid and Fishing can be learned any time, so a quest for one is
+-- never out of reach (the same line the other-profession reagent hint draws).
+local ANYONE_CAN_LEARN = { [185] = true, [129] = true, [356] = true }
+
+--- Does this quest need a primary profession you do not have? A quest nobody
+-- without it can finish never holds an item. Not knowing your professions
+-- (skillLines nil) says no, so the item stays held.
+-- @param skillLines table|nil  set of your profession skillLine IDs
+function MakeSpace.Verdict.NeedsOtherProfession(questID, skillLines)
+  local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
+  local skill = info and info[QUEST_INFO_SKILL]
+  return (skill and skillLines and not ANYONE_CAN_LEARN[skill] and not skillLines[skill]) and true or false
+end
+
+--- Is this a crafting writ, which counts only while it is in your quest log?
+function MakeSpace.Verdict.IsLogOnlyQuest(questID)
+  return isLogOnlyQuest(questID)
+end
+
 --- Is this quest one that never keeps an item in your bags?
 function MakeSpace.Verdict.IsIgnoredQuest(questID)
   local info = MakeSpace.Data.QuestInfo and MakeSpace.Data.QuestInfo[questID]
@@ -168,7 +201,9 @@ end
 -- quest never frees or holds anything for a mage.
 -- @param questIDs table        quest IDs from QuestItems
 -- @param who  string|table|nil  "Alliance" or "Horde" (anything else keeps both), or
---                               { faction =, class = class token, race = race file }
+--                               { faction =, class = class token, race = race file,
+--                                 skillLines = set of your profession IDs (nil: not known),
+--                                 inLog = function(questID) }
 -- @return table  the quests that can matter to this player (may be empty)
 function MakeSpace.Verdict.QuestsThatMatter(questIDs, who)
   local faction = type(who) == "table" and who.faction or who
@@ -176,16 +211,24 @@ function MakeSpace.Verdict.QuestsThatMatter(questIDs, who)
   local raceBit = type(who) == "table" and RACE_BITS[who.race] or nil
   local code = FACTION_CODES[faction]
   local info = MakeSpace.Data.QuestInfo
+  local inLog = type(who) == "table" and who.inLog or nil
+  local skillLines = type(who) == "table" and who.skillLines or nil
   local kept = {}
   for i = 1, #questIDs do
     local questInfo = info and info[questIDs[i]]
     local questFaction = questInfo and questInfo[QUEST_INFO_FACTION]
     local classes = questInfo and questInfo[QUEST_INFO_CLASSES]
     local races = questInfo and questInfo[QUEST_INFO_RACES]
+    -- A quest for a profession you do not have can never be finished, unless you
+    -- already took it. Not known which professions you have: it stays.
+    local needsOtherProfession = MakeSpace.Verdict.NeedsOtherProfession(questIDs[i], skillLines)
+        and not (inLog and inLog(questIDs[i]))
     if not MakeSpace.Verdict.IsIgnoredQuest(questIDs[i])
+        and not (isLogOnlyQuest(questIDs[i]) and not (inLog and inLog(questIDs[i])))
         and (not code or questFaction == nil or questFaction == code)
         and not (classBit and classes and not maskHas(classes, classBit))
-        and not (raceBit and races and not maskHas(races, raceBit)) then
+        and not (raceBit and races and not maskHas(races, raceBit))
+        and not needsOtherProfession then
       kept[#kept + 1] = questIDs[i]
     end
   end
@@ -480,17 +523,16 @@ function MakeSpace.Verdict.ColoredName(name, quality)
   return hex .. name .. "|r"
 end
 
---- The reason line for a gray. When other grays were silenced, the one that
--- keeps its dot says it is the cheapest, so the single dot makes sense.
+--- The reason line for a gray. Only the cheapest gray keeps a dot, so it always
+-- says it is the cheapest, which is why the one dot makes sense.
 -- @param value     number   what the stack sells for, in copper
--- @param isCheapestOfSeveral boolean
 -- @param isWorthSilver boolean  true for a gray above the safe-to-delete value:
 --        the dot is yellow and the reason warns that it is worth something
-function MakeSpace.Verdict.PoorQualityReason(value, isCheapestOfSeveral, isWorthSilver)
+function MakeSpace.Verdict.PoorQualityReason(value, isWorthSilver)
   if isWorthSilver then
-    return note("gray_worth", MakeSpace.Verdict.FormatMoney(value), isCheapestOfSeveral)
+    return note("gray_worth", MakeSpace.Verdict.FormatMoney(value))
   end
-  local label = isCheapestOfSeveral and "Cheapest gray" or "Poor quality"
+  local label = "Cheapest gray"
   if value == 0 then return label .. ", no vendor value" end
   return label .. ", sells for " .. MakeSpace.Verdict.FormatMoney(value)
 end
@@ -509,10 +551,10 @@ local function evaluatePoorQuality(item, state)
 
   local value = stackValue(item)
   if value >= grayThreshold(state) then
-    local reason, heading = MakeSpace.Verdict.PoorQualityReason(value, false, true)
+    local reason, heading = MakeSpace.Verdict.PoorQualityReason(value, true)
     return "yellow", reason, nil, POOR_QUALITY_TAG, heading
   end
-  return "green", MakeSpace.Verdict.PoorQualityReason(value, false), nil, POOR_QUALITY_TAG
+  return "green", MakeSpace.Verdict.PoorQualityReason(value), nil, POOR_QUALITY_TAG
 end
 
 --- Keep only the cheapest few poor-quality greens, so a bag full of grays
@@ -692,7 +734,13 @@ local function useList(itemID, state)
 end
 
 -- The uses merged per profession into { name, minSkill, maxSkill, greenSkill }.
-local function reagentUses(itemID, state)
+-- Public so the tooltip shows the same ranges the verdict judges by.
+local reagentUses
+function MakeSpace.Verdict.ReagentUses(itemID, state)
+  return reagentUses(itemID, state)
+end
+
+function reagentUses(itemID, state)
   local list = useList(itemID, state)
   if not list then return nil end
   local merged, order = {}, {}
@@ -1063,7 +1111,7 @@ local function evaluateUnwearableWhite(item, state)
   local reason = CLASS_PLURALS[state.playerClass] .. " can't " .. wording
   if rule ~= nil then
     if (state.level or 1) >= rule then return nil end
-    reason = reason .. " until " .. rule
+    reason = reason .. " until level " .. rule
   end
   return "green", reason
 end
@@ -1240,12 +1288,18 @@ local function checkSellAtVendor(item, state)
         .. " ilvl " .. tostring(item.itemLevel) .. "; worn: " .. table.concat(worn, ", ") .. ")")
     return check
   end
+  -- Everything that could keep the call open has been weighed: the price is
+  -- the only thing left, so a price clearly above the limit is a finding too.
+  check.settled = true
   check.passes = within
   return check
 end
 
 local function evaluateSellAtVendor(item, state)
   local check = checkSellAtVendor(item, state)
+  if check and check.settled and not check.passes and Auction.IsTradeable(item) then
+    return yellow("auction_it", Auction.PriceNote(item, check.ceiling, check.source), check.source == "live")
+  end
   if not (check and check.passes) then return nil end
   local money = MakeSpace.Verdict.FormatMoney
   return "green", "Vendor " .. money(item.sellPrice) .. ", auction "

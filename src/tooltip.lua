@@ -237,8 +237,30 @@ local function addPriceNote(tooltip, result)
   addLine(tooltip, result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
 end
 
-local function renderProfessionDetails(tooltip, profEntries)
+-- The profession rows as the verdict judges them: recipes that take the item
+-- directly plus those that take something made from it (Heavy Stone is a
+-- Blacksmithing 100 reagent, but its sharpening stones reach 240). Positional
+-- like the generated data, so the rest of the rendering is unchanged.
+local function mergedProfessionEntries(itemID, profEntries, myProfs)
+  local verdict = MakeSpace.Verdict
+  if not (itemID and verdict and verdict.ReagentUses) then return profEntries end
+  local uses = verdict.ReagentUses(itemID, { professionNames = myProfs })
+  if not uses then return profEntries end
+  local counts = {}
+  for i = 1, #profEntries do counts[profEntries[i][PROF_NAME]] = profEntries[i][PROF_RECIPE_COUNT] end
+  local merged = {}
+  for i = 1, #uses do
+    local use = uses[i]
+    if use.minSkill and use.maxSkill then
+      merged[#merged + 1] = { use.name, counts[use.name] or 1, use.minSkill, use.maxSkill, use.greenSkill }
+    end
+  end
+  return #merged > 0 and merged or profEntries
+end
+
+local function renderProfessionDetails(tooltip, profEntries, itemID)
   local myProfs = MakeSpace.Scanner and MakeSpace.Scanner.professionNames
+  profEntries = mergedProfessionEntries(itemID, profEntries, myProfs)
   local playerEntries = myProfs
       and playerProfessionsFrom(profEntries, myProfs) or {}
 
@@ -581,7 +603,7 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     local isVendorReagent = MakeSpace.Data.VendorReagents
         and MakeSpace.Data.VendorReagents[itemID]
     if profEntries and not isVendorReagent then
-      renderProfessionDetails(tooltip, profEntries)
+      renderProfessionDetails(tooltip, profEntries, itemID)
       local row, inLog
       if questIDs then row, inLog = openQuestRow(questIDs, profEntries) end
       if row then addQuestRow(tooltip, row, inLog) end

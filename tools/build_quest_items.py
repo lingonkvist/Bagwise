@@ -49,6 +49,7 @@ ITEM_OBJECTIVE = 3    # sub-index within objectives
 
 SOURCE_ITEM_ID = 11   # int: item provided by quest giver
 ZONE_OR_SORT = 17     # int: positive = AreaID, negative = QuestSortID
+REQUIRED_SKILL = 18   # table: {skillLine, value}, a profession the quest needs
 REQUIRED_SOURCE_ITEMS = 21  # table: {itemID, ...}
 QUEST_FLAGS = 23      # bitmask: 4096 daily, 32768 weekly, 65536 monthly
 SPECIAL_FLAGS = 24    # bitmask: 1 = repeatable
@@ -328,6 +329,18 @@ def races_of(required_races: int | None) -> int | None:
     return required_races
 
 
+def skill_of(required_skill: str | None) -> int | None:
+    """The profession (skillLine ID) a quest needs, or None.
+
+    Questie writes {skillLine, value}; the value is not kept, since a quest
+    you can reach with the profession is still yours. An empty {} is no need.
+    """
+    if not required_skill:
+        return None
+    match = re.match(r"\{\s*(\d+)", required_skill.strip())
+    return int(match.group(1)) if match else None
+
+
 def classes_of(required_classes: int | None) -> int | None:
     """The class mask when only some classes can take the quest."""
     return required_classes if required_classes else None
@@ -355,11 +368,13 @@ QUEST_LINE_RE = re.compile(r'^(?:quest)?\[(\d+)\]\s*=\s*\{(.+)\},?\s*$')
 
 
 class QuestMeta:
-    __slots__ = ('name', 'level', 'zone', 'faction', 'repeatable', 'classes', 'races')
+    __slots__ = ('name', 'level', 'zone', 'faction', 'repeatable', 'classes', 'races', 'skill')
 
     def __init__(self, name: str | None, level: int | None, zone: str | None,
                  faction: str | None = None, repeatable: bool = False,
-                 classes: int | None = None, races: int | None = None):
+                 classes: int | None = None, races: int | None = None,
+                 skill: int | None = None):
+        self.skill = skill
         self.repeatable = repeatable
         self.classes = classes
         self.races = races
@@ -419,14 +434,25 @@ def parse_quests(source_path: Path) -> tuple[dict[int, list[str]], dict[int, Que
         if len(fields) >= REQUIRED_CLASSES:
             classes = classes_of(parse_int(fields[REQUIRED_CLASSES - 1]))
 
+        skill = None
+        if len(fields) >= REQUIRED_SKILL:
+            skill = skill_of(fields[REQUIRED_SKILL - 1])
+
         quest_flags = parse_int(fields[QUEST_FLAGS - 1]) if len(fields) >= QUEST_FLAGS else None
         special_flags = parse_int(fields[SPECIAL_FLAGS - 1]) if len(fields) >= SPECIAL_FLAGS else None
 
         quest_meta[quest_id] = QuestMeta(name, level, zone, faction,
                                          is_repeatable(quest_flags, special_flags),
-                                         classes, races)
+                                         classes, races, skill)
 
     return quests, quest_meta
+
+
+# Items a quest uses that the Questie data does not link to it. Hand-kept; the
+# item is spent once the quest is done.
+EXTRA_ITEM_QUESTS: dict[int, set[int]] = {
+    268520: {95124},  # Lamora's Key: Admiral Lamora
+}
 
 
 def extract_item_quests(quests: dict[int, list[str]]) -> dict[int, set[int]]:
@@ -532,10 +558,12 @@ def format_lua(item_quests: dict[int, set[int]],
         -- Questie data is licensed under GPL-3.0.  See COPYING and source/ATTRIBUTION.md.
         --
         -- QuestItems: item ID -> {{questID, ...}}
-        -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction, classes, races}}
+        -- QuestInfo:  quest ID -> {{level, "zoneName", "name", faction, classes, races, skill}}
         --             for tooltips and filtering. faction is "A", "H" or nil for
         --             both; classes and races are bitmasks, set only when some
         --             classes or some races of a faction can take the quest.
+        --             skill is the profession (skillLine ID) the quest needs, so
+        --             a quest for a profession you do not have is left out.
         --
         -- RepeatableQuests: quest ID -> true for daily, weekly, monthly and
         --             repeatable quests. Finishing one says nothing about
@@ -587,7 +615,8 @@ def format_lua(item_quests: dict[int, set[int]],
         # faction, class mask and race mask follow the name; trailing blanks are left off.
         extra = [f'"{meta.faction}"' if meta.faction else "nil",
                  str(meta.classes) if meta.classes else "nil",
-                 str(meta.races) if meta.races else "nil"]
+                 str(meta.races) if meta.races else "nil",
+                 str(meta.skill) if meta.skill else "nil"]
         while extra and extra[-1] == "nil":
             extra.pop()
         extra_str = "".join(f", {part}" for part in extra)
@@ -668,6 +697,8 @@ def main():
 
     print("Extracting item-quest relationships...")
     item_quests = extract_item_quests(quests)
+    for item_id, quest_ids in EXTRA_ITEM_QUESTS.items():
+        item_quests[item_id].update(quest_ids)
 
     print(f"  {len(item_quests)} items referenced by quests")
     unique_quests = len({qid for qids in item_quests.values() for qid in qids})

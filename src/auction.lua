@@ -188,6 +188,18 @@ local function priceNote(item, ceiling, source)
   return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction " .. approx .. money(ceiling)
 end
 
+--- The dearest price Auctionator has shown for this item, however old or
+-- unconfirmed. It is never trusted to say an item is cheap, but it is enough to
+-- say it might not be: a green waits for a price that may be high, even when
+-- that price is a week old or the snapshot has nothing to back it.
+local function dearestReading(item)
+  local reading
+  for _, price in ipairs({ item.livePrice or 0, item.stalePrice or 0 }) do
+    if type(price) == "number" and price > (reading or 0) then reading = price end
+  end
+  return reading
+end
+
 --- Why a green on a vendor-trash item must not stand: the auction house may pay
 -- more than a vendor. Only for items that can be traded at all. Where the data
 -- has no price for an item, nobody lists it often enough to matter, so the green
@@ -207,6 +219,13 @@ local function blocker(item, state)
   end
   if source == "unknown" then
     return "this version may sell for more at auction"
+  end
+  -- A reading the price rules did not trust (older than a few days, or not
+  -- backed by the snapshot) still blocks when it is high, never when it is low.
+  local reading = dearestReading(item)
+  if reading and (not ceiling or reading > ceiling)
+      and reading > sellLimit(item, "live", state) then
+    ceiling, source = reading, "live"
   end
   if not ceiling or ceiling <= sellLimit(item, source, state) then return nil end
   -- The same facts for the tooltip, which tells the player why there is no dot.
@@ -244,6 +263,12 @@ local function priceLine(item, state)
   -- show it, and say the auction is not worth it.
   if source ~= "live" and staleSaysCheap(item, state) then
     return priceNote(item, item.stalePrice, "live"), true
+  end
+  -- The same high reading that blocks a green is shown as the price.
+  local reading = dearestReading(item)
+  if reading and (not ceiling or reading > ceiling) and reading >= MIN_LISTING_PER_ITEM
+      and reading > sellLimit(item, "live", state) then
+    return priceNote(item, reading, "live")
   end
   if source ~= "live" and MakeSpace.Data and MakeSpace.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end

@@ -35,10 +35,11 @@ local NOTES = {
   quest_not_worth = function()
     return "Quest is far below you, probably not worth taking", "Low-level quest", "Probably not worth it"
   end,
-  gray_worth = function(value, isCheapest)
-    -- The detail line is the reason itself, so it reads like the green gray's
+  gray_worth = function(value)
+    -- Only the cheapest gray keeps a dot, so it is always "the cheapest". The
+    -- detail line is the reason itself, so it reads like the green gray's
     -- ("Cheapest gray, sells for 5c") and keeps "but worth", which says why it is not green.
-    local reason = (isCheapest and "Cheapest gray" or "Gray") .. ", but worth " .. value
+    local reason = "Cheapest gray, but worth " .. value
     return reason, "Save for vendor", reason
   end,
   no_known_use = function(value)
@@ -68,6 +69,13 @@ local NOTES = {
     local rest = green and ("recipes turn green at " .. profession .. " " .. skill)
         or (profession .. " recipes use it up to " .. skill)
     return "Outleveled, " .. rest, "Outleveled reagent", capitalize(rest)
+  end,
+  auction_it = function(priceText, isLive)
+    -- The detail is the price line itself ("Vendor 3s, auction up to 8s"). A live
+    -- price is Auctionator's own, which its tooltip already shows right above, so
+    -- only a snapshot price (a number Auctionator does not show) repeats it here.
+    return "Consider auctioning (" .. priceText:sub(1, 1):lower() .. priceText:sub(2) .. ")",
+        "Consider auctioning", (not isLive) and priceText or nil
   end,
   open_it = function()
     return "Open it, the contents may stack", "Open it", "Contents may stack"

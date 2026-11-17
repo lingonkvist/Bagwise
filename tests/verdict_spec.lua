@@ -973,6 +973,21 @@ describe("Verdict.QuestsThatMatter", function()
     assert.are.equal(2, horde[1])
   end)
 
+  it("counts a crafting writ only while it is in the quest log", function()
+    withQuestInfo({ [7] = { 60, nil, "Craftsman's Writ: Small Silk Pack" } })
+
+    local idle = MakeSpace.Verdict.QuestsThatMatter({ 7 }, { faction = "Horde" })
+    local noLog = MakeSpace.Verdict.QuestsThatMatter({ 7 },
+        { faction = "Horde", inLog = function() return false end })
+    local active = MakeSpace.Verdict.QuestsThatMatter({ 7 },
+        { faction = "Horde", inLog = function(id) return id == 7 end })
+    restore()
+
+    assert.are.equal(0, #idle)
+    assert.are.equal(0, #noLog)
+    assert.are.equal(1, #active)
+  end)
+
   it("keeps quests open to both factions", function()
     withQuestInfo({ [3] = { 40, "Tanaris", "Neutral quest" } })
 
@@ -1126,21 +1141,21 @@ describe("Gray items by vendor value", function()
     local verdict, reason = MakeSpace.Verdict.Evaluate(gray(), stateAtLevel(30))
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Poor quality, sells for 10c", reason)
+    assert.are.equal("Cheapest gray, sells for 10c", reason)
   end)
 
   it("grays with no vendor value are green", function()
     local verdict, reason = MakeSpace.Verdict.Evaluate(gray({ sellPrice = 0 }), stateAtLevel(30))
 
     assert.are.equal("green", verdict)
-    assert.are.equal("Poor quality, no vendor value", reason)
+    assert.are.equal("Cheapest gray, no vendor value", reason)
   end)
 
   it("a gray that sells for real money is yellow and says so", function()
     local verdict, reason = MakeSpace.Verdict.Evaluate(gray({ sellPrice = 500 }), stateAtLevel(30))
 
     assert.are.equal("yellow", verdict)
-    assert.are.equal("Gray, but worth 5s", reason)
+    assert.are.equal("Cheapest gray, but worth 5s", reason)
   end)
 
   it("judges the whole stack, not one item", function()
@@ -1269,9 +1284,9 @@ describe("White armor your class can't wear", function()
     local _, reason = MakeSpace.Verdict.Evaluate(whiteArmor(4), stateFor("WARRIOR"))
 
     assert.are.equal("green", early)
-    assert.are.equal("Warriors can't wear plate until 40", reason)
+    assert.are.equal("Warriors can't wear plate until level 40", reason)
     local _, shamanReason = MakeSpace.Verdict.Evaluate(whiteArmor(3), stateFor("SHAMAN"))
-    assert.are.equal("Shamans can't wear mail until 40", shamanReason)
+    assert.are.equal("Shamans can't wear mail until level 40", shamanReason)
   end)
 
   it("goes silent once the class can wear it", function()
@@ -1380,9 +1395,9 @@ describe("Reason wording", function()
   end)
 
   it("the gray that keeps its dot says it is the cheapest", function()
-    assert.are.equal("Cheapest gray, sells for 5c", MakeSpace.Verdict.PoorQualityReason(5, true))
-    assert.are.equal("Cheapest gray, no vendor value", MakeSpace.Verdict.PoorQualityReason(0, true))
-    assert.are.equal("Poor quality, sells for 5c", MakeSpace.Verdict.PoorQualityReason(5, false))
+    assert.are.equal("Cheapest gray, sells for 5c", MakeSpace.Verdict.PoorQualityReason(5))
+    assert.are.equal("Cheapest gray, no vendor value", MakeSpace.Verdict.PoorQualityReason(0))
+    assert.are.equal("Cheapest gray, sells for 5c", MakeSpace.Verdict.PoorQualityReason(5))
   end)
 end)
 
@@ -2097,7 +2112,14 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     assert.is_nil(bank.verdict)
   end)
 
-  it("still green up to the limit, silent above it", function()
+  it("is still shown in the bank when it says to consider auctioning", function()
+    local bank = MakeSpace.Verdict.ForBank({ verdict = "yellow", reason = "Consider auctioning (vendor 3s, auction up to 50s)",
+      rule = "sell_at_vendor", heading = { title = "Consider auctioning", detail = "Vendor 3s, auction up to 50s" } })
+    assert.are.equal("yellow", bank.verdict)
+    assert.are.equal("Consider auctioning", bank.heading.title)
+  end)
+
+  it("still green up to the limit, yellow above it", function()
     -- 3s vendor, snapshot price: the limit is about 4s 72c (see src/curves.lua)
     local limit = math.floor(MakeSpace.Curves.Limit(300, "item", "gear"))
     setPrices({ [41001] = limit })
@@ -2106,7 +2128,7 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     local above = MakeSpace.Verdict.Evaluate(greenBoe(), state)
     restore()
     assert.are.equal("green", atLimit)
-    assert.is_nil(above)
+    assert.are.equal("yellow", above)
   end)
 
   it("the allowed margin shrinks as the vendor price grows", function()
@@ -2135,7 +2157,7 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     local above = MakeSpace.Verdict.Evaluate(greenBoe({ sellPrice = 90 }), state)
     restore()
     assert.are.equal("green", verdict)
-    assert.is_nil(above)
+    assert.are.equal("yellow", above)
   end)
 
   it("an old snapshot tightens the limit, a live price does not", function()
@@ -2147,7 +2169,7 @@ describe("Safe to vendor: the auction price is close to the vendor price", funct
     local live = MakeSpace.Verdict.Evaluate(greenBoe({ livePrice = limit }), oldState)
     restore()
     assert.are.equal("green", fresh)
-    assert.is_nil(old)
+    assert.are.equal("yellow", old)
     assert.are.equal("green", live)
   end)
 
@@ -2208,8 +2230,7 @@ describe("Yellow headings", function()
       { { "very_low_item_level", 30, 60 },  "Very low item level (30 for level 60)",      "Outleveled gear",     "Item level 30, you are 60" },
       { { "quest_abandon" },                "Quest is far below you, consider abandoning it", "Low-level quest", "Consider abandoning it" },
       { { "quest_not_worth" },              "Quest is far below you, probably not worth taking", "Low-level quest", "Probably not worth it" },
-      { { "gray_worth", "4s 65c", false },  "Gray, but worth 4s 65c",                    "Save for vendor",     "Gray, but worth 4s 65c" },
-      { { "gray_worth", "4s 65c", true },   "Cheapest gray, but worth 4s 65c",           "Save for vendor",     "Cheapest gray, but worth 4s 65c" },
+      { { "gray_worth", "4s 65c" },         "Cheapest gray, but worth 4s 65c",           "Save for vendor",     "Cheapest gray, but worth 4s 65c" },
       { { "no_known_use", "3s" },           "Not used for any quest or recipe, sells for 3s", "No known use",   nil },
       { { "not_your_profession" },          "You don't have this profession. May sell at the auction house", "Not your profession", nil },
       { { "bank_skill", "Alchemy", 126 },   "Bank it, needs Alchemy 126",                "Bank it",             "Needs Alchemy 126" },
@@ -2338,7 +2359,7 @@ describe("Auction price per version of an item", function()
     local pricey = {}
     for k, v in pairs(gear) do pricey[k] = v end
     pricey.bonusKey = "12722"
-    assert.is_nil((MakeSpace.Verdict.Evaluate(pricey, state)))
+    assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(pricey, state)))
     MakeSpace.Data.AuctionPriceCeiling = nil
     MakeSpace.Data.AuctionVariantCeiling = nil
   end)
@@ -2367,7 +2388,7 @@ describe("Auction price per version of an item", function()
     assert.are.equal("Vendor 7s 25c, auction up to 9s", reason)
     -- one dear version among the listed ones keeps the green away
     MakeSpace.Data.AuctionVariantCeiling = { [777010] = { ["12744"] = 800, ["12745"] = 700, ["12746"] = 27000 } }
-    assert.is_nil((MakeSpace.Verdict.Evaluate(unlisted, state)))
+    assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(unlisted, state)))
     -- two listed versions are too few to stand in for the rest
     MakeSpace.Data.AuctionVariantCeiling = { [777010] = { ["12744"] = 800, ["12745"] = 700 } }
     assert.is_nil((MakeSpace.Verdict.Evaluate(unlisted, state)))
@@ -3146,6 +3167,122 @@ describe("Items for a quest far above you", function()
   end)
 end)
 
+describe("Quests that need a profession", function()
+  local saved
+  local function withInfo()
+    saved = MakeSpace.Data.QuestInfo
+    -- skill 164 is Blacksmithing, 185 Cooking
+    MakeSpace.Data.QuestInfo = {
+      [1] = { 40, "Tanaris", "Smith's Order", nil, nil, nil, 164 },
+      [2] = { 40, "Tanaris", "Ordinary Errand" },
+      [3] = { 40, "Tanaris", "Cook's Order", nil, nil, nil, 185 },
+    }
+  end
+  local function restore() MakeSpace.Data.QuestInfo = saved end
+
+  it("is left out when you do not have the profession", function()
+    withInfo()
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 1, 2 }, { faction = "Horde", skillLines = { [185] = true } })
+    restore()
+    assert.are.equal(1, #kept)
+    assert.are.equal(2, kept[1])
+  end)
+
+  it("stays for Cooking, First Aid and Fishing, which anyone can learn", function()
+    withInfo()
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 3 }, { faction = "Horde", skillLines = { [164] = true } })
+    restore()
+    assert.are.equal(1, #kept)
+  end)
+
+  it("stays when you have the profession, at any skill", function()
+    withInfo()
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 1, 2 }, { faction = "Horde", skillLines = { [164] = true } })
+    restore()
+    assert.are.equal(2, #kept)
+  end)
+
+  it("stays when your professions are not known", function()
+    withInfo()
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 1, 2 }, { faction = "Horde" })
+    restore()
+    assert.are.equal(2, #kept)
+  end)
+
+  it("stays when the quest is already in your log", function()
+    withInfo()
+    local kept = MakeSpace.Verdict.QuestsThatMatter({ 1 },
+        { faction = "Horde", skillLines = {}, inLog = function(id) return id == 1 end })
+    restore()
+    assert.are.equal(1, #kept)
+  end)
+end)
+
+describe("Old Auctionator readings only ever block", function()
+  local state = { level = 20, professionNames = {}, professionsKnown = true }
+  local function thread(overrides)
+    local item = { id = 2320, classID = 7, subClassID = 5, quality = 1, sellPrice = 10,
+      count = 1, isBound = false, maxStack = 20 }
+    for key, value in pairs(overrides) do item[key] = value end
+    return item
+  end
+  local function evaluate(item)
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = {}
+    local verdict, reason, _, _, _, _, note = MakeSpace.Verdict.Evaluate(item, state)
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    return verdict, reason, note
+  end
+
+  it("a week-old high reading keeps a vendor reagent from going green", function()
+    local verdict, _, note = evaluate(thread({ stalePrice = 5000, staleAge = 8 }))
+    assert.is_nil(verdict)
+    assert.are.equal("Vendor 10c, auction about 50s", note)
+  end)
+
+  it("a two-day-old high reading with no snapshot price blocks too", function()
+    local verdict = evaluate(thread({ livePrice = 5000, liveAge = 2 }))
+    assert.is_nil(verdict)
+  end)
+
+  it("a low old reading does not block", function()
+    local verdict = evaluate(thread({ stalePrice = 10, staleAge = 8 }))
+    assert.are.equal("green", verdict)
+  end)
+end)
+
+describe("Green gear the auction pays well for", function()
+  it("is a yellow that says to consider auctioning, with no price line when Auctionator has it", function()
+    local item = { id = 42001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
+      reqLevel = 18, sellPrice = 300, count = 1, isBound = false, liveAge = 0, livePrice = 5000,
+      equippedInSlots = { { quality = 2, itemLevel = 25 } } }
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = {}
+    local verdict, reason, _, _, rule, heading = MakeSpace.Verdict.Evaluate(item,
+        { level = 20, professionNames = {}, professionsKnown = true })
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("sell_at_vendor", rule)
+    assert.are.equal("Consider auctioning (vendor 3s, auction about 50s)", reason)
+    assert.are.equal("Consider auctioning", heading.title)
+    assert.is_nil(heading.detail)
+  end)
+
+  it("shows the price line under it when the price is the shipped snapshot's", function()
+    local item = { id = 42001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
+      reqLevel = 18, sellPrice = 300, count = 1, isBound = false,
+      equippedInSlots = { { quality = 2, itemLevel = 25 } } }
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = { [42001] = 5000 }
+    local verdict, _, _, _, _, heading = MakeSpace.Verdict.Evaluate(item,
+        { level = 20, professionNames = {}, professionsKnown = true })
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    assert.are.equal("yellow", verdict)
+    assert.are.equal("Consider auctioning", heading.title)
+    assert.are.equal("Vendor 3s, auction up to 50s", heading.detail)
+  end)
+end)
+
 describe("Live prices from Auctionator", function()
   local function boe(overrides)
     local item = { id = 42001, classID = 4, subClassID = 2, quality = 2, itemLevel = 20,
@@ -3189,7 +3326,7 @@ describe("Live prices from Auctionator", function()
 
   it("gives no green when the live price is well above the vendor price", function()
     withSnapshot({}, function()
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ livePrice = 900 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 900 }), state)))
     end)
   end)
 
@@ -3230,10 +3367,10 @@ describe("Live prices from Auctionator", function()
       assert.are.equal("Vendor 3s, auction up to 4s 80c", reason)
       -- snapshot 2000: floor 1200 is over the limit however low Auctionator says
       MakeSpace.Data.AuctionVariantCeiling = versions(2000)
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 100 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 100 }), state)))
       -- a live price above the floor counts as it is
       MakeSpace.Data.AuctionVariantCeiling = versions(900)
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 1500 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ bonusKey = "12744", livePrice = 1500 }), state)))
       MakeSpace.Data.AuctionVariantCeiling = nil
     end)
   end)
@@ -3256,7 +3393,7 @@ describe("Live prices from Auctionator", function()
 
   it("ignores a live price far below the snapshot, since it may be a lowball", function()
     withSnapshot({ [42001] = 2000 }, function()
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
       local facts = table.concat(MakeSpace.Verdict.SellAtVendorFacts(boe({ livePrice = 350 }), state), "\n")
       assert.is_truthy(facts:find("lowball", 1, true))
     end)
@@ -3282,7 +3419,7 @@ describe("Live prices from Auctionator", function()
 
   it("trusts a live price far below the snapshot when the recent days agree on it", function()
     withSnapshot({ [42001] = 2000 }, function()
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 350 }), state)))
       assert.are.equal("green", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 350, liveSteady = true }), state)))
       local facts = table.concat(MakeSpace.Verdict.SellAtVendorFacts(boe({ livePrice = 350, liveSteady = true }), state), "\n")
       assert.is_truthy(facts:find("steady over the last days", 1, true))
@@ -3292,7 +3429,7 @@ describe("Live prices from Auctionator", function()
   it("falls back to the snapshot rules when the live price is ignored", function()
     withSnapshot({ [42001] = 900 }, function()
       -- 250 is below half of 900, so the snapshot (900, too much) decides: no green
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ livePrice = 250 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 250 }), state)))
     end)
     withSnapshot({ [42001] = 400 }, function()
       -- 250 is not below half of 400, so it is trusted
@@ -3304,7 +3441,7 @@ describe("Live prices from Auctionator", function()
   it("a live price above the snapshot can drop a green the snapshot allowed", function()
     withSnapshot({ [42001] = 400 }, function()
       assert.are.equal("green", (MakeSpace.Verdict.Evaluate(boe(), state)))
-      assert.is_nil((MakeSpace.Verdict.Evaluate(boe({ livePrice = 1500 }), state)))
+      assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(boe({ livePrice = 1500 }), state)))
     end)
   end)
 

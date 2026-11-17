@@ -148,12 +148,18 @@ local function snapshotAgeDays()
   return okNow and MakeSpace.Curves.SnapshotAgeDays(date, now) or nil
 end
 
+local function isOnQuest(questID)
+  return C_QuestLog and C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(questID) or false
+end
+
 --- Who is asking, for the quests that can matter: faction, class token, race file.
 function MakeSpace.Scanner.QuestAudience()
   local _, classToken = UnitClass("player")
   local _, raceFile = UnitRace("player")
   return { faction = UnitFactionGroup and UnitFactionGroup("player") or nil,
-           class = classToken, race = raceFile }
+           class = classToken, race = raceFile,
+           inLog = isOnQuest,
+           skillLines = MakeSpace.Scanner.professionSkillLines }
 end
 
 local function getPlayerState()
@@ -194,6 +200,8 @@ local function getPlayerState()
   -- Expose for tooltip sorting (player's professions listed first)
   MakeSpace.Scanner.professionNames = professionNames
   MakeSpace.Scanner.professionRanks = professionRanks
+  -- For the quest filter: only trusted when the whole profession list was read.
+  MakeSpace.Scanner.professionSkillLines = professionsKnown and skillLines or nil
 
   return {
     class = class,
@@ -365,7 +373,9 @@ local function buildItem(itemID, isBound, questInfo, state, count, hasLoot)
       and MakeSpace.Data.QuestItems[itemID]
   if questItemQuestIDs then
     questItemQuestIDs = MakeSpace.Verdict.QuestsThatMatter(questItemQuestIDs,
-        { faction = state.faction, class = state.playerClass, race = state.raceFile })
+        { faction = state.faction, class = state.playerClass, race = state.raceFile,
+          inLog = isOnQuest,
+          skillLines = state.professionsKnown ~= false and state.professionSkillLines or nil })
     if #questItemQuestIDs == 0 then questItemQuestIDs = nil end
   end
   local allQuestObjectivesCompleted = nil
@@ -751,6 +761,7 @@ local function scanAllSlots()
   slotResults = {}
   lastScanError = nil
   local poorQuality = {}
+  local poorQualityBank = {} -- thinned on their own: bank grays must not take a bag gray's dot
   local junkEntries = {}
   local junkCandidates = {}
   local freeSlots = 0
@@ -779,6 +790,13 @@ local function scanAllSlots()
         -- Banked on purpose, maybe for an alt: see Verdict.ForBank.
         slotResults[key] = MakeSpace.Verdict.ForBank(evaluateCached(item, state, profKey),
             MakeSpace.Bags.IsWarbandBank(bag))
+        if slotResults[key] and slotResults[key].tag == MakeSpace.Verdict.POOR_QUALITY_TAG then
+          poorQualityBank[#poorQualityBank + 1] = {
+            key = key, bag = bag, slot = slot,
+            value = (item.sellPrice or 0) * (item.count or 1),
+            verdict = slotResults[key].verdict,
+          }
+        end
       elseif item then
         local maxStack = item.maxStack or 1
         if maxStack > 1 and (item.count or 1) < maxStack then
@@ -804,22 +822,25 @@ local function scanAllSlots()
 
   -- Only the cheapest gray(s) keep their dot. The cached result is shared
   -- between slots, so silence them with a fresh table instead of editing it.
-  local silenced = MakeSpace.Verdict.SilenceAllButCheapest(poorQuality, MAX_POOR_QUALITY_DOTS)
-  for _, entry in ipairs(poorQuality) do
-    if silenced[entry.key] then
-      slotResults[entry.key] = {}
-    else
-      local original = slotResults[entry.key]
-      local reason, heading = MakeSpace.Verdict.PoorQualityReason(entry.value, true, entry.verdict == "yellow")
-      slotResults[entry.key] = {
-        verdict = entry.verdict,
-        reason = reason,
-        heading = heading,
-        tag = MakeSpace.Verdict.POOR_QUALITY_TAG,
-        detail = original.detail,
-        rule = original.rule,
-        sellable = original.sellable,
-      }
+  -- The bank is thinned the same way, apart from the bags.
+  for _, grays in ipairs({ poorQuality, poorQualityBank }) do
+    local silenced = MakeSpace.Verdict.SilenceAllButCheapest(grays, MAX_POOR_QUALITY_DOTS)
+    for _, entry in ipairs(grays) do
+      if silenced[entry.key] then
+        slotResults[entry.key] = {}
+      else
+        local original = slotResults[entry.key]
+        local reason, heading = MakeSpace.Verdict.PoorQualityReason(entry.value, entry.verdict == "yellow")
+        slotResults[entry.key] = {
+          verdict = entry.verdict,
+          reason = reason,
+          heading = heading,
+          tag = MakeSpace.Verdict.POOR_QUALITY_TAG,
+          detail = original.detail,
+          rule = original.rule,
+          sellable = original.sellable,
+        }
+      end
     end
   end
 
