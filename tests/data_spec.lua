@@ -70,7 +70,8 @@ describe("Data files: shape", function()
   end)
 
   it("reagent_chains, when generated, has { profession, min, max, green } rows", function()
-    for id, rows in pairs(Data.ReagentChains or {}) do
+    for _, table_ in ipairs({ Data.ReagentChains or {}, Data.ReagentChainsNear or {} }) do
+    for id, rows in pairs(table_) do
       assert.are.equal("number", type(id))
       for _, row in ipairs(rows) do
         assert.are.equal("string", type(row[1]))
@@ -79,6 +80,13 @@ describe("Data files: shape", function()
         assert.is_truthy(row[2] <= row[3])
         if row[4] and row[4] > 0 then assert.is_truthy(row[4] >= row[3]) end
       end
+    end
+    end
+  end)
+
+  it("every one-step chain is also in the full chains", function()
+    for id in pairs(Data.ReagentChainsNear or {}) do
+      assert.is_truthy((Data.ReagentChains or {})[id])
     end
   end)
 

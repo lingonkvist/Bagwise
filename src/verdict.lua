@@ -397,6 +397,9 @@ local QUEST_DISTANT_GAP = 10
 
 local function evaluateDistantQuestItem(item, state)
   if item.onOpenQuest then return nil end
+  -- Things in constant use (Soul Shards, class reagents, the hearthstone, a
+  -- profession's tools) are not "for later", whatever a far quest also asks for.
+  if MakeSpace.Safety.InConstantUse(item) then return nil end
   local required = MakeSpace.Data.QuestRequiredLevels
   local events = MakeSpace.Data.QuestEvents
   if not (required or events) then return nil end
@@ -713,10 +716,14 @@ end
 
 -- The uses as one list: the recipes that take the reagent directly, then the
 -- ones that take something made from it, each use kept on its own.
-local function useList(itemID, state)
+-- nearOnly keeps just the first conversion (ReagentChainsNear), for the
+-- tooltip; the verdict always follows the whole chain. Data built before the
+-- near table existed falls back to the full chains.
+local function useList(itemID, state, nearOnly)
   local direct = MakeSpace.Data.ReagentProfessions and MakeSpace.Data.ReagentProfessions[itemID]
   if not direct then return nil end
-  local chains = MakeSpace.Data.ReagentChains and MakeSpace.Data.ReagentChains[itemID]
+  local chainTable = (nearOnly and MakeSpace.Data.ReagentChainsNear) or MakeSpace.Data.ReagentChains
+  local chains = chainTable and chainTable[itemID]
   local list = {}
   local function add(name, minSkill, maxSkill, greenSkill)
     if greenSkill == 0 then greenSkill = nil end
@@ -736,12 +743,12 @@ end
 -- The uses merged per profession into { name, minSkill, maxSkill, greenSkill }.
 -- Public so the tooltip shows the same ranges the verdict judges by.
 local reagentUses
-function MakeSpace.Verdict.ReagentUses(itemID, state)
-  return reagentUses(itemID, state)
+function MakeSpace.Verdict.ReagentUses(itemID, state, nearOnly)
+  return reagentUses(itemID, state, nearOnly)
 end
 
-function reagentUses(itemID, state)
-  local list = useList(itemID, state)
+function reagentUses(itemID, state, nearOnly)
+  local list = useList(itemID, state, nearOnly)
   if not list then return nil end
   local merged, order = {}, {}
   for i = 1, #list do

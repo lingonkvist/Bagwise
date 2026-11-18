@@ -580,6 +580,30 @@ describe("tooltip profession info (no verdict)", function()
     assert.is_truthy(tt.lines[1].text:find("Blacksmithing %(100%-240%)"))
   end)
 
+  it("does not stretch the range through a long chain of conversions", function()
+    -- Tigerseye: direct recipes reach 250, but four crafts of goggles reach 310.
+    MakeSpace.Data.ReagentProfessions = {
+      [818] = { { "Engineering", 3, 130, 250, 260 } },
+    }
+    MakeSpace.Data.ReagentChains = {
+      [818] = { { "Engineering", 175, 310, 320 } },
+    }
+    MakeSpace.Data.ReagentChainsNear = {
+      [818] = { { "Engineering", 175, 200, 210 } },
+    }
+    MakeSpace.Scanner = {
+      professionNames = { Engineering = true },
+      GetResult = function() return {} end,
+    }
+
+    local tt = makeTooltip("|cff...|Hitem:818:...|h[Tigerseye]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    MakeSpace.Data.ReagentChains, MakeSpace.Data.ReagentChainsNear = nil, nil
+
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Engineering %(130%-250%)"))
+  end)
+
   it("player has 2 matching: both shown, main first", function()
     MakeSpace.Data.ReagentProfessions = {
       [7067] = {

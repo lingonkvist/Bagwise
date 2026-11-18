@@ -115,6 +115,22 @@ function MakeSpace.Safety.IsProtected(item)
   return false
 end
 
+--- Is this something in constant use, never "for later": the hearthstone, a
+-- profession's tools, Soul Shards, class reagents? Narrower than the
+-- essential_item protection, which also covers whole item classes (gems, keys,
+-- containers) that a far quest can rightly make worth banking.
+function MakeSpace.Safety.InConstantUse(item)
+  return (ESSENTIAL_ITEMS[item.id] or MakeSpace.Safety.Has(item, "spell_reagent")) and true or false
+end
+
+--- Does this one named protection apply to the item?
+function MakeSpace.Safety.Has(item, name)
+  for i = 1, #PROTECTIONS do
+    if PROTECTIONS[i].name == name then return PROTECTIONS[i].test(item) and true or false end
+  end
+  return false
+end
+
 --- The first protection a rule is not allowed to override, or nil.
 -- @param item table
 -- @param overrides table|nil set of protection names the rule may override

@@ -4,7 +4,7 @@
 -- where the last of them turns green (0 when unknown).
 -- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
 --
--- 588 reagent items across 9 professions.
+-- 586 reagent items across 9 professions.
 
 MakeSpace                         = MakeSpace or {}
 MakeSpace.Data                    = MakeSpace.Data or {}
@@ -78,7 +78,7 @@ MakeSpace.Data.ReagentProfessions = {
   [8831] = { { "Alchemy", 9, 170, 255, 275 }, { "Blacksmithing", 8, 155, 270, 280 }, { "Enchanting", 4, 260, 320, 340 }, { "Tailoring", 1, 245, 245, 260 } },  -- Purple Lotus
 
   -- Alchemy, Blacksmithing, Engineering
-  [3860] = { { "Alchemy", 1, 240, 240, 260 }, { "Blacksmithing", 54, 200, 260, 272 }, { "Engineering", 37, 1, 320, 330 } },  -- Mithril Bar
+  [3860] = { { "Alchemy", 1, 240, 240, 260 }, { "Blacksmithing", 54, 200, 260, 272 }, { "Engineering", 36, 190, 320, 330 } },  -- Mithril Bar
   [251291] = { { "Alchemy", 1, 275, 275, 282 }, { "Blacksmithing", 37, 270, 320, 330 }, { "Engineering", 4, 310, 310, 317 } },  -- Heavy Thorium Bar
 
   -- Alchemy, Blacksmithing, Engineering, Leatherworking, Tailoring
@@ -235,7 +235,7 @@ MakeSpace.Data.ReagentProfessions = {
   [249726] = { { "Blacksmithing", 10, 270, 320, 330 }, { "Enchanting", 1, 320, 320, 340 }, { "Engineering", 3, 275, 320, 330 } },  -- Azerothium Bar
 
   -- Blacksmithing, Enchanting, Engineering, First Aid, Leatherworking, Tailoring
-  [8170] = { { "Blacksmithing", 21, 260, 315, 327 }, { "Enchanting", 1, 250, 250, 255 }, { "Engineering", 14, 275, 320, 330 }, { "First Aid", 1, 280, 280, 310 }, { "Leatherworking", 163, 1, 320, 330 }, { "Tailoring", 12, 230, 315, 330 } },  -- Rugged Leather
+  [8170] = { { "Blacksmithing", 21, 260, 315, 327 }, { "Enchanting", 1, 250, 250, 255 }, { "Engineering", 14, 275, 320, 330 }, { "First Aid", 1, 280, 280, 310 }, { "Leatherworking", 162, 225, 320, 330 }, { "Tailoring", 12, 230, 315, 330 } },  -- Rugged Leather
 
   -- Blacksmithing, Enchanting, Engineering, Leatherworking
   [7075] = { { "Blacksmithing", 4, 235, 245, 257 }, { "Enchanting", 1, 285, 285, 305 }, { "Engineering", 3, 205, 320, 330 }, { "Leatherworking", 4, 225, 290, 300 } },  -- Core of Earth
@@ -296,9 +296,6 @@ MakeSpace.Data.ReagentProfessions = {
   [12799] = { { "Blacksmithing", 16, 270, 320, 330 }, { "Engineering", 3, 295, 320, 330 }, { "Leatherworking", 1, 290, 290, 300 } },  -- Large Opal
   [213376] = { { "Blacksmithing", 2, 225, 225, 230 }, { "Engineering", 1, 225, 225, 232 }, { "Leatherworking", 2, 225, 225, 230 } },  -- Low-Background Truesilver Plates
 
-  -- Blacksmithing, Engineering, Leatherworking, Mining
-  [2840] = { { "Blacksmithing", 51, 10, 155, 170 }, { "Engineering", 11, 30, 130, 155 }, { "Leatherworking", 1, 1, 1, 0 }, { "Mining", 2, 20, 65, 90 } },  -- Copper Bar
-
   -- Blacksmithing, Engineering, Leatherworking, Mining, Tailoring
   [17010] = { { "Blacksmithing", 15, 290, 325, 337 }, { "Engineering", 2, 320, 320, 330 }, { "Leatherworking", 6, 315, 320, 330 }, { "Mining", 1, 310, 310, 315 }, { "Tailoring", 5, 315, 320, 335 } },  -- Fiery Core
 
@@ -318,6 +315,7 @@ MakeSpace.Data.ReagentProfessions = {
   -- Blacksmithing, Engineering, Mining
   [2835] = { { "Blacksmithing", 4, 15, 45, 65 }, { "Engineering", 1, 20, 20, 30 }, { "Mining", 1, 20, 20, 0 } },  -- Rough Stone
   [2838] = { { "Blacksmithing", 3, 100, 100, 112 }, { "Engineering", 1, 125, 125, 135 }, { "Mining", 1, 140, 140, 0 } },  -- Heavy Stone
+  [2840] = { { "Blacksmithing", 51, 10, 155, 170 }, { "Engineering", 11, 30, 130, 155 }, { "Mining", 2, 20, 65, 90 } },  -- Copper Bar
   [12365] = { { "Blacksmithing", 4, 230, 275, 285 }, { "Engineering", 3, 250, 315, 322 }, { "Mining", 1, 300, 300, 0 } },  -- Dense Stone
   [12655] = { { "Blacksmithing", 41, 275, 325, 337 }, { "Engineering", 2, 280, 320, 330 }, { "Mining", 1, 315, 315, 322 } },  -- Enchanted Thorium Bar
 
@@ -393,7 +391,7 @@ MakeSpace.Data.ReagentProfessions = {
   [5468] = { { "Cooking", 1, 90, 90, 110 } },  -- Soft Frenzy Flesh
   [5469] = { { "Cooking", 1, 90, 90, 110 } },  -- Strider Meat
   [5470] = { { "Cooking", 1, 140, 140, 160 } },  -- Thunder Lizard Tail
-  [5471] = { { "Cooking", 4, 1, 280, 295 } },  -- Stag Meat
+  [5471] = { { "Cooking", 3, 150, 280, 295 } },  -- Stag Meat
   [5503] = { { "Cooking", 2, 90, 130, 150 } },  -- Clam Meat
   [5504] = { { "Cooking", 1, 165, 165, 185 } },  -- Tangy Clam Meat
   [6289] = { { "Cooking", 1, 90, 90, 110 } },  -- Raw Longjaw Mud Snapper
@@ -416,7 +414,7 @@ MakeSpace.Data.ReagentProfessions = {
   [12204] = { { "Cooking", 2, 145, 240, 260 } },  -- Heavy Kodo Meat
   [12205] = { { "Cooking", 1, 240, 240, 260 } },  -- White Spider Meat
   [12206] = { { "Cooking", 2, 220, 265, 285 } },  -- Tender Crab Meat
-  [12207] = { { "Cooking", 4, 1, 265, 285 } },  -- Giant Egg
+  [12207] = { { "Cooking", 3, 195, 265, 285 } },  -- Giant Egg
   [12208] = { { "Cooking", 1, 265, 265, 285 } },  -- Tender Wolf Meat
   [12223] = { { "Cooking", 2, 45, 280, 295 } },  -- Meaty Bat Wing
   [13754] = { { "Cooking", 1, 265, 265, 285 } },  -- Raw Glossy Mightfish
@@ -441,7 +439,6 @@ MakeSpace.Data.ReagentProfessions = {
   [239017] = { { "Cooking", 2, 290, 290, 300 } },  -- Exquisite Spices
   [249796] = { { "Cooking", 1, 280, 280, 282 } },  -- Hyjal Berries
   [251524] = { { "Cooking", 1, 125, 125, 145 } },  -- Whimsyfin
-  [252948] = { { "Cooking", 1, 1, 1, 0 } },
   [272941] = { { "Cooking", 1, 205, 205, 0 } },  -- Thick Logs
 
   -- Cooking, Enchanting
@@ -572,7 +569,7 @@ MakeSpace.Data.ReagentProfessions = {
   [10026] = { { "Engineering", 2, 245, 245, 255 } },  -- Black Mageweave Boots
   [10500] = { { "Engineering", 2, 230, 310, 320 } },  -- Fire Goggles
   [10502] = { { "Engineering", 1, 290, 290, 300 } },  -- Spellpower Goggles Xtreme
-  [10505] = { { "Engineering", 27, 1, 245, 265 } },  -- Solid Blasting Powder
+  [10505] = { { "Engineering", 26, 175, 245, 265 } },  -- Solid Blasting Powder
   [10507] = { { "Engineering", 1, 235, 235, 255 } },  -- Solid Dynamite
   [10518] = { { "Engineering", 1, 270, 270, 280 } },  -- Parachute Cloak
   [10543] = { { "Engineering", 1, 265, 265, 275 } },  -- Goblin Construction Helmet
@@ -582,7 +579,6 @@ MakeSpace.Data.ReagentProfessions = {
   [10560] = { { "Engineering", 27, 205, 305, 0 } },  -- Unstable Trigger
   [10561] = { { "Engineering", 22, 215, 305, 305 } },  -- Mithril Casing
   [10576] = { { "Engineering", 1, 320, 320, 330 } },  -- Mithril Mechanical Dragonling
-  [10577] = { { "Engineering", 1, 1, 1, 0 } },  -- Goblin Mortar
   [10586] = { { "Engineering", 1, 285, 285, 295 } },  -- The Big One
   [10588] = { { "Engineering", 1, 305, 305, 0 } },  -- Goblin Rocket Helmet
   [10592] = { { "Engineering", 1, 240, 240, 250 } },  -- Catseye Draught
@@ -736,7 +732,7 @@ MakeSpace.Data.ReagentProfessions = {
   [2324] = { { "Leatherworking", 5, 70, 185, 187 }, { "Tailoring", 12, 35, 200, 205 } },  -- Bleach
   [2325] = { { "Leatherworking", 11, 160, 300, 310 }, { "Tailoring", 3, 170, 200, 205 } },  -- Black Dye
   [2455] = { { "Leatherworking", 1, 95, 95, 102 }, { "Tailoring", 1, 55, 55, 0 } },  -- Minor Mana Potion
-  [2997] = { { "Leatherworking", 3, 1, 145, 157 }, { "Tailoring", 48, 75, 250, 252 } },  -- Bolt of Woolen Cloth
+  [2997] = { { "Leatherworking", 2, 105, 145, 157 }, { "Tailoring", 48, 75, 250, 252 } },  -- Bolt of Woolen Cloth
   [3182] = { { "Leatherworking", 9, 135, 270, 280 }, { "Tailoring", 13, 80, 145, 160 } },  -- Spider's Silk
   [3383] = { { "Leatherworking", 1, 125, 125, 137 }, { "Tailoring", 1, 125, 125, 140 } },  -- Elixir of Wisdom
   [3827] = { { "Leatherworking", 1, 205, 205, 215 }, { "Tailoring", 4, 170, 220, 235 } },  -- Mana Potion
@@ -745,7 +741,7 @@ MakeSpace.Data.ReagentProfessions = {
   [6261] = { { "Leatherworking", 8, 255, 300, 310 }, { "Tailoring", 2, 185, 190, 195 } },  -- Orange Dye
   [14048] = { { "Leatherworking", 2, 285, 285, 290 }, { "Tailoring", 175, 220, 320, 330 } },  -- Bolt of Runecloth
   [14256] = { { "Leatherworking", 1, 300, 300, 310 }, { "Tailoring", 17, 245, 315, 330 } },  -- Felcloth
-  [14341] = { { "Leatherworking", 194, 1, 320, 330 }, { "Tailoring", 116, 220, 320, 335 } },  -- Rune Thread
+  [14341] = { { "Leatherworking", 193, 250, 320, 330 }, { "Tailoring", 116, 220, 320, 335 } },  -- Rune Thread
   [14342] = { { "Leatherworking", 2, 310, 320, 330 }, { "Tailoring", 59, 270, 320, 335 } },  -- Mooncloth
   [18240] = { { "Leatherworking", 2, 285, 285, 290 }, { "Tailoring", 1, 285, 285, 290 } },  -- Ogre Tannin
   [213372] = { { "Leatherworking", 3, 225, 225, 230 }, { "Tailoring", 1, 225, 225, 230 } },

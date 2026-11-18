@@ -3043,6 +3043,24 @@ describe("Items for a quest far above you", function()
     end)
   end)
 
+  it("leaves a Soul Shard alone even though a far quest asks for it", function()
+    withRequired({ [5201] = 55 }, function()
+      -- The warlock bag dump: Soul Shards were marked "Bank it, quest needs level 31".
+      local shard = questItem({ id = 6265, classID = 15, subclassID = 1 })
+      local verdict = MakeSpace.Verdict.Evaluate(shard, at(11))
+      assert.is_nil(verdict)
+    end)
+  end)
+
+  it("still says to bank a gem or a key that a far quest asks for", function()
+    withRequired({ [5201] = 55 }, function()
+      local gem = questItem({ id = 9400, classID = 3 })
+      local verdict, reason = MakeSpace.Verdict.Evaluate(gem, at(30))
+      assert.are.equal("yellow", verdict)
+      assert.are.equal("Bank it, quest needs level 55", reason)
+    end)
+  end)
+
   it("names the event for an event quest, whatever your level", function()
     -- Vibrant Plumes: a level 60 quest that opens at level 30, offered by the Faire.
     withRequired({ [5201] = 30 }, function()

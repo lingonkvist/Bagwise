@@ -239,12 +239,14 @@ end
 
 -- The profession rows as the verdict judges them: recipes that take the item
 -- directly plus those that take something made from it (Heavy Stone is a
--- Blacksmithing 100 reagent, but its sharpening stones reach 240). Positional
+-- Blacksmithing 100 reagent, but its sharpening stones reach 240). Only one
+-- conversion deep: the line says where professions start using an item, not
+-- everything several crafts further on. Positional
 -- like the generated data, so the rest of the rendering is unchanged.
 local function mergedProfessionEntries(itemID, profEntries, myProfs)
   local verdict = MakeSpace.Verdict
   if not (itemID and verdict and verdict.ReagentUses) then return profEntries end
-  local uses = verdict.ReagentUses(itemID, { professionNames = myProfs })
+  local uses = verdict.ReagentUses(itemID, { professionNames = myProfs }, true)
   if not uses then return profEntries end
   local counts = {}
   for i = 1, #profEntries do counts[profEntries[i][PROF_NAME]] = profEntries[i][PROF_RECIPE_COUNT] end

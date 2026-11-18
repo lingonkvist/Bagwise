@@ -360,6 +360,9 @@ CREATE_ITEM_EFFECTS = {24, 157}
 
 CHAINS_OUTPUT = "data/reagent_chains.lua"
 
+# How many conversions the tooltip follows (see build_chains).
+NEAR_CHAIN_DEPTH = 2
+
 
 def parse_spell_products(rows):
     """Return {spellID: itemID} for spells that create an item."""
@@ -374,7 +377,7 @@ def parse_spell_products(rows):
     return result
 
 
-def build_chains(spell_reagents, abilities, prof_names, products):
+def build_chains(spell_reagents, abilities, prof_names, products, max_depth=None):
     """
     Downstream uses of a reagent through what it is turned into.
 
@@ -390,6 +393,11 @@ def build_chains(spell_reagents, abilities, prof_names, products):
     holding only uses reached through at least one intermediate (direct uses
     stay in ReagentProfessions). Cycles (transmutes both ways) are handled by
     iterating to a fixed point.
+
+    With max_depth the chain stops after that many conversions (1 is only what
+    the reagent is turned into, 2 adds what that is turned into). The tooltip
+    uses 2: ore to bar to bronze is two conversions and honest, but four crafts
+    of goggles would let one Tigerseye claim the whole ladder.
     """
     direct = build_reagent_map(spell_reagents, abilities, prof_names)
     # makes[I][P] = the professions whose recipes turn I into P
@@ -407,8 +415,9 @@ def build_chains(spell_reagents, abilities, prof_names, products):
         return [min(span[0], other[0]), max(span[1], other[1]), max(span[2], other[2])]
 
     reach = {}  # itemID -> {prof: {frozenset(needed professions): [min, max, green]}}
-    changed = True
-    while changed:
+
+    def one_pass(source):
+        """Apply every conversion once, reading uses reached so far from source."""
         changed = False
         for item_id, outputs in makes.items():
             for product, converters in outputs.items():
@@ -416,7 +425,7 @@ def build_chains(spell_reagents, abilities, prof_names, products):
                     found = []  # (profession, needed, span)
                     for prof, entry in direct.get(product, {}).items():
                         found.append((prof, frozenset([converter]), [entry["min"], entry["max"], entry["green"]]))
-                    for prof, by_needed in reach.get(product, {}).items():
+                    for prof, by_needed in source.get(product, {}).items():
                         for needed, span in by_needed.items():
                             found.append((prof, needed | {converter}, list(span)))
                     mine = reach.setdefault(item_id, {})
@@ -431,6 +440,15 @@ def build_chains(spell_reagents, abilities, prof_names, products):
                             if merged != by_needed[needed]:
                                 by_needed[needed] = merged
                                 changed = True
+        return changed
+
+    if max_depth is None:
+        while one_pass(reach):
+            pass
+    else:
+        import copy
+        for _ in range(max_depth):
+            one_pass(copy.deepcopy(reach))  # each pass reads only what earlier passes found
 
     result = {}
     for item_id, by_prof in reach.items():
@@ -458,7 +476,7 @@ def build_chains(spell_reagents, abilities, prof_names, products):
     return result
 
 
-def generate_chains_lua(chains, build_version):
+def generate_chains_lua(chains, build_version, near=None):
     out = [
         "-- MakeSpace: reagent uses through what a reagent is made into.",
         "-- Copper Bar is smelted into Bronze Bar, which smithing uses far above",
@@ -473,16 +491,28 @@ def generate_chains_lua(chains, build_version):
         "-- Format: [itemID] = { { profession, min_level, max_level, green_level, { needed } }, ... }",
         "-- needed lists the other professions whose recipes make the conversions (left out",
         "-- when none): a use counts for a player only when they have all of them.",
+        "-- ReagentChains follows every conversion; the verdict judges by it.",
         "MakeSpace.Data.ReagentChains = {",
     ]
-    for item_id in sorted(chains):
-        parts = []
-        for prof, entries in sorted(chains[item_id].items()):
-            for lo, hi, green, needed in entries:
-                tail = ", { %s }" % ", ".join('"%s"' % n for n in needed) if needed else ""
-                parts.append('{ "%s", %d, %d, %d%s }' % (prof, lo, hi, green, tail))
-        out.append(f"  [{item_id}] = {{ {', '.join(parts)} }},")
+
+    def rows(table):
+        for item_id in sorted(table):
+            parts = []
+            for prof, entries in sorted(table[item_id].items()):
+                for lo, hi, green, needed in entries:
+                    tail = ", { %s }" % ", ".join('"%s"' % n for n in needed) if needed else ""
+                    parts.append('{ "%s", %d, %d, %d%s }' % (prof, lo, hi, green, tail))
+            out.append(f"  [{item_id}] = {{ {', '.join(parts)} }},")
+
+    rows(chains)
     out.append("}")
+    if near is not None:
+        out += ["",
+                "-- ReagentChainsNear stops after two conversions. The tooltip shows it, so a",
+                "-- reagent is not credited with everything several crafts further on.",
+                "MakeSpace.Data.ReagentChainsNear = {"]
+        rows(near)
+        out.append("}")
     out.append("")
     return "\n".join(out)
 
@@ -509,6 +539,14 @@ def selftest():
     assert chains[98]["Mining"] == [[65, 65, 87, []]], chains
     assert chains[98]["Blacksmithing"] == [[85, 155, 180, ["Mining"]]], chains
     assert 301 not in chains and 300 in chains, chains
+    # One step: copper bar -> bronze bar -> smithing is two conversions from ore.
+    near = build_chains(reagents, abilities, names, products, max_depth=1)
+    assert near[99]["Blacksmithing"] == [[85, 85, 107, ["Mining"]]], near   # not the 155 recipe a step further on
+    assert "Blacksmithing" not in near[98], near   # ore reaches smithing only through copper, then bronze
+    assert near[98]["Mining"] == [[65, 65, 87, []]], near
+    # Two conversions (ore -> copper bar -> bronze bar) reach the first smithing recipe, but not the 155 one.
+    near2 = build_chains(reagents, abilities, names, products, max_depth=2)
+    assert near2[98]["Blacksmithing"] == [[85, 85, 107, ["Mining"]]], near2
     # A second route that needs nothing extra covers the one that does.
     reagents2 = dict(reagents)
     reagents2[5] = [(99, 1)]       # copper bar -> item 200 by Blacksmithing, no Mining needed
@@ -570,6 +608,11 @@ def build_reagent_map(spell_reagents, abilities, prof_names):
             recipe_skill = trivial_low if trivial_low > 0 else min_rank
         else:
             recipe_skill = min_rank if min_rank > 0 else trivial_low
+
+        # A recipe with no skill data at all (specialisations that never skill
+        # up) would show as "starts at 1", stretching a range to nothing real.
+        if trivial_low == 0 and trivial_high == 0 and min_rank <= 1:
+            continue
 
         for item_id, _qty in reagents:
             profs = reagent_data.setdefault(item_id, {})
@@ -765,10 +808,11 @@ def main():
     if args.chains_only:
         products = parse_spell_products(tables["SpellEffect"])
         chains = build_chains(spell_reagents, abilities, prof_names, products)
+        near = build_chains(spell_reagents, abilities, prof_names, products, max_depth=NEAR_CHAIN_DEPTH)
         print(f"  {len(chains)} reagents with downstream uses")
         chains_path = os.path.join(os.path.dirname(os.path.abspath(args.output)), "reagent_chains.lua")
         with open(chains_path, "w", encoding="utf-8") as fh:
-            fh.write(generate_chains_lua(chains, build))
+            fh.write(generate_chains_lua(chains, build, near))
         print(f"Wrote {chains_path}")
         return
 
@@ -803,10 +847,11 @@ def main():
     # Chains: what each reagent is turned into, and where that is used.
     products = parse_spell_products(tables["SpellEffect"])
     chains = build_chains(spell_reagents, abilities, prof_names, products)
+    near = build_chains(spell_reagents, abilities, prof_names, products, max_depth=NEAR_CHAIN_DEPTH)
     print(f"  {len(chains)} reagents with downstream uses")
     chains_path = os.path.join(os.path.dirname(os.path.abspath(args.output)), "reagent_chains.lua")
     with open(chains_path, "w", encoding="utf-8") as fh:
-        fh.write(generate_chains_lua(chains, build))
+        fh.write(generate_chains_lua(chains, build, near))
     print(f"Wrote {chains_path}")
 
     # Generate.
