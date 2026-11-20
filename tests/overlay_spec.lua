@@ -126,6 +126,46 @@ describe("Ellesmere Bags adapter", function()
     _G.EllesmereUI = nil
   end)
 
+  it("keeps a pulsing dot's size when the bag addon repaints it mid-pulse", function()
+    local driver = installDriver()
+    local button = makeButton(0, 1)
+    installEllesmere({ button })
+    installScanner({ ["0:1"] = { verdict = "green", sellable = true } })
+    MakeSpace.Overlay.SetVendorOpen(true)
+    driver.script(nil, 0.6)                       -- the peak of the swell
+    local peak = button.dots[1].size[1]
+    assert.is_truthy(peak > 18)
+
+    MakeSpace.Overlay.UpdateAll()                 -- Blizzard's bags repaint like this
+    MakeSpace.Overlay.UpdateAll()
+    assert.are.equal(peak, button.dots[1].size[1])
+
+    MakeSpace.Overlay.SetVendorOpen(false)
+    _G.CreateFrame = nil
+    _G.EllesmereUI = nil
+  end)
+
+  it("starts a dot that appears mid-pulse at the current size, not the resting one", function()
+    local driver = installDriver()
+    local first, second = makeButton(0, 1), makeButton(0, 2)
+    installEllesmere({ first, second })
+    installScanner({ ["0:1"] = { verdict = "green", sellable = true } })
+    MakeSpace.Overlay.SetVendorOpen(true)
+    driver.script(nil, 0.6)
+    local peak = first.dots[1].size[1]
+
+    installScanner({
+      ["0:1"] = { verdict = "green", sellable = true },
+      ["0:2"] = { verdict = "green", sellable = true },
+    })
+    MakeSpace.Overlay.UpdateAll()
+    assert.are.equal(peak, second.dots[1].size[1])
+
+    MakeSpace.Overlay.SetVendorOpen(false)
+    _G.CreateFrame = nil
+    _G.EllesmereUI = nil
+  end)
+
   it("does not pulse when the player turned the pulse off", function()
     local driver = installDriver()
     local button = makeButton(0, 1)

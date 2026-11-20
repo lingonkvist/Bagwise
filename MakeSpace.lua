@@ -83,7 +83,12 @@ end
 -- report the item for that slot, and Blizzard re-lays the rows after the event,
 -- so the loot dots are repainted once now and once on the next frame.
 local function onLootChanged(self, clearedSlot)
+  local hadLoot = MakeSpace.Scanner.HasLoot()
   MakeSpace.Scanner.RefreshLoot(clearedSlot)
+  -- Gold, or a window with no items before or after: the bags did not change
+  -- and there is no plan to make, so a full scan would only cost time. This is
+  -- most loot windows when farming.
+  if not (hadLoot or MakeSpace.Scanner.HasLoot()) then return end
   rescanAll()
   MakeSpace.Overlay.UpdateLoot()
   if C_Timer and C_Timer.After then
@@ -132,9 +137,13 @@ end
 
 local function onLootClosed()
   triedOpeningBags = false
+  local hadLoot = MakeSpace.Scanner.HasLoot()
   MakeSpace.Scanner.ClearLoot()
-  rescanAll()
-  MakeSpace.Overlay.UpdateLoot()
+  -- Only a window that had items left has marks and a plan to take down.
+  if hadLoot then
+    rescanAll()
+    MakeSpace.Overlay.UpdateLoot()
+  end
   if openedBagsForLoot then
     openedBagsForLoot = false
     if CloseAllBags then pcall(CloseAllBags) end

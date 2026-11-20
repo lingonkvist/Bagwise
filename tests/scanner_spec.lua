@@ -687,3 +687,98 @@ describe("Scanner: summary of the dots", function()
     assert.is_truthy(summary.greenValue >= 0)
   end)
 end)
+
+describe("Scanner: tooltip reads are kept", function()
+  local tipReads, firstLine
+
+  local function giveCountingTooltip(text)
+    tipReads = 0
+    firstLine = nil
+    _G.ITEM_MIN_SKILL = "Requires %s (%d)"
+    _G.RETRIEVING_ITEM_INFO = "Retrieving item information"
+    _G.UIParent = {}
+    _G.MakeSpaceSkillTipTextLeft1 = { GetText = function() return firstLine end }
+    _G.MakeSpaceSkillTipTextLeft2 = { GetText = function() return text end }
+    _G.CreateFrame = function()
+      return {
+        SetOwner = function() end, ClearLines = function() end,
+        SetBagItem = function() tipReads = tipReads + 1 end,
+        NumLines = function() return 2 end,
+      }
+    end
+  end
+
+  local function withLinks()
+    local plain = _G.C_Container.GetContainerItemInfo
+    _G.C_Container.GetContainerItemInfo = function(bag, slot)
+      local info = plain(bag, slot)
+      if info then info.hyperlink = "|Hitem:" .. info.itemID .. ":0:0|h[x]|h" end
+      return info
+    end
+  end
+
+  it("reads a recipe's tooltip once, however many scans follow", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    withLinks()
+    giveCountingTooltip("Requires Alchemy (225)")
+    firstLine = "Recipe: Something"
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(1, tipReads)
+  end)
+
+  it("keeps the answer, not just the read, so the verdict is the same each scan", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    withLinks()
+    _G.GetNumSkillLines = function() return 2 end
+    _G.GetSkillLineInfo = function(i)
+      if i == 1 then return "Professions", true, true end
+      return "Alchemy", false, nil, 100
+    end
+    giveCountingTooltip("Requires Alchemy (225)")
+    firstLine = "Recipe: Something"
+    MakeSpace.Scanner.ScanAll()
+    local first = MakeSpace.Scanner.GetResult(0, 1).reason
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal("Bank it, needs Alchemy 225", first)
+    assert.are.equal(first, MakeSpace.Scanner.GetResult(0, 1).reason)
+  end)
+
+  it("reads again while the client is still retrieving the item", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    withLinks()
+    giveCountingTooltip("Requires Alchemy (225)")
+    firstLine = "Retrieving item information"
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(2, tipReads)
+    firstLine = "Recipe: Something"
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(3, tipReads)
+  end)
+
+  it("reads again after the cache is cleared", function()
+    setUp({ [0] = { { id = 800 } } }, { [0] = 0 })
+    withLinks()
+    giveCountingTooltip("Requires Alchemy (225)")
+    firstLine = "Recipe: Something"
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ClearCache()
+    MakeSpace.Scanner.ScanAll()
+    assert.are.equal(2, tipReads)
+  end)
+
+  it("keeps separate answers for two different items", function()
+    ITEMS[801] = ITEMS[800]
+    setUp({ [0] = { { id = 800 }, { id = 801 } } }, { [0] = 0 })
+    withLinks()
+    giveCountingTooltip("Requires Alchemy (225)")
+    firstLine = "Recipe: Something"
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Scanner.ScanAll()
+    ITEMS[801] = nil
+    assert.are.equal(2, tipReads)
+  end)
+end)

@@ -17,7 +17,10 @@ _G.C_Container = {
   GetContainerItemInfo = function() return nil end,
 }
 _G.C_QuestLog = {
-  GetQuestInfo = function(id) return "Test Quest " .. id end,
+  GetQuestInfo = function(id)
+    if id == 399 then return "A Very Long Quest Name That Would Stretch The Tooltip Wide" end
+    return "Test Quest " .. id
+  end,
   IsQuestFlaggedCompleted = function() return false end,
 }
 
@@ -346,6 +349,20 @@ describe("tooltip basic output", function()
       if line.text:find("auction about") then found = true end
     end
     assert.is_truthy(found)
+  end)
+
+  it("leaves out a yellow's price row when it is Auctionator's own number, shown right above", function()
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
+      GetResult = function()
+        return { verdict = "yellow", reason = "Flagged", heading = { title = "Useless to Warriors" },
+                 auctionNote = "Vendor 1s 20c, auction about 4s 87c", auctionNoteLive = true }
+      end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:6149:...|h[Greater Mana Potion]|h|r", "ContainerFrame1", 0, 5)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal(1, #tt.lines)
+    assert.is_truthy(tt.lines[1].text:find("Useless to Warriors", 1, true))
   end)
 
   it("a price note goes with a yellow verdict too, after its detail", function()
@@ -882,6 +899,66 @@ describe("tooltip: a reagent that a quest wants", function()
     _G.C_QuestLog.IsOnQuest = nil
 
     assert.are.equal("In log: Test Quest 302", tt.lines[#tt.lines].text)
+  end)
+
+  it("says how many the quest in your log wants, as have/need like the tracker", function()
+    setup({ verdict = nil, reason = nil }, 12)
+    _G.C_QuestLog.IsOnQuest = function(id) return id == 302 end
+    _G.C_QuestLog.GetQuestObjectives = function()
+      return {
+        { type = "monster", text = "Troll slain: 3/5", numFulfilled = 3, numRequired = 5 },
+        { type = "item", text = "ItemName: 7/20", numFulfilled = 7, numRequired = 20 },
+      }
+    end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_QuestLog.IsOnQuest = nil
+    _G.C_QuestLog.GetQuestObjectives = nil
+
+    assert.are.equal("In log: Test Quest 302 (7/20)", tt.lines[#tt.lines].text)
+  end)
+
+  it("picks the right item objective by name when a quest wants several", function()
+    setup({ verdict = nil, reason = nil }, 12)
+    _G.C_QuestLog.IsOnQuest = function(id) return id == 302 end
+    _G.C_QuestLog.GetQuestObjectives = function()
+      return {
+        { type = "item", text = "Other Thing: 1/4", numFulfilled = 1, numRequired = 4 },
+        { type = "item", text = "ItemName: 2/10", numFulfilled = 2, numRequired = 10 },
+      }
+    end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    assert.are.equal("In log: Test Quest 302 (2/10)", tt.lines[#tt.lines].text)
+
+    -- two item objectives and no name match: no guess
+    _G.C_QuestLog.GetQuestObjectives = function()
+      return {
+        { type = "item", text = "A: 1/4", numFulfilled = 1, numRequired = 4 },
+        { type = "item", text = "B: 2/10", numFulfilled = 2, numRequired = 10 },
+      }
+    end
+    local second = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(second)
+    _G.C_QuestLog.IsOnQuest = nil
+    _G.C_QuestLog.GetQuestObjectives = nil
+    assert.are.equal("In log: Test Quest 302", second.lines[#second.lines].text)
+  end)
+
+  it("keeps the count when a long quest name is cut", function()
+    setup({ verdict = nil, reason = nil }, 12)
+    MakeSpace.Data.QuestItems = { [3470] = { 399 } }
+    _G.C_QuestLog.IsOnQuest = function(id) return id == 399 end
+    _G.C_QuestLog.GetQuestObjectives = function()
+      return { { type = "item", text = "ItemName: 12/20", numFulfilled = 12, numRequired = 20 } }
+    end
+    local tt = makeTooltip("|cff...|Hitem:3470:...|h[Rare Herb]|h|r", "ContainerFrame1", 0, 1)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    _G.C_QuestLog.IsOnQuest = nil
+    _G.C_QuestLog.GetQuestObjectives = nil
+    local row = tt.lines[#tt.lines].text
+    assert.are.equal(46, #row)
+    assert.is_truthy(row:find("%.%.%. %(12/20%)$"))
   end)
 
   it("counts the other quests in your log", function()

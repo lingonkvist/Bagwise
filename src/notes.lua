@@ -81,7 +81,8 @@ local NOTES = {
     return "Open it, the contents may stack", "Open it", "Contents may stack"
   end,
   no_mana = function(who)
-    return who .. " have no mana. May sell at the auction house", "Not for your class", "No mana for " .. who
+    -- The item's own name says "Mana", so the heading only has to say it is no use to you.
+    return who .. " have no mana. May sell at the auction house", "Useless to " .. who, nil
   end,
   low_level_consumable = function(noun, level, you)
     -- No detail line: the item's own tooltip says its level and you know yours.

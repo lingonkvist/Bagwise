@@ -1373,12 +1373,13 @@ local WORTHLESS_OVERRIDES = { recipe_reagent = true }
 local WORTHLESS_RECIPE_OVERRIDES = { recipe_reagent = true, essential_item = true }
 
 --- Run one rule and apply the safety check to a green.
--- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote, worthLittle
+-- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote, worthLittle, noteIsLive
 -- worthLittle is true for a green that only says the stack is worth next to nothing.
+-- noteIsLive is true when the price note is Auctionator's own number.
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "yellow" and rule.showsAuctionPrice then
-    local note, notWorth = Auction.PriceLine(item, state)
+    local note, notWorth, noteIsLive = Auction.PriceLine(item, state)
     if notWorth then
       -- The auction pays too little to suggest it. When the whole stack is also
       -- worth next to nothing, it is safe to just vendor it.
@@ -1401,7 +1402,7 @@ local function runRule(rule, item, state)
       end
       reason = reason:gsub("%. May sell at the auction house$", "")
     end
-    return verdict, reason, detail, tag, nil, heading, note
+    return verdict, reason, detail, tag, nil, heading, note, nil, noteIsLive
   end
   if verdict == "green" then
     local blocker = MakeSpace.Safety.Blocker(item, rule.overrides)
@@ -1444,34 +1445,34 @@ function MakeSpace.Verdict.Evaluate(item, state)
     if verdict then
       -- Mana potions sell well: show the price line when the auction pays more,
       -- and drop "May sell at the auction house" from the reason when it does not.
-      local note, notWorth = Auction.PriceLine(item, state)
+      local note, notWorth, noteIsLive = Auction.PriceLine(item, state)
       if notWorth then reason = reason:gsub("%. May sell at the auction house$", "") end
-      return verdict, reason, nil, nil, "mana_consumable", heading, note
+      return verdict, reason, nil, nil, "mana_consumable", heading, note, nil, noteIsLive
     end
     verdict, reason, _, _, heading = evaluateOutleveledConsumable(item, state)
     if not verdict then return nil end
     -- Consumables often sell well: say so when the auction house pays clearly
     -- more than a vendor, so a hint never reads as "throw it away".
-    local note = Auction.PriceLine(item, state)
-    return verdict, reason, nil, nil, "outleveled_consumable", heading, note
+    local note, _, noteIsLive = Auction.PriceLine(item, state)
+    return verdict, reason, nil, nil, "outleveled_consumable", heading, note, nil, noteIsLive
   end
 
   -- A blocked green is dropped and the next rule gets its turn. A yellow is
   -- only a hint, so it waits: a later rule's green (already vetted by Safety)
   -- beats it. Otherwise the first yellow stands.
-  local hint, auctionNote
+  local hint, auctionNote, auctionNoteLive
   for i = 1, #RULES do
-    local verdict, reason, detail, tag, blockedBy, heading, note, worthLittle = runRule(RULES[i], item, state)
+    local verdict, reason, detail, tag, blockedBy, heading, note, worthLittle, noteIsLive = runRule(RULES[i], item, state)
     if verdict == "green" and not blockedBy then
-      return verdict, reason, detail, tag, RULES[i].name, heading, note, worthLittle
+      return verdict, reason, detail, tag, RULES[i].name, heading, note, worthLittle, noteIsLive
     end
-    if note and not auctionNote then auctionNote = note end
+    if note and not auctionNote then auctionNote, auctionNoteLive = note, noteIsLive end
     if verdict == "yellow" and not hint then
       hint = { verdict, reason, detail, tag, RULES[i].name, heading }
     end
   end
-  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6], auctionNote end
-  return nil, nil, nil, nil, nil, nil, auctionNote
+  if hint then return hint[1], hint[2], hint[3], hint[4], hint[5], hint[6], auctionNote, nil, auctionNoteLive end
+  return nil, nil, nil, nil, nil, nil, auctionNote, nil, auctionNoteLive
 end
 
 -- The reason of a green that says only "the stack is worth next to nothing". The
@@ -1480,12 +1481,15 @@ MakeSpace.Verdict.WORTH_LITTLE_REASON = "Worth very little"
 
 --- Evaluate an item and return the answer by name, which is what callers other
 -- than the tests should use: Evaluate's positional values are easy to misorder.
--- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, sellable, worthLittle }
+-- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, auctionNoteLive, sellable, worthLittle }
 --   verdict is "green", "yellow" or nil; rule names the rule that decided
 function MakeSpace.Verdict.Judge(item, state)
-  local verdict, reason, detail, tag, rule, heading, auctionNote, worthLittle = MakeSpace.Verdict.Evaluate(item, state)
+  local verdict, reason, detail, tag, rule, heading, auctionNote, worthLittle, auctionNoteLive =
+      MakeSpace.Verdict.Evaluate(item, state)
   return { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
            heading = heading, auctionNote = auctionNote,
+           -- The note is Auctionator's own number: its tooltip shows it right above.
+           auctionNoteLive = auctionNoteLive or nil,
            -- A stack worth next to nothing is deleted, not vendored: the tooltip says "Safe to delete".
            worthLittle = worthLittle or nil,
            -- A green you set yourself says "Safe to delete", never "Safe to vendor".

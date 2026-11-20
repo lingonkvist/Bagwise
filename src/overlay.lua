@@ -193,6 +193,12 @@ end
 local function setPulse(dot, on)
   if on then
     if next(pulsing) == nil then pulseClock = 0 end
+    if not pulsing[dot] then
+      -- Join at the size everyone else has now, so a dot that appears mid-cycle
+      -- does not jump.
+      local size = DOT_SIZE * pulseScale(pulseClock)
+      dot:SetSize(size, size)
+    end
     pulsing[dot] = true
     startPulseDriver()
   elseif pulsing[dot] then
@@ -213,11 +219,14 @@ local dotSlots = setmetatable({}, { __mode = "k" })
 local function applyDot(dot, result, bagID, slotID)
   -- quiet: a verdict held back while a make-room plan shows only the slots to delete.
   if result and result.verdict and not result.quiet then
+    local pulses = shouldPulse(result) and true or false
     dot:SetTexture(TEXTURES[result.verdict])
-    dot:SetSize(DOT_SIZE, DOT_SIZE)
+    -- Blizzard's bags repaint often, and a repaint must not knock a pulsing dot
+    -- back to its resting size: that shows as a jump instead of a swell.
+    if not (pulses and pulsing[dot]) then dot:SetSize(DOT_SIZE, DOT_SIZE) end
     dot:Show()
     dotSlots[dot] = (bagID and slotID) and { bagID, slotID } or nil
-    setPulse(dot, shouldPulse(result) and true or false)
+    setPulse(dot, pulses)
     return true
   else
     setPulse(dot, false)

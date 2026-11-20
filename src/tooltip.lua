@@ -385,14 +385,40 @@ local function questNameOf(questID)
   return (getQuestTitle and getQuestTitle(questID)) or (info and info[QUEST_INFO_NAME])
 end
 
-local function questRowText(prefix, text, more)
-  local row = prefix .. text
-  if #row > QUEST_ROW_MAX then row = row:sub(1, QUEST_ROW_MAX - 3) .. "..." end
+-- The count goes after the name and is kept when the name is cut, since it is
+-- the part you came for.
+local function questRowText(prefix, text, more, suffix)
+  suffix = suffix or ""
+  local room = QUEST_ROW_MAX - #prefix - #suffix
+  if #text > room then text = text:sub(1, room - 3) .. "..." end
+  local row = prefix .. text .. suffix
   if more > 0 then row = row .. " +" .. more end
   return row
 end
 
-local function openQuestRow(questIDs, profEntries)
+-- How many of this item a quest in your log asks for, as "(have/need)", the same
+-- way the quest tracker shows it. The shipped quest data lists which items a
+-- quest wants but not how many, so this is only known for a quest you have taken.
+local function questItemCount(questID, itemName)
+  if not (C_QuestLog and C_QuestLog.GetQuestObjectives) then return nil end
+  local ok, objectives = pcall(C_QuestLog.GetQuestObjectives, questID)
+  if not (ok and type(objectives) == "table") then return nil end
+  local lone, items = nil, 0
+  for _, objective in ipairs(objectives) do
+    if objective.type == "item" and (objective.numRequired or 0) > 0 then
+      items = items + 1
+      lone = objective
+      if itemName and objective.text and objective.text:find(itemName, 1, true) then
+        return objective.numFulfilled or 0, objective.numRequired
+      end
+    end
+  end
+  -- The objective text may word the item differently; one item objective is unambiguous.
+  if items == 1 then return lone.numFulfilled or 0, lone.numRequired end
+  return nil
+end
+
+local function openQuestRow(questIDs, profEntries, itemName)
   local level = UnitLevel and UnitLevel("player") or nil
   local repeatable = MakeSpace.Data.RepeatableQuests
   local open, inLog = {}, {}
@@ -410,7 +436,8 @@ local function openQuestRow(questIDs, profEntries)
   if #inLog > 0 then
     local name = questNameOf(inLog[1])
     if not name then return nil end
-    return questRowText("In log: ", name, #inLog - 1), true
+    local have, need = questItemCount(inLog[1], itemName)
+    return questRowText("In log: ", name, #inLog - 1, need and (" (" .. have .. "/" .. need .. ")") or nil), true
   end
 
   if #open == 0 or recipeCount(profEntries) >= COMMON_REAGENT_RECIPES then return nil end
@@ -499,7 +526,7 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
   -- Those don't have GetItem() and have no bag-slot owner, so skip them.
   if not tooltip.GetItem then return end
 
-  local _, link = tooltip:GetItem()
+  local itemName, link = tooltip:GetItem()
   if not link then return end
 
   local itemID = tonumber(link:match("item:(%d+)"))
@@ -589,12 +616,14 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     if result and result.detail then
       addLine(tooltip, result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
     end
-    addPriceNote(tooltip, result)
+    -- Auctionator's tooltip already shows its own number right above: repeating it
+    -- adds nothing. A price from the snapshot is Make Space's alone, so it stays.
+    if not (result and result.auctionNoteLive) then addPriceNote(tooltip, result) end
     -- A reagent with a hint still says which quest wants it, so the hint and the
     -- reason to keep the item are side by side.
     if profEntries and questIDs and not (MakeSpace.Data.VendorReagents
         and MakeSpace.Data.VendorReagents[itemID]) then
-      local row, inLog = openQuestRow(questIDs, profEntries)
+      local row, inLog = openQuestRow(questIDs, profEntries, itemName)
       if row then addQuestRow(tooltip, row, inLog) end
     end
   else
@@ -609,7 +638,7 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     if profEntries and not isVendorReagent then
       renderProfessionDetails(tooltip, profEntries, itemID)
       local row, inLog
-      if questIDs then row, inLog = openQuestRow(questIDs, profEntries) end
+      if questIDs then row, inLog = openQuestRow(questIDs, profEntries, itemName) end
       if row then addQuestRow(tooltip, row, inLog) end
     elseif questIDs and not isVendorReagent then
       renderQuestDetails(tooltip, questIDs)

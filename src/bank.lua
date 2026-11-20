@@ -45,13 +45,13 @@ function MakeSpace.Verdict.ForBank(result, isWarband)
   if BANK_KEEPS[result.rule] and not (isWarband and result.rule == "level_gap") then
     return { verdict = result.verdict, reason = result.reason, detail = result.detail,
              tag = result.tag, rule = result.rule, heading = result.heading, sellable = false,
-             auctionNote = result.auctionNote }
+             auctionNote = result.auctionNote, auctionNoteLive = result.auctionNoteLive }
   end
   -- A green has no heading of its own, so the yellow is named by the same
   -- words the bag shows under "Safe to delete": "Quest completed", and so on.
   return { verdict = "yellow", reason = result.reason, detail = result.detail,
            tag = result.tag, rule = result.rule,
            heading = result.heading or { title = result.reason },
-           auctionNote = result.auctionNote }
+           auctionNote = result.auctionNote, auctionNoteLive = result.auctionNoteLive }
 end
 

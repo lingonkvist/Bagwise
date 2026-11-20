@@ -178,6 +178,15 @@ local function saleValue(item)
 end
 
 --- "Vendor 5c, auction about 8s": the real prices, not the rounded ones.
+-- The auction side of a price is a guess, so it is shown rounded up to whole
+-- silver: "4s 87c" reads as "5s". Under a silver the copper stays, since rounding
+-- 20c up to 1s would be a different guess.
+local COPPER_PER_SILVER = 100
+local function roundUpToSilver(copper)
+  if copper < COPPER_PER_SILVER then return copper end
+  return math.ceil(copper / COPPER_PER_SILVER) * COPPER_PER_SILVER
+end
+
 local function priceNote(item, ceiling, source)
   local money = MakeSpace.Verdict.FormatMoney
   -- A live price is the real price now ("about"); the snapshot is a cheap-end
@@ -185,7 +194,7 @@ local function priceNote(item, ceiling, source)
   local approx = source == "live" and "about " or "up to "
   local vendor = item.sellPrice or 0
   local vendorText = vendor > 0 and ("vendor " .. money(vendor)) or "no vendor price"
-  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction " .. approx .. money(ceiling)
+  return vendorText:sub(1, 1):upper() .. vendorText:sub(2) .. ", auction " .. approx .. money(roundUpToSilver(ceiling))
 end
 
 --- The dearest price Auctionator has shown for this item, however old or
@@ -256,25 +265,27 @@ end
 -- can stop suggesting the auction house. Never blocks anything.
 -- @return string|nil the price line
 -- @return boolean true when the price is known and not worth listing
+-- @return boolean|nil true when the line shows Auctionator's own number, which
+--   its tooltip already shows, so a repeat of it adds nothing
 local function priceLine(item, state)
   if not isTradeable(item) then return nil end
   local ceiling, source = ceilingFor(item)
   -- Your own auction house's old reading beats the snapshot's other-realm ceiling:
   -- show it, and say the auction is not worth it.
   if source ~= "live" and staleSaysCheap(item, state) then
-    return priceNote(item, item.stalePrice, "live"), true
+    return priceNote(item, item.stalePrice, "live"), true, true
   end
   -- The same high reading that blocks a green is shown as the price.
   local reading = dearestReading(item)
   if reading and (not ceiling or reading > ceiling) and reading >= MIN_LISTING_PER_ITEM
       and reading > sellLimit(item, "live", state) then
-    return priceNote(item, reading, "live")
+    return priceNote(item, reading, "live"), nil, true
   end
   if source ~= "live" and MakeSpace.Data and MakeSpace.Data.AuctionMarketMissing then return nil end
   if not ceiling or source == "unknown" then return nil end
   if ceiling >= MIN_LISTING_PER_ITEM
       and ceiling > sellLimit(item, source, state) then
-    return priceNote(item, ceiling, source)
+    return priceNote(item, ceiling, source), nil, source == "live"
   end
   return nil, true
 end

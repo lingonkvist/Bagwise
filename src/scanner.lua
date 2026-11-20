@@ -626,6 +626,30 @@ local function readHealAmount(bag, slot)
   return nil
 end
 
+-- What an item's tooltip says never changes for the same item link, but reading
+-- it (SetBagItem, then every line) is the dearest part of a scan, and a scan runs
+-- on every loot and bag event. Keep each answer by kind and link. A tooltip the
+-- client has not filled in yet ("Retrieving item information") is not kept, so
+-- the answer is read again once the item is known.
+local tooltipFacts = {}
+
+local function tooltipIsFilledIn()
+  if not (skillTip and skillTip.NumLines and skillTip:NumLines() >= 1) then return false end
+  local first = _G.MakeSpaceSkillTipTextLeft1
+  local text = first and first.GetText and first:GetText()
+  return not (text and _G.RETRIEVING_ITEM_INFO and text == _G.RETRIEVING_ITEM_INFO)
+end
+
+local function readTooltipOnce(kind, read, bag, slot, link)
+  if not link then return read(bag, slot) end
+  local key = kind .. "|" .. link
+  local kept = tooltipFacts[key]
+  if kept then return kept[1], kept[2], kept[3] end
+  local first, second, third = read(bag, slot)
+  if tooltipIsFilledIn() then tooltipFacts[key] = { first, second, third } end
+  return first, second, third
+end
+
 --- Gather item data from the WoW API for one bag slot.
 -- @param bag   number  Bag index
 -- @param slot  number  Slot index (1-N)
@@ -644,18 +668,19 @@ local function gatherItem(bag, slot, state)
     item.livePrice, item.liveAge, item.liveSteady, item.stalePrice, item.staleAge = MakeSpace.Live.FreshPrice(item)
   end
   if item and item.isEquippable then
-    item.hasEffect = readHasEffect(bag, slot)
+    item.hasEffect = readTooltipOnce("effect", readHasEffect, bag, slot, item.link)
   end
   if item and item.classID == RECIPE_CLASS_ID then
-    item.requiredSkill = readRequiredSkill(bag, slot)
+    item.requiredSkill = readTooltipOnce("skill", readRequiredSkill, bag, slot, item.link)
   elseif item and item.classID == CONSUMABLE_CLASS_ID
       and (item.subClassID == POTION_SUBCLASS_ID or item.subClassID == FOOD_SUBCLASS_ID) then
-    item.restoresHealthOrMana, item.givesBuff, item.restoresManaOnly = readRestores(bag, slot)
+    item.restoresHealthOrMana, item.givesBuff, item.restoresManaOnly =
+      readTooltipOnce("restores", readRestores, bag, slot, item.link)
   elseif item and item.classID == CONSUMABLE_CLASS_ID and item.subClassID == BANDAGE_SUBCLASS_ID then
-    item.healAmount = readHealAmount(bag, slot)
+    item.healAmount = readTooltipOnce("heal", readHealAmount, bag, slot, item.link)
   end
   if item and item.classID == CONSUMABLE_CLASS_ID then
-    item.givesStats, item.levelLimited = readConsumableTraits(bag, slot)
+    item.givesStats, item.levelLimited = readTooltipOnce("traits", readConsumableTraits, bag, slot, item.link)
   end
   return item
 end
@@ -1171,6 +1196,7 @@ end
 --- Clear the verdict cache. Call when player state changes.
 function MakeSpace.Scanner.ClearCache()
   verdictCache = {}
+  tooltipFacts = {}
 end
 
 --- Count scanned slots by verdict (for /makespace status).

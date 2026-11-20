@@ -1887,6 +1887,35 @@ describe("Mana potions for classes without mana", function()
     assert.are.equal("yellow", (MakeSpace.Verdict.Evaluate(potion(13443), as("ROGUE"))))
   end)
 
+  it("flags a price from Auctionator, not one from the snapshot, so the tooltip can skip a repeat", function()
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = { [3827] = 5000 }
+    local _, _, _, _, _, _, snapshotNote, _, snapshotLive = MakeSpace.Verdict.Evaluate(potion(3827), as("WARRIOR"))
+    local live = potion(3827)
+    live.livePrice, live.liveAge = 5000, 0
+    local _, _, _, _, _, _, liveNote, _, liveFlag = MakeSpace.Verdict.Evaluate(live, as("WARRIOR"))
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    assert.is_truthy(snapshotNote)
+    assert.is_truthy(not snapshotLive)
+    assert.is_truthy(liveNote:find("auction about", 1, true))
+    assert.are.equal(true, liveFlag)
+    -- by name, for the tooltip
+    local judged = MakeSpace.Verdict.Judge(live, as("WARRIOR"))
+    assert.are.equal(true, judged.auctionNoteLive)
+  end)
+
+  it("rounds the auction side of a price up to whole silver, and leaves copper under a silver", function()
+    local note = MakeSpace.Auction.PriceNote
+    local vendorOnly = { sellPrice = 120 }
+    assert.are.equal("Vendor 1s 20c, auction up to 5s", note(vendorOnly, 487, "snapshot"))
+    assert.are.equal("Vendor 1s 20c, auction about 5s", note(vendorOnly, 487, "live"))
+    assert.are.equal("Vendor 1s 20c, auction about 5s", note(vendorOnly, 500, "live"))
+    assert.are.equal("Vendor 1s 20c, auction about 1g 21s", note(vendorOnly, 12005, "live"))
+    assert.are.equal("Vendor 1s 20c, auction about 26c", note(vendorOnly, 26, "live"))
+    -- the vendor side is exact
+    assert.are.equal("Vendor 1s 20c, auction about 2s", note(vendorOnly, 101, "live"))
+  end)
+
   it("shows the price line when the auction pays more than a vendor", function()
     local saved = MakeSpace.Data.AuctionPriceCeiling
     MakeSpace.Data.AuctionPriceCeiling = { [3827] = 5000 }
@@ -2276,7 +2305,7 @@ describe("Yellow headings", function()
       { { "low_level_consumable", "food", 5, 30 }, "Low-level food (level 5, you are 30)", "Low-level food",    nil },
       { { "weak_bandage", 400, 9, 4500 },    "Weak bandage", "Weak bandage", "Heals 9% of your health (400 of 4500)" },
       { { "open_it" },                      "Open it, the contents may stack",           "Open it",             "Contents may stack" },
-      { { "no_mana", "Warriors" },          "Warriors have no mana. May sell at the auction house", "Not for your class", "No mana for Warriors" },
+      { { "no_mana", "Warriors" },          "Warriors have no mana. May sell at the auction house", "Useless to Warriors", nil },
       { { "wrong_class_reagent", "Mage, Priest only (world drop)" }, "Mage, Priest only (world drop)", "Wrong class reagent", "Mage, Priest only (world drop)" },
       { { "other_profession_reagent", { "Alchemy", "Tailoring" } }, "Only used by professions you don't have. May sell at the auction house", "Not your profession", "Used by Alchemy, Tailoring" },
       { { "other_profession_reagent", { "A", "B", "C", "D" } }, "Only used by professions you don't have. May sell at the auction house", "Not your profession", "Used by 4 professions" },
@@ -2542,7 +2571,7 @@ describe("Tradable items the auction house may value more than a vendor", functi
     local blackmouth = manual({ sellPrice = 4, maxStack = 20, count = 7 })
     local verdict, _, _, _, _, _, note = MakeSpace.Verdict.Evaluate(blackmouth, state)
     assert.is_nil(verdict)
-    assert.are.equal("Vendor 4c, auction up to 1s 75c", note)
+    assert.are.equal("Vendor 4c, auction up to 2s", note)
     -- a single item is judged by itself: 1s 75c for a 4c item is still a trip worth making
     assert.is_nil((MakeSpace.Verdict.Evaluate(manual({ sellPrice = 4 }), state)))
   end)
@@ -2694,7 +2723,7 @@ describe("The limit has no cliffs", function()
     local verdict, _, _, _, _, _, note = MakeSpace.Verdict.Evaluate(good, state)
     MakeSpace.Data.ReagentProfessions, MakeSpace.Data.AuctionPriceCeiling = savedReagents, savedPrices
     assert.is_nil(verdict)
-    assert.are.equal("Vendor 1s, auction up to 8s 99c", note)
+    assert.are.equal("Vendor 1s, auction up to 9s", note)
   end)
 end)
 
