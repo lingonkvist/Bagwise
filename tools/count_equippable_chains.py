@@ -13,7 +13,6 @@ Needs the cached or downloadable SpellReagents, SkillLineAbility, SkillLine,
 SpellEffect and ItemSparse tables (the same ones build_reagent_professions.py uses).
 """
 import argparse
-import csv
 import importlib.util
 import os
 

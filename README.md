@@ -34,7 +34,7 @@ Green:
 - White armor you have outgrown, because you wear green or better in that slot.
 - Cheap gray items. Only the cheapest shows a dot, and deleting it lights the next.
 - Trade goods that no recipe or quest uses.
-- Recipes and reagents for professions you do not have, and reagents you have outleveled, when the price is known, the auction pays too little to list, and the whole slot is worth under 50c (5c per level above level 10). The tooltip shows the price line under "Safe to vendor", or says "Worth very little" when there is no price line. A missing price never counts: an item nobody lists may be rare.
+- Recipes and reagents for professions you do not have, and reagents you have outleveled, when the price is known, the auction pays too little to list, and the whole slot is worth under 50c (5c per level above level 10). The tooltip says "Safe to delete" and names the reason, for example "Outleveled reagent, worth very little". A missing price never counts: an item nobody lists may be rare.
 - Tradable green gear (not for Enchanters) that auctions for about what a vendor pays. The tooltip says "Safe to vendor" and shows both prices, for example `Vendor 1s 92c, auction up to 3s`.
 - Tradable green gear that auctions for clearly more than a vendor pays gets a yellow dot, "Consider auctioning". With a price from the shipped data both prices show underneath; a live Auctionator price is not repeated, since its tooltip shows it. It waits until the gear is judged not an upgrade, and Enchanters do not get it.
 

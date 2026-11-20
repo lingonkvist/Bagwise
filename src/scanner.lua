@@ -719,6 +719,9 @@ local function evaluateCached(item, state, profKey)
   local cached = verdictCache[cacheKey]
   if cached then return cached end
 
+  -- Judge says whether a vendor would take the green (the overlay pulses it at a
+  -- vendor, the tooltip says "Safe to vendor"). A green you marked yourself is
+  -- never offered to a vendor, so the result is kept as Judge made it.
   local result = MakeSpace.Verdict.Judge(item, state)
   verdictCache[cacheKey] = result
   return result

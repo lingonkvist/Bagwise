@@ -2,7 +2,7 @@
 -- For each reagent item: which professions use it, how many
 -- recipes, the skill range they are learnable at, and the skill
 -- where the last of them turns green (0 when unknown).
--- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
+-- Generated from wago.tools DB2 build 1.60.1.70959. Do not edit by hand.
 --
 -- 586 reagent items across 9 professions.
 

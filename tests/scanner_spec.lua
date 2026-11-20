@@ -94,6 +94,28 @@ describe("Scanner: openable items", function()
   end)
 end)
 
+describe("Scanner: a green you marked yourself", function()
+  it("says Safe to delete, never Safe to vendor, even when a vendor would buy it", function()
+    setUp({ [0] = { { id = 300 } } }, {})
+    local original = MakeSpace.Overrides.IsMarkedGreen
+    MakeSpace.Overrides.IsMarkedGreen = function(id) return id == 300 end
+    MakeSpace.Scanner.ScanAll()
+    MakeSpace.Overrides.IsMarkedGreen = original
+    local result = MakeSpace.Scanner.GetResult(0, 1)
+    assert.are.equal("green", result.verdict)
+    assert.are.equal("marked", result.rule)
+    assert.are.equal(false, result.sellable)
+  end)
+
+  it("still says Safe to vendor for an ordinary green with a sell price", function()
+    setUp({ [0] = { { id = 300 } } }, {})
+    MakeSpace.Scanner.ScanAll()
+    local result = MakeSpace.Scanner.GetResult(0, 1)
+    assert.are.equal("green", result.verdict)
+    assert.are.equal(true, result.sellable)
+  end)
+end)
+
 describe("Scanner: make room", function()
   it("counts only empty slots in general bags as room", function()
     setUp({ [0] = { { id = 300 } } }, { [0] = 0, [1] = 3 })

@@ -14,8 +14,8 @@ local PROF_MIN_LEVEL        = 3
 local PROF_MAX_LEVEL        = 4
 
 local VERDICT_COLORS        = {
-  green  = { r = 0.33, g = 0.87, b = 0.49 },
-  yellow = { r = 0.97, g = 0.82, b = 0.16 },
+  green  = { r = 0.30, g = 0.81, b = 0.38 },
+  yellow = { r = 0.97, g = 0.79, b = 0.22 },
 }
 
 -- Detail text under a verdict header uses the same blue as every other
@@ -233,7 +233,8 @@ end
 -- its own judgement (an average, or the snapshot) and it is what makes the
 -- "may sell at the auction house" hint, or a missing dot, make sense.
 local function addPriceNote(tooltip, result)
-  if not (result and result.auctionNote) then return end
+  -- A stack worth next to nothing says so in its reason; a vendor price under "Safe to delete" would send mixed signals.
+  if not (result and result.auctionNote) or result.worthLittle then return end
   addLine(tooltip, result.auctionNote, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)
 end
 
@@ -523,7 +524,8 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
     end
     result = MakeSpace.Scanner.GetResult(bag, slot)
     headings = BAG_HEADINGS
-    if result and result.sellable then
+    -- A stack worth next to nothing is not worth a trip to the vendor: it says delete.
+    if result and result.sellable and not result.worthLittle then
       headings = BAG_HEADINGS_VENDOR
     end
   end
@@ -582,7 +584,7 @@ function MakeSpace.Tooltip.OnTooltipSetItem(tooltip)
 
   if verdict then
     renderVerdict(tooltip, verdict, reason, headings, keepWhole, specificHeading,
-        result and result.auctionNote ~= nil)
+        result and result.auctionNote ~= nil and not result.worthLittle)
     -- Quest-completed verdicts: show quest detail on a second line in info-blue.
     if result and result.detail then
       addLine(tooltip, result.detail, INFO_COLOR.r, INFO_COLOR.g, INFO_COLOR.b)

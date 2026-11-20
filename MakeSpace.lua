@@ -169,6 +169,8 @@ local function onPlayerLogin(self)
   self:RegisterEvent("LOOT_OPENED")
   self:RegisterEvent("LOOT_SLOT_CLEARED")
   self:RegisterEvent("LOOT_CLOSED")
+  self:RegisterEvent("MERCHANT_SHOW")
+  self:RegisterEvent("MERCHANT_CLOSED")
   -- The bank can only be read while it is open. Which of these a client has
   -- differs, and an unknown event must not stop the rest of the setup.
   for _, bankEvent in ipairs({ "BANKFRAME_OPENED", "BANKFRAME_CLOSED",
@@ -240,6 +242,8 @@ local EVENT_HANDLERS = {
   AUCTION_HOUSE_SHOW     = hookAuctionatorPrices,
   AUCTION_HOUSE_CLOSED   = auctionPricesChanged,
   BANKFRAME_CLOSED       = rescanSoon,
+  MERCHANT_SHOW          = function() MakeSpace.Overlay.SetVendorOpen(true) end,
+  MERCHANT_CLOSED        = function() MakeSpace.Overlay.SetVendorOpen(false) end,
   PLAYERBANKSLOTS_CHANGED = rescanSoon,
   PLAYERBANKBAGSLOTS_CHANGED = rescanSoon,
   PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED = rescanSoon,

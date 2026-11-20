@@ -1172,6 +1172,16 @@ describe("Gray items by vendor value", function()
     assert.are.equal("green", late)
   end)
 
+  it("climbs faster after level 30: a 20s gray is worth a glance at 40 but plain junk at 60", function()
+    local at40 = MakeSpace.Verdict.Evaluate(gray({ sellPrice = 2000 }), stateAtLevel(40))
+    local at60 = MakeSpace.Verdict.Evaluate(gray({ sellPrice = 2000 }), stateAtLevel(60))
+    local rich = MakeSpace.Verdict.Evaluate(gray({ sellPrice = 2600 }), stateAtLevel(60))
+
+    assert.are.equal("yellow", at40)
+    assert.are.equal("green", at60)
+    assert.are.equal("yellow", rich)
+  end)
+
   it("leaves a gray alone while a quest still lists it", function()
     local verdict = MakeSpace.Verdict.Evaluate(gray({ questItemQuestIDs = { 55 } }), stateAtLevel(30))
 
@@ -1758,6 +1768,32 @@ describe("Outleveled reagents", function()
     assert.are.equal("yellow", verdict)
     assert.are.equal("outleveled_reagent", rule)
     assert.are.equal("Vendor 13c, auction up to 31s", note)
+  end)
+
+  it("is green when the stack is also worth next to nothing, and says both reasons", function()
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = { [2589] = 3 }
+    local cheap = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 1, count = 2 }
+    local verdict, reason, _, _, rule, _, note = MakeSpace.Verdict.Evaluate(cheap, state({ Tailoring = 250 }))
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    assert.are.equal("green", verdict)
+    assert.are.equal("Outleveled reagent, worth very little", reason)
+    assert.are.equal("outleveled_reagent", rule)
+    assert.is_truthy(note)
+  end)
+
+  it("marks that green as worth little, so the tooltip says delete, not vendor", function()
+    local saved = MakeSpace.Data.AuctionPriceCeiling
+    MakeSpace.Data.AuctionPriceCeiling = { [2589] = 3 }
+    local cheap = { id = 2589, classID = 7, subClassID = 5, quality = 1, sellPrice = 1, count = 2 }
+    local judged = MakeSpace.Verdict.Judge(cheap, state({ Tailoring = 250 }))
+    MakeSpace.Data.AuctionPriceCeiling = saved
+    assert.are.equal("green", judged.verdict)
+    assert.are.equal(true, judged.worthLittle)
+    -- a plain vendor green is not marked
+    local plain = MakeSpace.Verdict.Judge({ id = 1, name = "Rag", quality = 0, sellPrice = 5, classID = 15, subClassID = 0 },
+        { level = 20, class = "WARRIOR", professions = {} })
+    assert.is_nil(plain.worthLittle)
   end)
 
   it("an open quest does not silence the hint: the tooltip names the quest instead", function()
@@ -2871,7 +2907,7 @@ describe("Reagents only used by professions you lack", function()
       small.sellPrice, small.stalePrice, small.staleAge, small.count = 20, 26, 4, 3
       local verdict, reason, _, _, _, _, note = MakeSpace.Verdict.Evaluate(small, player(TWO))
       assert.are.equal("green", verdict)
-      assert.are.equal("Worth very little", reason)
+      assert.are.equal("Not your profession, worth very little", reason)
       -- the old reading is shown instead of the snapshot's 8s
       assert.are.equal("Vendor 20c, auction about 26c", note)
     end)
@@ -2904,7 +2940,7 @@ describe("Reagents only used by professions you lack", function()
       withData({ AuctionPriceCeiling = { [8001] = 8 } }, function()
         local verdict, reason, _, _, rule, _, note = MakeSpace.Verdict.Evaluate(cheap, player(TWO))
         assert.are.equal("green", verdict)
-        assert.are.equal("Worth very little", reason)
+        assert.are.equal("Not your profession, worth very little", reason)
         assert.are.equal("other_profession_reagent", rule)
         assert.are.equal("Vendor 2c, auction up to 8c", note)
       end)
@@ -3827,7 +3863,7 @@ describe("Recipes for a profession you do not have", function()
     withPrices({ [9501] = 20 }, function()
       local verdict, reason = MakeSpace.Verdict.Evaluate(formula({ sellPrice = 10 }), state)
       assert.are.equal("green", verdict)
-      assert.are.equal("Worth very little", reason)
+      assert.are.equal("Not your profession, worth very little", reason)
     end)
   end)
 

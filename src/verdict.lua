@@ -467,21 +467,32 @@ end
 local TRADE_GOODS_CLASS_ID = 7
 
 -- Vendor value that counts as "worth a trip to the vendor", in copper. It
--- grows with the player's level because the same coins mean less later on:
--- 30c at level 1, about 1s25c at 20, 3s25c at 60. Nothing here is set by
--- the player.
+-- grows with the player's level because the same coins mean less later on, and
+-- faster after level 30, when gold starts to flow: 30c at level 1, about 1s25c
+-- at 20, 1s75c at 30, about 18s at 60. Nothing here is set by the player.
 local WORTH_KEEPING_BASE_COPPER = 25
 local WORTH_KEEPING_PER_LEVEL = 5
+local STEEPER_AFTER_LEVEL = 30
+local WORTH_KEEPING_STEEP_PER_LEVEL = 54
 local POOR_QUALITY = 0
 
 -- Where a gray stops being plainly safe to delete and starts being worth some
 -- silver, in copper, by player level. A little higher than the general
--- threshold above: 50c at level 2, about 1s75c at 20, 4s55c at 60.
+-- threshold above: 50c at level 2, about 1s75c at 20, 2s45c at 30, about 25s
+-- at 60.
 local GRAY_WORTH_BASE_COPPER = 35
 local GRAY_WORTH_PER_LEVEL = 7
+local GRAY_WORTH_STEEP_PER_LEVEL = 76
+
+--- base + perLevel * level, with steepPerLevel instead above STEEPER_AFTER_LEVEL.
+local function levelCurve(base, perLevel, steepPerLevel, level)
+  local early = math.min(level, STEEPER_AFTER_LEVEL)
+  local late = math.max(level - STEEPER_AFTER_LEVEL, 0)
+  return base + perLevel * early + steepPerLevel * late
+end
 
 local function grayThreshold(state)
-  return GRAY_WORTH_BASE_COPPER + GRAY_WORTH_PER_LEVEL * (state.level or 1)
+  return levelCurve(GRAY_WORTH_BASE_COPPER, GRAY_WORTH_PER_LEVEL, GRAY_WORTH_STEEP_PER_LEVEL, state.level or 1)
 end
 
 -- Marks a verdict as "gray item" so the scanner can thin them out.
@@ -489,7 +500,7 @@ MakeSpace.Verdict.POOR_QUALITY_TAG = "poorQuality"
 local POOR_QUALITY_TAG = MakeSpace.Verdict.POOR_QUALITY_TAG
 
 local function valueThreshold(state)
-  return WORTH_KEEPING_BASE_COPPER + WORTH_KEEPING_PER_LEVEL * (state.level or 1)
+  return levelCurve(WORTH_KEEPING_BASE_COPPER, WORTH_KEEPING_PER_LEVEL, WORTH_KEEPING_STEEP_PER_LEVEL, state.level or 1)
 end
 
 --- What the whole stack sells for to a vendor, in copper.
@@ -1362,7 +1373,8 @@ local WORTHLESS_OVERRIDES = { recipe_reagent = true }
 local WORTHLESS_RECIPE_OVERRIDES = { recipe_reagent = true, essential_item = true }
 
 --- Run one rule and apply the safety check to a green.
--- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote
+-- @return verdict, reason, detail, tag, blockedBy, heading, auctionNote, worthLittle
+-- worthLittle is true for a green that only says the stack is worth next to nothing.
 local function runRule(rule, item, state)
   local verdict, reason, detail, tag, heading = rule.evaluate(item, state)
   if verdict == "yellow" and rule.showsAuctionPrice then
@@ -1377,8 +1389,14 @@ local function runRule(rule, item, state)
             and not MakeSpace.Safety.Blocker(item,
                 rule.worthlessOverridesRecipes and WORTHLESS_RECIPE_OVERRIDES or WORTHLESS_OVERRIDES) then
           local ceiling, source = Auction.CeilingFor(item)
-          return "green", MakeSpace.Verdict.WORTH_LITTLE_REASON, nil, nil, nil, nil,
-              note or (ceiling and Auction.PriceNote(item, ceiling, source)) or nil
+          -- Say what the hint was ("Outleveled reagent, worth very little"), so the
+          -- green is not left with only its price.
+          local title = type(heading) == "table" and heading.title or heading
+          local why = type(title) == "string"
+              and (title .. ", " .. MakeSpace.Verdict.WORTH_LITTLE_REASON:lower())
+              or MakeSpace.Verdict.WORTH_LITTLE_REASON
+          return "green", why, nil, nil, nil, nil,
+              note or (ceiling and Auction.PriceNote(item, ceiling, source)) or nil, true
         end
       end
       reason = reason:gsub("%. May sell at the auction house$", "")
@@ -1443,9 +1461,9 @@ function MakeSpace.Verdict.Evaluate(item, state)
   -- beats it. Otherwise the first yellow stands.
   local hint, auctionNote
   for i = 1, #RULES do
-    local verdict, reason, detail, tag, blockedBy, heading, note = runRule(RULES[i], item, state)
+    local verdict, reason, detail, tag, blockedBy, heading, note, worthLittle = runRule(RULES[i], item, state)
     if verdict == "green" and not blockedBy then
-      return verdict, reason, detail, tag, RULES[i].name, heading, note
+      return verdict, reason, detail, tag, RULES[i].name, heading, note, worthLittle
     end
     if note and not auctionNote then auctionNote = note end
     if verdict == "yellow" and not hint then
@@ -1462,12 +1480,14 @@ MakeSpace.Verdict.WORTH_LITTLE_REASON = "Worth very little"
 
 --- Evaluate an item and return the answer by name, which is what callers other
 -- than the tests should use: Evaluate's positional values are easy to misorder.
--- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, sellable }
+-- @return table { verdict, reason, detail, tag, rule, heading, auctionNote, sellable, worthLittle }
 --   verdict is "green", "yellow" or nil; rule names the rule that decided
 function MakeSpace.Verdict.Judge(item, state)
-  local verdict, reason, detail, tag, rule, heading, auctionNote = MakeSpace.Verdict.Evaluate(item, state)
+  local verdict, reason, detail, tag, rule, heading, auctionNote, worthLittle = MakeSpace.Verdict.Evaluate(item, state)
   return { verdict = verdict, reason = reason, detail = detail, tag = tag, rule = rule,
            heading = heading, auctionNote = auctionNote,
+           -- A stack worth next to nothing is deleted, not vendored: the tooltip says "Safe to delete".
+           worthLittle = worthLittle or nil,
            -- A green you set yourself says "Safe to delete", never "Safe to vendor".
            sellable = rule ~= "marked" and MakeSpace.Verdict.Sellable(item, verdict) }
 end

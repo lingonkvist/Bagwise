@@ -3,7 +3,7 @@
 -- what copper recipes do. Used so a material is never called outleveled
 -- while something made from it is still in demand. green_level is the
 -- skill where the last of those recipes turns green.
--- Generated from wago.tools DB2 build 1.60.1.70938. Do not edit by hand.
+-- Generated from wago.tools DB2 build 1.60.1.70959. Do not edit by hand.
 
 MakeSpace                      = MakeSpace or {}
 MakeSpace.Data                 = MakeSpace.Data or {}

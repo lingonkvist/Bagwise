@@ -96,8 +96,8 @@ describe("tooltip basic output", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Well below your level", tt.lines[2].text)
-    assert.are.equal(0.33, tt.lines[1].r)
-    assert.are.equal(0.87, tt.lines[1].g)
+    assert.are.equal(0.30, tt.lines[1].r)
+    assert.are.equal(0.81, tt.lines[1].g)
   end)
 
   it("yellow level verdict: single line", function()
@@ -116,7 +116,7 @@ describe("tooltip basic output", function()
     assert.are.equal(1, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("Below your level$"))
     assert.are.equal(0.97, tt.lines[1].r)
-    assert.are.equal(0.82, tt.lines[1].g)
+    assert.are.equal(0.79, tt.lines[1].g)
   end)
 
   it("header: dot and verdict in words in the verdict color, detail in info blue", function()
@@ -136,7 +136,7 @@ describe("tooltip basic output", function()
     assert.are.equal(2, #tt.lines)
     assert.is_truthy(tt.lines[1].text:find("^|T.-textures.-pearl_yellow:14:14|t Outleveled gear$"))
     assert.are.equal(0.97, tt.lines[1].r)
-    assert.are.equal(0.82, tt.lines[1].g)
+    assert.are.equal(0.79, tt.lines[1].g)
     assert.are.equal("Below your level", tt.lines[2].text)
     assert.are.equal(0.40, tt.lines[2].r)
     assert.are.equal(1.0, tt.lines[2].b)
@@ -157,6 +157,19 @@ describe("tooltip basic output", function()
 
     assert.is_truthy(tt.lines[1].text:find("pearl_green:14:14|t Safe to delete$"))
     assert.are.equal("Marked by you", tt.lines[2].text)
+  end)
+
+  it("says Safe to delete, not vendor, for a sellable green that is worth next to nothing", function()
+    MakeSpace.Data.ReagentProfessions = {}
+    MakeSpace.Scanner = {
+      GetResult = function()
+        return { verdict = "green", reason = "Outleveled reagent, worth very little",
+                 sellable = true, worthLittle = true }
+      end,
+    }
+    local tt = makeTooltip("|cff...|Hitem:127:...|h[Mail Belt]|h|r", "ContainerFrame1", 0, 5)
+    MakeSpace.Tooltip.OnTooltipSetItem(tt)
+    assert.is_truthy(tt.lines[1].text:find("pearl_green:14:14|t Safe to delete$"))
   end)
 
   it("says Safe to vendor for a green tagged as sellable", function()
@@ -347,18 +360,19 @@ describe("tooltip basic output", function()
     assert.are.equal("Vendor 5c, auction about 8s", plainCoins(tt.lines[#tt.lines].text))
   end)
 
-  it("a worth-very-little green shows the price line instead of its own reason", function()
+  it("a worth-very-little green names the hint and shows no price line under Safe to delete", function()
     MakeSpace.Data.ReagentProfessions = {}
     MakeSpace.Scanner = {
       GetResult = function()
-        return { verdict = "green", reason = MakeSpace.Verdict.WORTH_LITTLE_REASON,
-                 auctionNote = "Vendor 20c, auction about 26c" }
+        return { verdict = "green", reason = "Outleveled reagent, worth very little",
+                 auctionNote = "Vendor 20c, auction about 26c", sellable = true, worthLittle = true }
       end,
     }
     local tt = makeTooltip("|cff...|Hitem:6470:...|h[Deviate Scale]|h|r", "ContainerFrame1", 0, 5)
     MakeSpace.Tooltip.OnTooltipSetItem(tt)
     assert.are.equal(2, #tt.lines)
-    assert.are.equal("Vendor 20c, auction about 26c", plainCoins(tt.lines[2].text))
+    assert.is_truthy(tt.lines[1].text:find("Safe to delete$"))
+    assert.are.equal("Outleveled reagent, worth very little", plainCoins(tt.lines[2].text))
   end)
 
   it("a worth-very-little green with no price line keeps its reason", function()
@@ -770,7 +784,7 @@ describe("tooltip merged verdict lines", function()
 
     assert.are.equal(2, #tt.lines)
     assert.are.equal("Rogue only (vendor)", tt.lines[2].text)
-    assert.are.equal(0.33, tt.lines[1].r)
+    assert.are.equal(0.30, tt.lines[1].r)
   end)
 
   it("yellow class reagent: single line", function()
@@ -1095,9 +1109,9 @@ describe("tooltip quest completed two-line format", function()
 
     assert.are.equal(3, #tt.lines)
     assert.are.equal("Quest completed", tt.lines[2].text)
-    assert.are.equal(0.33, tt.lines[1].r)
-    assert.are.equal(0.87, tt.lines[1].g)
-    assert.are.equal(0.49, tt.lines[1].b)
+    assert.are.equal(0.30, tt.lines[1].r)
+    assert.are.equal(0.81, tt.lines[1].g)
+    assert.are.equal(0.38, tt.lines[1].b)
     assert.are.equal("[34] Bad Medicine", tt.lines[3].text)
     assert.are.equal(0.40, tt.lines[3].r)
     assert.are.equal(0.74, tt.lines[3].g)
@@ -1299,7 +1313,7 @@ describe("tooltip in the loot window", function()
 
     assert.are.equal("May be needed", tt.lines[#tt.lines].text)
     assert.is_truthy(tt.lines[#tt.lines - 1].text:find("Take it", 1, true))
-    assert.are.equal(0.33, tt.lines[#tt.lines - 1].r)
+    assert.are.equal(0.30, tt.lines[#tt.lines - 1].r)
   end)
 
   it("names the cheapest gray on one line, item and coins coloured", function()

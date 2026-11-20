@@ -7,10 +7,10 @@ dofile("src/overlay.lua")
 
 local function makeDotTexture()
   local dot = { shown = false }
-  function dot:SetSize() end
+  function dot:SetSize(w, h) self.size = { w, h } end
   function dot:SetBlendMode() end
   function dot:SetTexture(path) self.texture = path end
-  function dot:SetPoint() end
+  function dot:SetPoint(...) self.point = { ... } end
   function dot:SetColorTexture() end
   function dot:SetAllPoints() end
   function dot:SetWidth() end
@@ -82,6 +82,84 @@ describe("Ellesmere Bags adapter", function()
     assert.are.equal(1, #second.dots)
     assert.is_truthy(second.dots[1].shown)
     assert.is_truthy(second.dots[1].texture:find("dot_yellow$"))
+    _G.EllesmereUI = nil
+  end)
+
+  -- The pulse is driven by a frame's OnUpdate; this one lets a test step it by hand.
+  -- The overlay keeps the first frame it is given, so every test shares one.
+  local driver = { script = nil }
+  function driver:SetScript(_, fn) self.script = fn end
+  local function installDriver()
+    driver.script = nil
+    _G.CreateFrame = function() return driver end
+    return driver
+  end
+
+  it("swells a sellable green only while a vendor is open", function()
+    local driver = installDriver()
+    local sells, keeps = makeButton(0, 1), makeButton(0, 2)
+    local yellow = makeButton(0, 3)
+    installEllesmere({ sells, keeps, yellow })
+    installScanner({
+      ["0:1"] = { verdict = "green", sellable = true },
+      ["0:2"] = { verdict = "green", sellable = false },
+      ["0:3"] = { verdict = "yellow", sellable = true },
+    })
+
+    MakeSpace.Overlay.UpdateAll()
+    assert.is_nil(driver.script)             -- nothing pulses away from a vendor
+
+    MakeSpace.Overlay.SetVendorOpen(true)
+    assert.is_truthy(driver.script)
+    driver.script(nil, 0.6)                  -- half a cycle: the peak
+    assert.is_truthy(sells.dots[1].size[1] > 18)
+    assert.are.equal(16, keeps.dots[1].size[1])   -- the vendor will not buy it
+    assert.are.equal(16, yellow.dots[1].size[1])  -- only greens pulse
+
+    driver.script(nil, 0.6)                  -- a full cycle: back to normal size
+    assert.is_truthy(math.abs(sells.dots[1].size[1] - 16) < 0.01)
+
+    MakeSpace.Overlay.SetVendorOpen(false)
+    assert.are.equal(16, sells.dots[1].size[1])
+    assert.is_nil(driver.script)             -- nothing keeps running
+    _G.CreateFrame = nil
+    _G.EllesmereUI = nil
+  end)
+
+  it("does not pulse when the player turned the pulse off", function()
+    local driver = installDriver()
+    local button = makeButton(0, 1)
+    installEllesmere({ button })
+    installScanner({ ["0:1"] = { verdict = "green", sellable = true } })
+    _G.MakeSpaceDB = { vendorPulse = false }
+
+    MakeSpace.Overlay.SetVendorOpen(true)
+    assert.is_nil(driver.script)
+
+    MakeSpace.Overlay.SetVendorOpen(false)
+    _G.MakeSpaceDB = nil
+    _G.CreateFrame = nil
+    _G.EllesmereUI = nil
+  end)
+
+  it("hides the dot of a slot that was emptied, and stops its pulse, when the bag addon never redraws it", function()
+    local driver = installDriver()
+    local button = makeButton(0, 4)
+    installEllesmere({ button })
+    installScanner({ ["0:4"] = { verdict = "green", sellable = true } })
+    MakeSpace.Overlay.SetVendorOpen(true)
+    assert.is_truthy(button.dots[1].shown)
+    assert.is_truthy(driver.script)
+
+    -- Sold to the vendor: the slot has no result, and the addon does not paint it.
+    installEllesmere({})
+    installScanner({})
+    MakeSpace.Overlay.UpdateAll()
+    assert.are.equal(false, button.dots[1].shown)
+    assert.is_nil(driver.script)
+
+    MakeSpace.Overlay.SetVendorOpen(false)
+    _G.CreateFrame = nil
     _G.EllesmereUI = nil
   end)
 
@@ -477,20 +555,24 @@ end)
 
 
 describe("Baganator adapter", function()
-  local onUpdate
+  local onUpdate, onInit
 
   local function installBaganator()
-    onUpdate = nil
-    _G.Baganator = { API = { RegisterCornerWidget = function(_, _, update) onUpdate = update end } }
+    onUpdate, onInit = nil, nil
+    _G.Baganator = { API = { RegisterCornerWidget = function(_, _, update, init) onUpdate, onInit = update, init end } }
     _G.C_Container = { GetContainerItemID = function(bag, slot) return bag == 0 and slot == 3 and 111 or nil end }
     _G.C_Item = { GetItemInfoInstant = function(link) return tonumber(link:match("item:(%d+)")) end }
     installScanner({ ["0:3"] = { verdict = "green" } })
     MakeSpace.Overlay.Init()
   end
 
+  -- Baganator hands onUpdate a placeholder that onInit made on the item button.
+  -- The dot Make Space paints is its own texture on that button.
   local function paint(details)
-    local dot = makeDotTexture()
-    return onUpdate(dot, details), dot
+    local button = makeButton(0, 3)
+    local placeholder = onInit(button)
+    local painted = onUpdate(placeholder, details)
+    return painted, button.dots[#button.dots], button
   end
 
   local function tearDown()
@@ -499,37 +581,85 @@ describe("Baganator adapter", function()
 
   it("paints a live slot whose item matches the one Baganator shows", function()
     installBaganator()
-    local painted, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
-    assert.is_truthy(painted)
+    local _, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
     assert.is_truthy(dot.shown)
+    assert.are.equal("Interface\\AddOns\\MakeSpace\\textures\\dot_green", dot.texture)
+    tearDown()
+  end)
+
+  it("anchors the dot to the button's corner itself, and keeps the corner when the dot shows", function()
+    installBaganator()
+    local painted, dot, button = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
+    assert.are.equal(true, painted)
+    -- anchored by its centre, so it can swell in place; half its size on, the dot's
+    -- edge is past the corner: right of it and above it
+    assert.are.equal("CENTER", dot.point[1])
+    assert.are.equal(button, dot.point[2])
+    assert.are.equal("TOPRIGHT", dot.point[3])
+    assert.is_truthy(dot.point[4] + 8 > 0)
+    assert.is_truthy(dot.point[5] + 8 > 0)
+    tearDown()
+  end)
+
+  it("makes no dot for a slot with no verdict", function()
+    installBaganator()
+    installScanner({})
+    local button = makeButton(0, 3)
+    local placeholder = onInit(button)
+    local made = #button.dots
+    onUpdate(placeholder, { itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
+    assert.are.equal(made, #button.dots)
+    tearDown()
+  end)
+
+  it("puts the dot on a frame above the slot, so a border drawn on a child frame cannot cover it", function()
+    installBaganator()
+    local created
+    _G.CreateFrame = function()
+      local frame = { level = nil, mouse = true }
+      function frame:SetAllPoints() end
+      function frame:SetFrameLevel(level) self.level = level end
+      function frame:EnableMouse(on) self.mouse = on end
+      function frame:CreateTexture() return makeDotTexture() end
+      created = frame
+      return frame
+    end
+    local button = makeButton(0, 3)
+    function button:GetFrameLevel() return 7 end
+    local placeholder = onInit(button)
+    onUpdate(placeholder, { itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:111" })
+    _G.CreateFrame = nil
+    assert.is_truthy(created)
+    assert.is_truthy(created.level > 7)
+    assert.are.equal(false, created.mouse)
     tearDown()
   end)
 
   it("never paints a remembered item that shares a live slot's number", function()
     installBaganator()
-    local painted, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:222" })
-    assert.is_truthy(not painted)
-    assert.is_truthy(not dot.shown)
+    local _, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 }, itemLink = "item:222" })
+    assert.is_truthy(not (dot and dot.shown))
     tearDown()
   end)
 
   it("does not paint a slot that is empty in the real bags", function()
     installBaganator()
-    local painted = paint({ itemLocation = { bagID = 0, slotIndex = 4 }, itemLink = "item:111" })
-    assert.is_truthy(not painted)
+    local _, dot = paint({ itemLocation = { bagID = 0, slotIndex = 4 }, itemLink = "item:111" })
+    assert.is_truthy(not (dot and dot.shown))
     tearDown()
   end)
 
   it("keeps painting when Baganator gives no item link to compare", function()
     installBaganator()
-    local painted = paint({ itemLocation = { bagID = 0, slotIndex = 3 } })
-    assert.is_truthy(painted)
+    local _, dot = paint({ itemLocation = { bagID = 0, slotIndex = 3 } })
+    assert.is_truthy(dot.shown)
     tearDown()
   end)
 
   it("skips an item with no location, such as another character's", function()
     installBaganator()
-    assert.is_truthy(not paint({ itemLink = "item:111" }))
+    local _, dot = paint({ itemLink = "item:111" })
+    assert.is_truthy(not (dot and dot.shown))
     tearDown()
   end)
 

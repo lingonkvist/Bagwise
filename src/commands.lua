@@ -187,6 +187,7 @@ local COMMAND_HANDLERS = {
     print("  /makespace list           - Show your marked items")
     print("  Alt-right-click an item in your bags to set its dot from a menu.")
     print("  /makespace autoopen       - Turn on or off opening your bags when loot needs room")
+    print("  /makespace pulse          - Turn on or off the swell on sellable greens at a vendor")
     print("  /makespace summary        - What the dots in your bags add up to")
     print("  /makespace help           - Show this message")
     print("  [item] can be a shift-clicked link, an item ID or an item name.")
@@ -338,6 +339,18 @@ local COMMAND_HANDLERS = {
       MakeSpaceDB.autoOpenBags = MakeSpaceDB.autoOpenBags == false
     end
     say("Opening your bags when loot needs room: " .. (MakeSpaceDB.autoOpenBags and "on" or "off"))
+  end,
+  pulse = function(argument)
+    MakeSpaceDB = MakeSpaceDB or {}
+    local word = (argument or ""):lower():match("^%s*(%a*)")
+    if word == "on" then
+      MakeSpaceDB.vendorPulse = true
+    elseif word == "off" then
+      MakeSpaceDB.vendorPulse = false
+    else
+      MakeSpaceDB.vendorPulse = MakeSpaceDB.vendorPulse == false
+    end
+    say("Green dots pulse at a vendor: " .. (MakeSpaceDB.vendorPulse ~= false and "on" or "off"))
   end,
   loot = function()
     local plan = MakeSpace.Scanner.MakeRoomSummary()
